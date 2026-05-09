@@ -10,19 +10,17 @@ module.exports = async (req, res) => {
     await connectDB();
 
     if (req.method === "GET") {
-      let agency = await Agency.findOne();
+      let agency = await Agency.findOne().lean();
       if (!agency) agency = await Agency.create({});
       return res.json(agency);
     }
 
     if (req.method === "PUT" || req.method === "POST") {
-      let agency = await Agency.findOne();
-      if (!agency) {
-        agency = await Agency.create(req.body);
-      } else {
-        Object.assign(agency, req.body);
-        await agency.save();
-      }
+      const agency = await Agency.findOneAndUpdate(
+        {},
+        { $set: req.body },
+        { new: true, upsert: true, runValidators: false }
+      ).lean();
       return res.json(agency);
     }
 
