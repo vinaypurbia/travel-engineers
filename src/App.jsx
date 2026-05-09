@@ -57,8 +57,8 @@ function ImageUpload({ value, onChange, label="Image" }) {
 }
 
 export default function App() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(DEFAULT_DATA);
+  const [loading, setLoading] = useState(false);
   const [view, setView] = useState("home");
   const [loginInput, setLoginInput] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -80,7 +80,7 @@ export default function App() {
       console.error("API failed, using defaults:", err);
       setData(DEFAULT_DATA);
     }
-    setLoading(false);
+
   };
 
   useEffect(() => {
