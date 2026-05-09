@@ -165,15 +165,28 @@ export default function App() {
         </div>
       </section>
 
-      {/* STATS */}
-      <div style={{background:"#0a1628",padding:"28px 5%",display:"flex",justifyContent:"space-around",flexWrap:"wrap",gap:20}}>
-        {(agency.stats||[]).filter(s=>s.value&&s.value.trim()!=="").map((s,i)=>(
-          <div key={i} style={{textAlign:"center"}}>
-            <div style={{fontFamily:"'Playfair Display'",fontSize:32,fontWeight:900,color:"#f0c060"}}>{s.value}</div>
-            <div style={{fontFamily:"'DM Sans'",fontSize:12,color:"rgba(255,255,255,0.5)",letterSpacing:2,textTransform:"uppercase",marginTop:4}}>{s.label}</div>
+      {/* STATS — fully dynamic */}
+      {(() => {
+        const happyCustomers = testimonials.filter(t => t.approved && t.rating >= 3).length;
+        const villaRooms = (villa.rooms || []).length;
+        const vehicles = rentals.filter(r => r.available).length;
+        const dynamicStats = [
+          { value: happyCustomers > 0 ? happyCustomers + "+" : "0", label: "Happy Customers" },
+          { value: villaRooms || 0, label: "Villa Rooms" },
+          { value: vehicles || 0, label: "Vehicles" },
+          { value: "24/7", label: "Support" },
+        ];
+        return (
+          <div style={{background:"#0a1628",padding:"28px 5%",display:"flex",justifyContent:"space-around",flexWrap:"wrap",gap:20}}>
+            {dynamicStats.map((s,i)=>(
+              <div key={i} style={{textAlign:"center"}}>
+                <div style={{fontFamily:"'Playfair Display'",fontSize:32,fontWeight:900,color:"#f0c060"}}>{s.value}</div>
+                <div style={{fontFamily:"'DM Sans'",fontSize:12,color:"rgba(255,255,255,0.5)",letterSpacing:2,textTransform:"uppercase",marginTop:4}}>{s.label}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
       {/* RENTALS */}
       <section id="sec-rentals" style={{padding:"100px 5%"}}>
