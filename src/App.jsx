@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 // After deploying backend on Render, replace this URL with your Render URL
-const API = "https://travel-agency-backend.onrender.com/api";
+const API = "/api";
 
 // ─── API HELPERS ──────────────────────────────────────────────────────────────
 const api = {
