@@ -3,10 +3,10 @@ import { useState, useEffect } from "react";
 const API = "/api";
 
 const DEFAULT_DATA = {
-  agency: { name:"IslandDrift", tagline:"Ride Free. Stay Wild. Explore More.", heroSubtitle:"Scooters · Cars · Bikes · Villa", phone:"+91 98765 43210", email:"hello@islanddrift.com", address:"Beach Road, Goa", whatsapp:"919876543210", heroImage:"https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=1600&q=80" },
+  agency: { name:"IslandDrift", tagline:"Ride Free. Stay Wild. Explore More.", heroSubtitle:"Scooters · Cars · Bikes · Villa", phone:"+91 98765 43210", email:"hello@islanddrift.com", address:"Beach Road, Goa", whatsapp:"919876543210", heroImage:"https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=1600&q=80", stats:[{value:"500+",label:"Happy Customers"},{value:"6",label:"Villa Rooms"},{value:"2",label:"Vehicles"},{value:"24/7",label:"Support"}] },
   rentals: [],
   villa: { name:"IslandDrift Villa", tagline:"Your Private Paradise", description:"A stunning 6-room villa with private pool.", price:"₹18,000", period:"/night", checkIn:"12:00 PM", checkOut:"11:00 AM", minStay:"2 nights", maxGuests:"14 guests", image:"https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?w=1200&q=80", amenities:[{icon:"🏊",label:"Private Pool"},{icon:"🛏️",label:"6 Bedrooms"},{icon:"🍳",label:"Full Kitchen"},{icon:"📶",label:"WiFi"},{icon:"❄️",label:"AC"},{icon:"🔒",label:"Security"}], rooms:[{name:"Ocean Suite",beds:"King bed",guests:2,image:""},{name:"Garden Room",beds:"Queen bed",guests:2,image:""},{name:"Poolside Room",beds:"2 Twin beds",guests:2,image:""},{name:"Family Suite",beds:"King + 2 singles",guests:4,image:""},{name:"Sunset Loft",beds:"Queen bed",guests:2,image:""},{name:"Cozy Nook",beds:"Double bed",guests:2,image:""}] },
-  testimonials: [{_id:"1",name:"Priya Sharma",location:"Mumbai",text:"The villa was absolutely gorgeous. Pool was clean and staff super helpful!",rating:5},{_id:"2",name:"Rohan Mehta",location:"Bangalore",text:"Rented 3 scooties for our gang. Best decision ever!",rating:5},{_id:"3",name:"Sarah & James",location:"London",text:"4 nights in the villa — complete paradise!",rating:5}]
+  testimonials: [{_id:"1",name:"Priya Sharma",location:"Mumbai",text:"The villa was absolutely gorgeous. Pool was clean and staff super helpful!",rating:5,approved:true},{_id:"2",name:"Rohan Mehta",location:"Bangalore",text:"Rented 3 scooties for our gang. Best decision ever!",rating:5,approved:true},{_id:"3",name:"Sarah & James",location:"London",text:"4 nights in the villa — complete paradise!",rating:5,approved:true}]
 };
 
 const api = {
@@ -167,10 +167,10 @@ export default function App() {
 
       {/* STATS */}
       <div style={{background:"#0a1628",padding:"28px 5%",display:"flex",justifyContent:"space-around",flexWrap:"wrap",gap:20}}>
-        {[["500+","Happy Customers"],[villa.rooms?.length||6,"Villa Rooms"],[rentals.length||15,"Vehicles"],["24/7","Support"]].map(([n,l])=>(
-          <div key={l} style={{textAlign:"center"}}>
-            <div style={{fontFamily:"'Playfair Display'",fontSize:32,fontWeight:900,color:"#f0c060"}}>{n}</div>
-            <div style={{fontFamily:"'DM Sans'",fontSize:12,color:"rgba(255,255,255,0.5)",letterSpacing:2,textTransform:"uppercase",marginTop:4}}>{l}</div>
+        {(agency.stats||[]).filter(s=>s.value&&s.value.trim()!=="").map((s,i)=>(
+          <div key={i} style={{textAlign:"center"}}>
+            <div style={{fontFamily:"'Playfair Display'",fontSize:32,fontWeight:900,color:"#f0c060"}}>{s.value}</div>
+            <div style={{fontFamily:"'DM Sans'",fontSize:12,color:"rgba(255,255,255,0.5)",letterSpacing:2,textTransform:"uppercase",marginTop:4}}>{s.label}</div>
           </div>
         ))}
       </div>
@@ -277,7 +277,7 @@ export default function App() {
           <h2 className="section-title">Reviews</h2>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:24,maxWidth:1000,margin:"0 auto"}}>
-          {testimonials.map(t=>(
+          {testimonials.filter(t=>t.approved).map(t=>(
             <div key={t._id} className="card-hover" style={{background:"white",borderRadius:20,padding:"28px",boxShadow:"0 4px 20px rgba(0,0,0,0.06)"}}>
               <div style={{display:"flex",gap:4,marginBottom:16}}>
                 {[...Array(t.rating)].map((_,i)=><span key={i} style={{color:"#f0c060"}}><Icon name="star" size={16} /></span>)}
@@ -338,7 +338,7 @@ function LoginScreen({ loginInput, setLoginInput, loginError, onLogin, onBack })
 }
 
 function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, setAdminTab }) {
-  const tabs = [{id:"agency",label:"🏢 Agency Info"},{id:"rentals",label:"🛵 Rentals"},{id:"villa",label:"🏡 Villa"},{id:"testimonials",label:"⭐ Reviews"}];
+  const tabs = [{id:"agency",label:"🏢 Agency Info"},{id:"rentals",label:"🛵 Rentals"},{id:"villa",label:"🏡 Villa"},{id:"testimonials",label:"⭐ Reviews"},{id:"stats",label:"📊 Stats"}];
   return (
     <div style={{minHeight:"100vh",background:"#0d1b2e",fontFamily:"'DM Sans',sans-serif",color:"white"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Playfair+Display:wght@700&display=swap');*{box-sizing:border-box;margin:0;padding:0;}.adm-input{width:100%;padding:10px 14px;background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);border-radius:8px;color:white;font-family:'DM Sans';font-size:14px;outline:none;transition:border-color 0.2s;}.adm-input:focus{border-color:#d4850a;}textarea.adm-input{resize:vertical;min-height:80px;line-height:1.6;}label.adm-label{display:block;font-size:11px;font-weight:600;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;}.adm-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;}select.adm-input{cursor:pointer;}`}</style>
@@ -362,6 +362,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
           {adminTab==="rentals"&&<RentalsEditor data={data} api={api} reload={reload} showSaved={showSaved}/>}
           {adminTab==="villa"&&<VillaEditor data={data} api={api} showSaved={showSaved}/>}
           {adminTab==="testimonials"&&<TestimonialsEditor data={data} api={api} reload={reload} showSaved={showSaved}/>}
+          {adminTab==="stats"&&<StatsEditor data={data} api={api} showSaved={showSaved}/>}
         </div>
       </div>
     </div>
@@ -532,8 +533,11 @@ function VillaEditor({ data, api, showSaved }) {
 function TestimonialsEditor({ data, api, reload, showSaved }) {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(null);
+  const [tab, setTab] = useState("approved"); // "approved" | "pending"
+  const approved = data.testimonials.filter(t => t.approved);
+  const pending = data.testimonials.filter(t => !t.approved);
   const startEdit = (t) => { setForm({...t}); setEditId(t._id); };
-  const startAdd = () => { setForm({name:"",location:"",text:"",rating:5}); setEditId("new"); };
+  const startAdd = () => { setForm({name:"",location:"",text:"",rating:5,approved:true}); setEditId("new"); };
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const save = async () => {
     if (editId==="new") await api.post("/testimonials", form);
@@ -541,12 +545,28 @@ function TestimonialsEditor({ data, api, reload, showSaved }) {
     await reload(); showSaved(); setEditId(null); setForm(null);
   };
   const del = async (id) => { if(window.confirm("Delete review?")){ await api.delete(`/testimonials/${id}`); await reload(); } };
+  const approve = async (t) => { await api.put(`/testimonials/${t._id}`, {...t, approved:true}); await reload(); showSaved(); };
+  const reject = async (t) => { await api.put(`/testimonials/${t._id}`, {...t, approved:false}); await reload(); };
+  const list = tab === "approved" ? approved : pending;
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:28}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
         <h2 style={{fontFamily:"'Playfair Display'",fontSize:28}}>Reviews</h2>
         <button onClick={startAdd} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 22px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Add Review</button>
       </div>
+      {/* Tabs */}
+      <div style={{display:"flex",gap:8,marginBottom:24}}>
+        {[["approved","✅ Approved","#4ade80"],["pending","⏳ Pending Approval","#f0c060"]].map(([id,label,col])=>(
+          <button key={id} onClick={()=>setTab(id)} style={{padding:"8px 20px",borderRadius:20,border:`2px solid ${tab===id?col:"rgba(255,255,255,0.1)"}`,background:tab===id?`rgba(${id==="approved"?"74,222,128":"240,192,96"},0.1)`:"transparent",color:tab===id?col:"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:13,fontFamily:"'DM Sans'",fontWeight:600}}>
+            {label} ({id==="approved"?approved.length:pending.length})
+          </button>
+        ))}
+      </div>
+      {pending.length > 0 && tab === "approved" && (
+        <div style={{background:"rgba(240,192,96,0.08)",border:"1px solid rgba(240,192,96,0.3)",borderRadius:12,padding:"12px 18px",marginBottom:20,fontSize:13,color:"#f0c060",display:"flex",alignItems:"center",gap:8}}>
+          ⚠️ You have <strong>{pending.length}</strong> review{pending.length>1?"s":""} waiting for approval
+        </div>
+      )}
       {editId&&form&&(
         <div className="adm-card" style={{marginBottom:24,border:"1px solid rgba(212,133,10,0.3)"}}>
           <h3 style={{color:"#f0c060",marginBottom:18}}>{editId==="new"?"New Review":"Edit Review"}</h3>
@@ -558,6 +578,10 @@ function TestimonialsEditor({ data, api, reload, showSaved }) {
                 {[1,2,3,4,5].map(n=><option key={n} value={n}>{n} ⭐</option>)}
               </select>
             </div>
+            <div style={{display:"flex",alignItems:"center",gap:10,paddingTop:22}}>
+              <label className="adm-label" style={{marginBottom:0}}>Approved</label>
+              <input type="checkbox" checked={!!form.approved} onChange={e=>set("approved",e.target.checked)} style={{width:18,height:18,cursor:"pointer",accentColor:"#d4850a"}}/>
+            </div>
             <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Review Text</label><textarea className="adm-input" value={form.text||""} onChange={e=>set("text",e.target.value)}/></div>
           </div>
           <div style={{display:"flex",gap:10}}>
@@ -567,22 +591,80 @@ function TestimonialsEditor({ data, api, reload, showSaved }) {
         </div>
       )}
       <div style={{display:"grid",gap:12}}>
-        {data.testimonials.map(t=>(
-          <div key={t._id} className="adm-card" style={{display:"flex",gap:16,alignItems:"flex-start"}}>
+        {list.length === 0 && (
+          <div style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:48,fontSize:14}}>
+            {tab==="pending" ? "No reviews waiting for approval 🎉" : "No approved reviews yet"}
+          </div>
+        )}
+        {list.map(t=>(
+          <div key={t._id} className="adm-card" style={{display:"flex",gap:16,alignItems:"flex-start",border:tab==="pending"?"1px solid rgba(240,192,96,0.2)":"1px solid rgba(255,255,255,0.08)"}}>
             <div style={{flex:1}}>
               <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
                 <span style={{fontWeight:600}}>{t.name}</span>
                 <span style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>{t.location}</span>
                 <span style={{color:"#f0c060"}}>{"★".repeat(t.rating)}</span>
+                {!t.approved && <span style={{fontSize:11,background:"rgba(240,192,96,0.15)",color:"#f0c060",padding:"2px 8px",borderRadius:10,fontWeight:600}}>PENDING</span>}
               </div>
               <p style={{fontSize:14,color:"rgba(255,255,255,0.5)",fontStyle:"italic"}}>"{t.text}"</p>
             </div>
-            <div style={{display:"flex",gap:8,flexShrink:0}}>
+            <div style={{display:"flex",gap:8,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end"}}>
+              {!t.approved && (
+                <button onClick={()=>approve(t)} style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>✓ Approve</button>
+              )}
+              {t.approved && (
+                <button onClick={()=>reject(t)} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:13}}>Hide</button>
+              )}
               <button onClick={()=>startEdit(t)} style={{background:"rgba(212,133,10,0.15)",border:"1px solid rgba(212,133,10,0.3)",color:"#f0c060",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:13}}>Edit</button>
               <button onClick={()=>del(t._id)} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"7px 10px",borderRadius:8,cursor:"pointer"}}><Icon name="trash" size={14}/></button>
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function StatsEditor({ data, api, showSaved }) {
+  const defaultStats = [
+    {value:"500+", label:"Happy Customers"},
+    {value:"6", label:"Villa Rooms"},
+    {value:"2", label:"Vehicles"},
+    {value:"24/7", label:"Support"},
+  ];
+  const [stats, setStats] = useState(data.agency.stats || defaultStats);
+  const [saving, setSaving] = useState(false);
+  const set = (i, k, v) => setStats(arr => arr.map((s,j) => j===i ? {...s,[k]:v} : s));
+  const save = async () => {
+    setSaving(true);
+    await api.put("/agency", {...data.agency, stats});
+    setSaving(false);
+    showSaved();
+  };
+  return (
+    <div>
+      <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,marginBottom:8}}>Homepage Stats</h2>
+      <p style={{color:"rgba(255,255,255,0.4)",fontSize:13,marginBottom:28,fontFamily:"'DM Sans'"}}>These numbers appear below the hero on your homepage. Leave value blank to hide a stat.</p>
+      <div style={{display:"grid",gap:16,marginBottom:28}}>
+        {stats.map((s,i)=>(
+          <div key={i} className="adm-card" style={{display:"flex",gap:16,alignItems:"center"}}>
+            <div style={{fontFamily:"'Playfair Display'",fontSize:28,fontWeight:900,color:"#f0c060",minWidth:80,textAlign:"center"}}>{s.value||"—"}</div>
+            <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              <div>
+                <label className="adm-label">Value (e.g. 500+, 24/7)</label>
+                <input className="adm-input" value={s.value||""} onChange={e=>set(i,"value",e.target.value)} placeholder="e.g. 500+"/>
+              </div>
+              <div>
+                <label className="adm-label">Label</label>
+                <input className="adm-input" value={s.label||""} onChange={e=>set(i,"label",e.target.value)} placeholder="e.g. Happy Customers"/>
+              </div>
+            </div>
+            <button onClick={()=>setStats(arr=>arr.filter((_,j)=>j!==i))} style={{background:"rgba(255,80,80,0.1)",border:"none",color:"#ff6b6b",borderRadius:8,padding:"10px 12px",cursor:"pointer",flexShrink:0}}><Icon name="trash" size={14}/></button>
+          </div>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:12}}>
+        <button onClick={()=>setStats(arr=>[...arr,{value:"",label:""}])} style={{background:"transparent",border:"1px dashed rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.5)",padding:"10px 20px",borderRadius:10,cursor:"pointer",fontSize:13}}>+ Add Stat</button>
+        <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"12px 32px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>{saving?"Saving...":"Save Stats"}</button>
       </div>
     </div>
   );
