@@ -393,7 +393,7 @@ function ReviewForm({ api, reload, rentals, villa }) {
     <div style={{textAlign:"center",padding:"32px 0"}}>
       <div style={{fontSize:48,marginBottom:16}}>🙏</div>
       <h4 style={{fontFamily:"'Playfair Display'",fontSize:22,marginBottom:8,color:"#1a1a2e"}}>Thank you!</h4>
-      <p style={{fontFamily:"'DM Sans'",color:"#888",fontSize:14}}>Your review has been submitted and is awaiting approval.</p>
+      <p style={{fontFamily:"'Lora'",color:"#888",fontSize:15,fontStyle:"italic",lineHeight:1.6}}>We truly appreciate you taking the time to share your experience with us. It means the world to us! 🌟</p>
       <button onClick={()=>setStatus(null)} style={{marginTop:20,background:"transparent",border:"1px solid #ddd",color:"#555",padding:"8px 20px",borderRadius:20,cursor:"pointer",fontFamily:"'DM Sans'",fontSize:13}}>Write another</button>
     </div>
   );
