@@ -9,6 +9,7 @@ const DEFAULT_DATA = {
   testimonials: [{_id:"1",name:"Priya Sharma",location:"Mumbai",text:"The villa was absolutely gorgeous. Pool was clean and staff super helpful!",rating:5,approved:true},{_id:"2",name:"Rohan Mehta",location:"Bangalore",text:"Rented 3 scooties for our gang. Best decision ever!",rating:5,approved:true},{_id:"3",name:"Sarah & James",location:"London",text:"4 nights in the villa — complete paradise!",rating:5,approved:true}],
   inventory: [],
   accounting: { transactions: [], summary: { totalIncome:0, totalExpense:0, netProfit:0, breakdown:{} } },
+  bookings: [],
 };
 
 const api = {
@@ -69,18 +70,20 @@ export default function App() {
   const [filterType, setFilterType] = useState("all");
   const [adminTab, setAdminTab] = useState("agency");
   const [saved, setSaved] = useState(false);
+  const [bookingVehicle, setBookingVehicle] = useState(null); // vehicle being booked
 
   const loadAllData = async () => {
     try {
-      const [agency, rentals, villa, testimonials, inventory, accounting] = await Promise.all([
+      const [agency, rentals, villa, testimonials, inventory, accounting, bookings] = await Promise.all([
         api.get("/agency"),
         api.get("/rentals"),
         api.get("/villa"),
         api.get("/testimonials"),
         api.get("/inventory"),
         api.get("/accounting"),
+        api.get("/bookings"),
       ]);
-      setData({ agency, rentals, villa, testimonials, inventory, accounting });
+      setData({ agency, rentals, villa, testimonials, inventory, accounting, bookings });
       setLoading(false);
     } catch (err) {
       console.error("API failed:", err);
@@ -233,9 +236,9 @@ export default function App() {
                       {rental.features.filter(Boolean).map((f,i)=><span key={i} style={{fontSize:12,background:"#f5f0e8",color:"#8b6914",padding:"4px 10px",borderRadius:20,fontFamily:"'DM Sans'"}}>{f}</span>)}
                     </div>
                   )}
-                  <a href={`https://wa.me/${agency.whatsapp}?text=Hi! I'd like to book the ${rental.name}`} target="_blank" rel="noreferrer">
-                    <button className="btn-primary" style={{width:"100%",padding:"12px",fontSize:14}}>Book Now → WhatsApp</button>
-                  </a>
+                  <button className="btn-primary" style={{width:"100%",padding:"12px",fontSize:14}} onClick={()=>setBookingVehicle(rental)}>
+                    Book Now →
+                  </button>
                 </div>
               </div>
             ))}
@@ -359,6 +362,16 @@ export default function App() {
           © {new Date().getFullYear()} · <span style={{cursor:"pointer",color:"rgba(240,192,96,0.4)"}} onClick={()=>setView("login")}>Admin</span>
         </div>
       </footer>
+
+      {/* ── Booking Modal ── */}
+      {bookingVehicle && (
+        <BookingModal
+          vehicle={bookingVehicle}
+          whatsapp={agency.whatsapp}
+          api={api}
+          onClose={()=>setBookingVehicle(null)}
+        />
+      )}
     </div>
   );
 }
