@@ -73,8 +73,7 @@ export default function App() {
         api.get("/agency"),
         api.get("/rentals"),
         api.get("/villa"),
-        api.get("/testimonials"),
-      ]);
+        api.get("/testimonials")]);
       setData({ agency, rentals, villa, testimonials });
       setLoading(false);
     } catch (err) {
@@ -174,8 +173,7 @@ export default function App() {
           { value: happyCustomers > 0 ? happyCustomers + "+" : "0", label: "Happy Customers" },
           { value: villaRooms || 0, label: "Villa Rooms" },
           { value: vehicles || 0, label: "Vehicles" },
-          { value: "24/7", label: "Support" },
-        ];
+          { value: "24/7", label: "Support" }];
         return (
           <div style={{background:"#0a1628",padding:"28px 5%",display:"flex",justifyContent:"space-around",flexWrap:"wrap",gap:20}}>
             {dynamicStats.map((s,i)=>(
@@ -351,7 +349,7 @@ function LoginScreen({ loginInput, setLoginInput, loginError, onLogin, onBack })
 }
 
 function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, setAdminTab }) {
-  const tabs = [{id:"agency",label:"🏢 Agency Info"},{id:"rentals",label:"🛵 Rentals"},{id:"villa",label:"🏡 Villa"},{id:"testimonials",label:"⭐ Reviews"},{id:"stats",label:"📊 Stats"}];
+  const tabs = [{id:"agency",label:"🏢 Agency Info"},{id:"rentals",label:"🛵 Rentals"},{id:"villa",label:"🏡 Villa"},{id:"testimonials",label:"⭐ Reviews"}];
   return (
     <div style={{minHeight:"100vh",background:"#0d1b2e",fontFamily:"'DM Sans',sans-serif",color:"white"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Playfair+Display:wght@700&display=swap');*{box-sizing:border-box;margin:0;padding:0;}.adm-input{width:100%;padding:10px 14px;background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);border-radius:8px;color:white;font-family:'DM Sans';font-size:14px;outline:none;transition:border-color 0.2s;}.adm-input:focus{border-color:#d4850a;}textarea.adm-input{resize:vertical;min-height:80px;line-height:1.6;}label.adm-label{display:block;font-size:11px;font-weight:600;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;}.adm-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;}select.adm-input{cursor:pointer;}`}</style>
@@ -375,7 +373,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
           {adminTab==="rentals"&&<RentalsEditor data={data} api={api} reload={reload} showSaved={showSaved}/>}
           {adminTab==="villa"&&<VillaEditor data={data} api={api} showSaved={showSaved}/>}
           {adminTab==="testimonials"&&<TestimonialsEditor data={data} api={api} reload={reload} showSaved={showSaved}/>}
-          {adminTab==="stats"&&<StatsEditor data={data} api={api} showSaved={showSaved}/>}
+
         </div>
       </div>
     </div>
@@ -632,52 +630,6 @@ function TestimonialsEditor({ data, api, reload, showSaved }) {
             </div>
           </div>
         ))}
-      </div>
-    </div>
-  );
-}
-
-function StatsEditor({ data, api, showSaved }) {
-  const defaultStats = [
-    {value:"500+", label:"Happy Customers"},
-    {value:"6", label:"Villa Rooms"},
-    {value:"2", label:"Vehicles"},
-    {value:"24/7", label:"Support"},
-  ];
-  const [stats, setStats] = useState(data.agency.stats || defaultStats);
-  const [saving, setSaving] = useState(false);
-  const set = (i, k, v) => setStats(arr => arr.map((s,j) => j===i ? {...s,[k]:v} : s));
-  const save = async () => {
-    setSaving(true);
-    await api.put("/agency", {...data.agency, stats});
-    setSaving(false);
-    showSaved();
-  };
-  return (
-    <div>
-      <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,marginBottom:8}}>Homepage Stats</h2>
-      <p style={{color:"rgba(255,255,255,0.4)",fontSize:13,marginBottom:28,fontFamily:"'DM Sans'"}}>These numbers appear below the hero on your homepage. Leave value blank to hide a stat.</p>
-      <div style={{display:"grid",gap:16,marginBottom:28}}>
-        {stats.map((s,i)=>(
-          <div key={i} className="adm-card" style={{display:"flex",gap:16,alignItems:"center"}}>
-            <div style={{fontFamily:"'Playfair Display'",fontSize:28,fontWeight:900,color:"#f0c060",minWidth:80,textAlign:"center"}}>{s.value||"—"}</div>
-            <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-              <div>
-                <label className="adm-label">Value (e.g. 500+, 24/7)</label>
-                <input className="adm-input" value={s.value||""} onChange={e=>set(i,"value",e.target.value)} placeholder="e.g. 500+"/>
-              </div>
-              <div>
-                <label className="adm-label">Label</label>
-                <input className="adm-input" value={s.label||""} onChange={e=>set(i,"label",e.target.value)} placeholder="e.g. Happy Customers"/>
-              </div>
-            </div>
-            <button onClick={()=>setStats(arr=>arr.filter((_,j)=>j!==i))} style={{background:"rgba(255,80,80,0.1)",border:"none",color:"#ff6b6b",borderRadius:8,padding:"10px 12px",cursor:"pointer",flexShrink:0}}><Icon name="trash" size={14}/></button>
-          </div>
-        ))}
-      </div>
-      <div style={{display:"flex",gap:12}}>
-        <button onClick={()=>setStats(arr=>[...arr,{value:"",label:""}])} style={{background:"transparent",border:"1px dashed rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.5)",padding:"10px 20px",borderRadius:10,cursor:"pointer",fontSize:13}}>+ Add Stat</button>
-        <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"12px 32px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>{saving?"Saving...":"Save Stats"}</button>
       </div>
     </div>
   );
