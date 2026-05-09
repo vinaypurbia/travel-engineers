@@ -783,9 +783,9 @@ const VEHICLE_SUBTYPES = [
   { value:"car",    label:"🚗 Car" },
 ];
 const STATUS_STYLES = {
-  available:   { bg:"rgba(74,222,128,0.12)",  border:"rgba(74,222,128,0.3)",  color:"#4ade80",  label:"Available" },
-  booked:      { bg:"rgba(240,192,96,0.12)",  border:"rgba(240,192,96,0.3)",  color:"#f0c060",  label:"Booked" },
-  maintenance: { bg:"rgba(255,100,100,0.12)", border:"rgba(255,100,100,0.3)", color:"#ff6b6b",  label:"Maintenance" },
+  available:   { bg:"rgba(74,222,128,0.12)",  border:"rgba(74,222,128,0.3)",  color:"#4ade80",  label:"Available",   dot:"#4ade80" },
+  booked:      { bg:"rgba(240,192,96,0.12)",  border:"rgba(240,192,96,0.3)",  color:"#f0c060",  label:"Booked",      dot:"#f0c060" },
+  maintenance: { bg:"rgba(255,100,100,0.12)", border:"rgba(255,100,100,0.3)", color:"#ff6b6b",  label:"Maintenance", dot:"#ff6b6b" },
 };
 
 function InventoryEditor({ data, api, reload, showSaved }) {
@@ -795,12 +795,16 @@ function InventoryEditor({ data, api, reload, showSaved }) {
   const [form, setForm] = useState(null);
   const [adding, setAdding] = useState(false);
   const [filterType, setFilterType] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("name");
+  const [viewMode, setViewMode] = useState("list"); // list | grid
 
   useEffect(()=>setItems(data.inventory||[]),[data.inventory]);
 
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const startAdd  = () => { setForm({...blankItem}); setEditId(null); setAdding(true); };
-  const startEdit = (item) => { setForm({...item}); setEditId(item._id); setAdding(false); };
+  const startAdd  = () => { setForm({...blankItem}); setEditId(null); setAdding(true); window.scrollTo({top:0,behavior:"smooth"}); };
+  const startEdit = (item) => { setForm({...item}); setEditId(item._id); setAdding(false); window.scrollTo({top:0,behavior:"smooth"}); };
   const cancel    = () => { setEditId(null); setForm(null); setAdding(false); };
 
   const save = async () => {
@@ -823,47 +827,140 @@ function InventoryEditor({ data, api, reload, showSaved }) {
     await reload();
   };
 
-  const filtered = filterType==="all" ? items : items.filter(i=>i.type===filterType);
-
-  // Summary counts
-  const counts = { all: items.length, tour: 0, villa: 0, vehicle: 0, equipment: 0 };
+  // Counts
+  const counts = { all:items.length, tour:0, villa:0, vehicle:0, equipment:0 };
   items.forEach(i=>{ if(counts[i.type]!==undefined) counts[i.type]++; });
+  const statusCounts = { available:0, booked:0, maintenance:0 };
+  items.forEach(i=>{ if(statusCounts[i.status]!==undefined) statusCounts[i.status]++; });
+  const totalFleetValue = items.filter(i=>i.pricePerDay>0).reduce((s,i)=>s+i.pricePerDay,0);
+
+  // Filter + search + sort
+  let filtered = items;
+  if (filterType!=="all") filtered = filtered.filter(i=>i.type===filterType);
+  if (filterStatus!=="all") filtered = filtered.filter(i=>i.status===filterStatus);
+  if (search.trim()) {
+    const q = search.toLowerCase();
+    filtered = filtered.filter(i=>(i.name||"").toLowerCase().includes(q)||(i.location||"").toLowerCase().includes(q)||(i.description||"").toLowerCase().includes(q));
+  }
+  if (sortBy==="name")     filtered = [...filtered].sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+  if (sortBy==="price")    filtered = [...filtered].sort((a,b)=>(b.pricePerDay||0)-(a.pricePerDay||0));
+  if (sortBy==="status")   filtered = [...filtered].sort((a,b)=>(a.status||"").localeCompare(b.status||""));
+
+  const exportCSV = () => {
+    const rows = [["Name","Type","Vehicle Type","Status","Price/Day","Capacity","Location","Notes"]];
+    filtered.forEach(i=>rows.push([i.name,i.type,i.vehicleType||"",i.status,i.pricePerDay,i.capacity,i.location,i.notes]));
+    const csv = rows.map(r=>r.map(v=>`"${String(v||"").replace(/"/g,'""')}"`).join(",")).join("\n");
+    const a = document.createElement("a"); a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv); a.download="inventory.csv"; a.click();
+  };
+
+  const typeIcon = (item) => item.type==="vehicle"?(item.vehicleType==="scooty"?"🛵":item.vehicleType==="bike"?"🏍️":"🚗"):item.type==="tour"?"🗺️":item.type==="villa"?"🏡":"🔧";
 
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h2 style={{fontFamily:"'Playfair Display'",fontSize:28}}>Inventory</h2>
-        <button onClick={startAdd} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 22px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Add Item</button>
+      {/* ── Header ── */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
+        <div>
+          <h2 style={{fontFamily:"'Playfair Display'",fontSize:30,marginBottom:4}}>Inventory</h2>
+          <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>{items.length} total assets · ₹{totalFleetValue.toLocaleString("en-IN")}/day fleet value</p>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button onClick={exportCSV} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",color:"rgba(255,255,255,0.6)",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>↓ Export CSV</button>
+          <button onClick={startAdd} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 22px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Add Item</button>
+        </div>
       </div>
 
-      {/* Summary stats */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:20}}>
+      {/* ── KPI Cards ── */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10,marginBottom:20}}>
         {[
-          {label:"Total Items",  value:counts.all,       color:"#f0c060"},
-          {label:"Vehicles",     value:counts.vehicle,   color:"#60a5fa"},
-          {label:"Tours",        value:counts.tour,      color:"#a78bfa"},
-          {label:"Equipment",    value:counts.equipment, color:"#fb923c"},
+          {label:"Total Items",  value:counts.all,            color:"#f0c060", icon:"📦"},
+          {label:"Vehicles",     value:counts.vehicle,        color:"#60a5fa", icon:"🛵"},
+          {label:"Tours",        value:counts.tour,           color:"#a78bfa", icon:"🗺️"},
+          {label:"Equipment",    value:counts.equipment,      color:"#fb923c", icon:"🔧"},
+          {label:"Available",    value:statusCounts.available,    color:"#4ade80", icon:"✅"},
+          {label:"Booked",       value:statusCounts.booked,       color:"#f0c060", icon:"📅"},
+          {label:"Maintenance",  value:statusCounts.maintenance,  color:"#ff6b6b", icon:"🔧"},
         ].map(s=>(
-          <div key={s.label} className="adm-stat">
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>{s.label}</div>
-            <div style={{fontSize:26,fontWeight:700,color:s.color,fontFamily:"'Playfair Display'"}}>{s.value}</div>
+          <div key={s.label} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 16px",position:"relative",overflow:"hidden"}}>
+            <div style={{position:"absolute",top:10,right:12,fontSize:18,opacity:0.18}}>{s.icon}</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>{s.label}</div>
+            <div style={{fontSize:28,fontWeight:800,color:s.color,fontFamily:"'Playfair Display'"}}>{s.value}</div>
           </div>
         ))}
       </div>
 
-      {/* Filter tabs */}
-      <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-        {[["all","All"],["vehicle","🛵 Vehicles"],["tour","🗺️ Tours"],["villa","🏡 Villa"],["equipment","🔧 Equipment"]].map(([val,lbl])=>(
-          <button key={val} onClick={()=>setFilterType(val)} style={{padding:"7px 16px",borderRadius:20,border:`1px solid ${filterType===val?"#d4850a":"rgba(255,255,255,0.1)"}`,background:filterType===val?"rgba(212,133,10,0.15)":"transparent",color:filterType===val?"#f0c060":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:12,fontWeight:500}}>
-            {lbl}
-          </button>
-        ))}
+      {/* ── Availability Bar ── */}
+      {items.length>0&&(
+        <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 20px",marginBottom:20}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+            <span style={{fontSize:11,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1}}>Fleet availability</span>
+            <span style={{fontSize:11,color:"#4ade80",fontWeight:600}}>{Math.round((statusCounts.available/items.length)*100)}% available</span>
+          </div>
+          <div style={{display:"flex",height:8,borderRadius:6,overflow:"hidden",gap:2}}>
+            {statusCounts.available>0&&<div style={{flex:statusCounts.available,background:"#4ade80",borderRadius:6}}/>}
+            {statusCounts.booked>0&&<div style={{flex:statusCounts.booked,background:"#f0c060",borderRadius:6}}/>}
+            {statusCounts.maintenance>0&&<div style={{flex:statusCounts.maintenance,background:"#ff6b6b",borderRadius:6}}/>}
+          </div>
+          <div style={{display:"flex",gap:16,marginTop:8}}>
+            {[["#4ade80","Available",statusCounts.available],["#f0c060","Booked",statusCounts.booked],["#ff6b6b","Maintenance",statusCounts.maintenance]].map(([c,l,v])=>(
+              <div key={l} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"rgba(255,255,255,0.4)"}}>
+                <div style={{width:8,height:8,borderRadius:"50%",background:c}}/>{l}: <strong style={{color:"rgba(255,255,255,0.7)"}}>{v}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Search + Filters ── */}
+      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 20px",marginBottom:20}}>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+          {/* Search */}
+          <div style={{flex:1,minWidth:180,position:"relative"}}>
+            <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:14,opacity:0.4}}>🔍</span>
+            <input className="adm-input" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by name, location…" style={{paddingLeft:34}}/>
+          </div>
+          {/* Type filter */}
+          <select className="adm-input" value={filterType} onChange={e=>setFilterType(e.target.value)} style={{width:"auto",minWidth:130}}>
+            <option value="all">All Types ({counts.all})</option>
+            <option value="vehicle">🛵 Vehicles ({counts.vehicle})</option>
+            <option value="tour">🗺️ Tours ({counts.tour})</option>
+            <option value="villa">🏡 Villa ({counts.villa})</option>
+            <option value="equipment">🔧 Equipment ({counts.equipment})</option>
+          </select>
+          {/* Status filter */}
+          <select className="adm-input" value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{width:"auto",minWidth:140}}>
+            <option value="all">All Statuses</option>
+            <option value="available">✅ Available ({statusCounts.available})</option>
+            <option value="booked">📅 Booked ({statusCounts.booked})</option>
+            <option value="maintenance">🔧 Maintenance ({statusCounts.maintenance})</option>
+          </select>
+          {/* Sort */}
+          <select className="adm-input" value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{width:"auto",minWidth:120}}>
+            <option value="name">Sort: Name</option>
+            <option value="price">Sort: Price ↓</option>
+            <option value="status">Sort: Status</option>
+          </select>
+          {/* View toggle */}
+          <div style={{display:"flex",gap:4,background:"rgba(255,255,255,0.05)",borderRadius:8,padding:4}}>
+            {[["list","☰"],["grid","⊞"]].map(([m,icon])=>(
+              <button key={m} onClick={()=>setViewMode(m)} style={{padding:"5px 10px",borderRadius:6,border:"none",background:viewMode===m?"rgba(212,133,10,0.25)":"transparent",color:viewMode===m?"#f0c060":"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:14}}>{icon}</button>
+            ))}
+          </div>
+        </div>
+        {(search||filterType!=="all"||filterStatus!=="all")&&(
+          <div style={{marginTop:10,display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+            <span style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>Showing {filtered.length} of {items.length}</span>
+            <button onClick={()=>{setSearch("");setFilterType("all");setFilterStatus("all");}} style={{fontSize:11,color:"#f0c060",background:"transparent",border:"none",cursor:"pointer",textDecoration:"underline"}}>Clear filters</button>
+          </div>
+        )}
       </div>
 
-      {/* Add / Edit form */}
+      {/* ── Add / Edit Form ── */}
       {(adding||editId)&&form&&(
-        <div className="adm-card" style={{marginBottom:24,border:"1px solid rgba(212,133,10,0.3)"}}>
-          <h3 style={{color:"#f0c060",marginBottom:20}}>{adding?"Add Inventory Item":"Edit Item"}</h3>
+        <div className="adm-card" style={{marginBottom:24,border:"1px solid rgba(212,133,10,0.35)",background:"rgba(212,133,10,0.04)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+            <h3 style={{color:"#f0c060",fontSize:18}}>{adding?"➕ Add New Item":"✏️ Edit Item"}</h3>
+            <button onClick={cancel} style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.3)",fontSize:20,cursor:"pointer",lineHeight:1}}>✕</button>
+          </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
             <div>
               <label className="adm-label">Type</label>
@@ -883,66 +980,112 @@ function InventoryEditor({ data, api, reload, showSaved }) {
             <div>
               <label className="adm-label">Status</label>
               <select className="adm-input" value={form.status} onChange={e=>set("status",e.target.value)}>
-                <option value="available">Available</option>
-                <option value="booked">Booked</option>
-                <option value="maintenance">Maintenance</option>
+                <option value="available">✅ Available</option>
+                <option value="booked">📅 Booked</option>
+                <option value="maintenance">🔧 Maintenance</option>
               </select>
             </div>
             <div><label className="adm-label">Price per day (₹)</label><input className="adm-input" type="number" value={form.pricePerDay||0} onChange={e=>set("pricePerDay",Number(e.target.value))}/></div>
             <div><label className="adm-label">Capacity (guests/units)</label><input className="adm-input" type="number" value={form.capacity||1} onChange={e=>set("capacity",Number(e.target.value))}/></div>
-            <div><label className="adm-label">Location</label><input className="adm-input" value={form.location||""} onChange={e=>set("location",e.target.value)} placeholder="e.g. Goa Garage"/></div>
+            <div><label className="adm-label">Location</label><input className="adm-input" value={form.location||""} onChange={e=>set("location",e.target.value)} placeholder="e.g. Main Garage, Udaipur"/></div>
             <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Description</label><textarea className="adm-input" value={form.description||""} onChange={e=>set("description",e.target.value)} rows={2}/></div>
             <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Notes (internal)</label><textarea className="adm-input" value={form.notes||""} onChange={e=>set("notes",e.target.value)} rows={2} placeholder="Service history, quirks, etc."/></div>
             <div style={{gridColumn:"1 / -1"}}><ImageUpload label="Image" value={form.image} onChange={v=>set("image",v)}/></div>
           </div>
           <div style={{display:"flex",gap:10}}>
-            <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 24px",borderRadius:8,fontWeight:700,cursor:"pointer"}}>Save</button>
+            <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 28px",borderRadius:8,fontWeight:700,cursor:"pointer"}}>Save Item</button>
             <button onClick={cancel} style={{background:"transparent",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.5)",padding:"10px 20px",borderRadius:8,cursor:"pointer"}}>Cancel</button>
           </div>
         </div>
       )}
 
-      {/* Items list */}
-      <div style={{display:"grid",gap:10}}>
-        {filtered.length===0&&<div style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:48}}>No items yet. Add one above!</div>}
-        {filtered.map(item=>{
-          const ss = STATUS_STYLES[item.status]||STATUS_STYLES.available;
-          const typeIcon = item.type==="vehicle"?(item.vehicleType==="scooty"?"🛵":item.vehicleType==="bike"?"🏍️":"🚗"):item.type==="tour"?"🗺️":item.type==="villa"?"🏡":"🔧";
-          return (
-            <div key={item._id} className="adm-card" style={{display:"flex",gap:14,alignItems:"center"}}>
-              {item.image
-                ? <img src={item.image} alt="" style={{width:60,height:60,objectFit:"cover",borderRadius:10,flexShrink:0}}/>
-                : <div style={{width:60,height:60,borderRadius:10,background:"rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>{typeIcon}</div>
-              }
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:4}}>
-                  <span style={{fontWeight:600,fontSize:15}}>{item.name}</span>
-                  <span style={{fontSize:11,background:"rgba(255,255,255,0.07)",padding:"2px 8px",borderRadius:10,color:"rgba(255,255,255,0.5)"}}>{typeIcon} {item.type}</span>
-                  <span style={{fontSize:11,padding:"2px 9px",borderRadius:10,background:ss.bg,border:`1px solid ${ss.border}`,color:ss.color}}>{ss.label}</span>
-                </div>
-                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",display:"flex",gap:12,flexWrap:"wrap"}}>
-                  {item.pricePerDay>0&&<span>₹{item.pricePerDay.toLocaleString()}/day</span>}
-                  {item.capacity>0&&<span>{item.capacity} capacity</span>}
-                  {item.location&&<span>📍 {item.location}</span>}
-                </div>
-              </div>
-              <div style={{display:"flex",gap:6,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end"}}>
-                <select value={item.status} onChange={e=>updateStatus(item,e.target.value)}
-                  style={{padding:"5px 10px",borderRadius:7,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.06)",color:"white",fontSize:12,cursor:"pointer"}}>
-                  <option value="available">Available</option>
-                  <option value="booked">Booked</option>
-                  <option value="maintenance">Maintenance</option>
-                </select>
-                <button onClick={()=>startEdit(item)} style={{background:"rgba(212,133,10,0.15)",border:"1px solid rgba(212,133,10,0.3)",color:"#f0c060",padding:"6px 12px",borderRadius:7,cursor:"pointer",fontSize:12}}>Edit</button>
-                <button onClick={()=>del(item._id)} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"6px 10px",borderRadius:7,cursor:"pointer"}}><Icon name="trash" size={13}/></button>
-              </div>
+      {/* ── Items — List View ── */}
+      {viewMode==="list"&&(
+        <div style={{display:"grid",gap:8}}>
+          {filtered.length===0&&(
+            <div style={{textAlign:"center",padding:"60px 0",color:"rgba(255,255,255,0.2)"}}>
+              <div style={{fontSize:40,marginBottom:12}}>📦</div>
+              <div style={{fontSize:14}}>{search?"No results found":"No items yet — click + Add Item above"}</div>
             </div>
-          );
-        })}
-      </div>
+          )}
+          {filtered.map(item=>{
+            const ss = STATUS_STYLES[item.status]||STATUS_STYLES.available;
+            const icon = typeIcon(item);
+            return (
+              <div key={item._id} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"14px 18px",display:"flex",gap:14,alignItems:"center",transition:"border-color 0.2s"}}
+                onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(212,133,10,0.3)"}
+                onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.07)"}>
+                {item.image
+                  ? <img src={item.image} alt="" style={{width:56,height:56,objectFit:"cover",borderRadius:10,flexShrink:0}}/>
+                  : <div style={{width:56,height:56,borderRadius:10,background:"rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>{icon}</div>
+                }
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:4}}>
+                    <span style={{fontWeight:600,fontSize:15}}>{item.name}</span>
+                    <span style={{fontSize:10,background:"rgba(255,255,255,0.06)",padding:"2px 8px",borderRadius:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1}}>{icon} {item.type}</span>
+                    <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:ss.bg,border:`1px solid ${ss.border}`,color:ss.color,display:"flex",alignItems:"center",gap:4}}>
+                      <span style={{width:5,height:5,borderRadius:"50%",background:ss.dot,display:"inline-block"}}/>
+                      {ss.label}
+                    </span>
+                  </div>
+                  <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",display:"flex",gap:14,flexWrap:"wrap"}}>
+                    {item.pricePerDay>0&&<span style={{color:"#f0c060",fontWeight:600}}>₹{item.pricePerDay.toLocaleString("en-IN")}/day</span>}
+                    {item.capacity>0&&<span>👥 {item.capacity} capacity</span>}
+                    {item.location&&<span>📍 {item.location}</span>}
+                    {item.description&&<span style={{maxWidth:300,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.description}</span>}
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:6,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end",alignItems:"center"}}>
+                  <select value={item.status} onChange={e=>updateStatus(item,e.target.value)}
+                    style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${ss.border}`,background:ss.bg,color:ss.color,fontSize:11,cursor:"pointer",fontWeight:600}}>
+                    <option value="available">✅ Available</option>
+                    <option value="booked">📅 Booked</option>
+                    <option value="maintenance">🔧 Maintenance</option>
+                  </select>
+                  <button onClick={()=>startEdit(item)} style={{background:"rgba(212,133,10,0.12)",border:"1px solid rgba(212,133,10,0.25)",color:"#f0c060",padding:"6px 12px",borderRadius:7,cursor:"pointer",fontSize:12}}>Edit</button>
+                  <button onClick={()=>del(item._id)} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.15)",color:"#ff6b6b",padding:"6px 10px",borderRadius:7,cursor:"pointer"}}><Icon name="trash" size={13}/></button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Items — Grid View ── */}
+      {viewMode==="grid"&&(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:14}}>
+          {filtered.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",padding:"60px 0",color:"rgba(255,255,255,0.2)"}}>No items found</div>}
+          {filtered.map(item=>{
+            const ss = STATUS_STYLES[item.status]||STATUS_STYLES.available;
+            const icon = typeIcon(item);
+            return (
+              <div key={item._id} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,overflow:"hidden",transition:"transform 0.2s,border-color 0.2s"}}
+                onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.borderColor="rgba(212,133,10,0.3)"}}
+                onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.borderColor="rgba(255,255,255,0.07)"}}>
+                {item.image
+                  ? <img src={item.image} alt="" style={{width:"100%",height:120,objectFit:"cover"}}/>
+                  : <div style={{width:"100%",height:120,background:"rgba(255,255,255,0.04)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36}}>{icon}</div>
+                }
+                <div style={{padding:"14px 14px 10px"}}>
+                  <div style={{fontWeight:600,fontSize:13,marginBottom:6,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}</div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                    <span style={{fontSize:13,color:"#f0c060",fontWeight:700}}>{item.pricePerDay>0?`₹${item.pricePerDay.toLocaleString()}/d`:"—"}</span>
+                    <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:ss.bg,border:`1px solid ${ss.border}`,color:ss.color}}>{ss.label}</span>
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={()=>startEdit(item)} style={{flex:1,background:"rgba(212,133,10,0.12)",border:"1px solid rgba(212,133,10,0.25)",color:"#f0c060",padding:"5px 0",borderRadius:7,cursor:"pointer",fontSize:11}}>Edit</button>
+                    <button onClick={()=>del(item._id)} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.15)",color:"#ff6b6b",padding:"5px 8px",borderRadius:7,cursor:"pointer"}}><Icon name="trash" size={12}/></button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
+
 
 // ─── NEW: Accounting Editor ───────────────────────────────────────────────────
 const INCOME_CATEGORIES = [
@@ -962,102 +1105,271 @@ const EXPENSE_CATEGORIES = [
 ];
 const PAYMENT_METHODS = ["cash","upi","bank_transfer","card","other"];
 
+// Tiny SVG donut chart
+function DonutChart({ segments, size=90 }) {
+  const total = segments.reduce((s,d)=>s+d.value,0)||1;
+  let offset=0;
+  const r=36, cx=50, cy=50, circ=2*Math.PI*r;
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100">
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="14"/>
+      {segments.filter(s=>s.value>0).map((seg,i)=>{
+        const pct=seg.value/total;
+        const el=<circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={seg.color} strokeWidth="14"
+          strokeDasharray={`${pct*circ} ${circ}`} strokeDashoffset={-offset*circ}
+          transform="rotate(-90 50 50)"/>;
+        offset+=pct; return el;
+      })}
+    </svg>
+  );
+}
+
 function AccountingEditor({ data, api, reload, showSaved }) {
-  const accData   = data.accounting || { transactions:[], summary:{ totalIncome:0, totalExpense:0, netProfit:0, breakdown:{} } };
-  const summary   = accData.summary || { totalIncome:0, totalExpense:0, netProfit:0, breakdown:{} };
-  const allTx     = accData.transactions || [];
+  const accData = data.accounting || { transactions:[], summary:{ totalIncome:0, totalExpense:0, netProfit:0, breakdown:{} } };
+  const allTx   = accData.transactions || [];
 
-  const [tab, setTab]       = useState("ledger");   // ledger | add
-  const [txType, setTxType] = useState("income");
+  // Date filter state
+  const now = new Date();
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+  const today = now.toISOString().slice(0,10);
+
+  const [datePreset, setDatePreset] = useState("month");
+  const [dateFrom, setDateFrom]   = useState(firstOfMonth);
+  const [dateTo, setDateTo]       = useState(today);
   const [filterCat, setFilterCat] = useState("all");
-  const [editId, setEditId] = useState(null);
+  const [search, setSearch]       = useState("");
+  const [showForm, setShowForm]   = useState(false);
+  const [editId, setEditId]       = useState(null);
+  const [sortDir, setSortDir]     = useState("desc");
 
-  const blankForm = { type:"income", category:"vehicle_rental", amount:"", date: new Date().toISOString().slice(0,10), description:"", clientName:"", agencyName:"", paymentStatus:"paid", paymentMethod:"cash", notes:"" };
+  const blankForm = { type:"income", category:"vehicle_rental", amount:"", date:today, description:"", clientName:"", agencyName:"", paymentStatus:"paid", paymentMethod:"cash", notes:"" };
   const [form, setForm] = useState({...blankForm});
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
-  const categories = form.type==="income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  const allCats = [...INCOME_CATEGORIES,...EXPENSE_CATEGORIES];
+  const categoryLabel = (cat) => allCats.find(c=>c.value===cat)?.label || cat;
+  const fmt = (n) => `₹${Number(n||0).toLocaleString("en-IN")}`;
 
-  const startAdd = () => { setForm({...blankForm,type:txType}); setEditId(null); setTab("add"); };
-  const startEdit = (tx) => { setForm({...tx, amount:String(tx.amount), date: tx.date?new Date(tx.date).toISOString().slice(0,10):new Date().toISOString().slice(0,10)}); setEditId(tx._id); setTab("add"); };
-  const cancel = () => { setEditId(null); setForm({...blankForm}); setTab("ledger"); };
+  // Preset date ranges
+  const applyPreset = (preset) => {
+    setDatePreset(preset);
+    const n = new Date();
+    if (preset==="today")    { const d=n.toISOString().slice(0,10); setDateFrom(d); setDateTo(d); }
+    if (preset==="week")     { const d=new Date(n-6*864e5).toISOString().slice(0,10); setDateFrom(d); setDateTo(n.toISOString().slice(0,10)); }
+    if (preset==="month")    { setDateFrom(new Date(n.getFullYear(),n.getMonth(),1).toISOString().slice(0,10)); setDateTo(n.toISOString().slice(0,10)); }
+    if (preset==="quarter")  { setDateFrom(new Date(n.getFullYear(),Math.floor(n.getMonth()/3)*3,1).toISOString().slice(0,10)); setDateTo(n.toISOString().slice(0,10)); }
+    if (preset==="year")     { setDateFrom(`${n.getFullYear()}-01-01`); setDateTo(`${n.getFullYear()}-12-31`); }
+    if (preset==="all")      { setDateFrom("2020-01-01"); setDateTo("2099-12-31"); }
+  };
 
+  // Filtered transactions
+  const filtered = allTx.filter(tx => {
+    const d = tx.date ? tx.date.slice(0,10) : "";
+    if (dateFrom && d < dateFrom) return false;
+    if (dateTo   && d > dateTo)   return false;
+    if (filterCat==="income"  && tx.type!=="income")  return false;
+    if (filterCat==="expense" && tx.type!=="expense") return false;
+    if (filterCat==="pending" && tx.paymentStatus!=="pending") return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!((tx.description||"").toLowerCase().includes(q)||(tx.clientName||"").toLowerCase().includes(q)||(tx.agencyName||"").toLowerCase().includes(q))) return false;
+    }
+    return true;
+  }).sort((a,b)=>{
+    const da=a.date||"",db=b.date||"";
+    return sortDir==="desc"?db.localeCompare(da):da.localeCompare(db);
+  });
+
+  // Summary for filtered range
+  const filteredIncome  = filtered.filter(t=>t.type==="income").reduce((s,t)=>s+t.amount,0);
+  const filteredExpense = filtered.filter(t=>t.type==="expense").reduce((s,t)=>s+t.amount,0);
+  const filteredProfit  = filteredIncome - filteredExpense;
+  const pendingAmt      = filtered.filter(t=>t.paymentStatus==="pending").reduce((s,t)=>s+t.amount,0);
+
+  // Revenue breakdown for donut
+  const breakdown = {};
+  filtered.filter(t=>t.type==="income").forEach(t=>{ breakdown[t.category]=(breakdown[t.category]||0)+t.amount; });
+  const donutColors = ["#f0c060","#4ade80","#60a5fa","#a78bfa","#fb923c","#f472b6"];
+  const donutSegments = Object.entries(breakdown).map(([cat,val],i)=>({ label:categoryLabel(cat), value:val, color:donutColors[i%donutColors.length] }));
+
+  // Monthly trend for filtered year (last 6 months)
+  const monthlyData = (() => {
+    const months=[];
+    for(let i=5;i>=0;i--){
+      const d=new Date(); d.setMonth(d.getMonth()-i);
+      const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+      const label=d.toLocaleString("en-IN",{month:"short"});
+      const inc=allTx.filter(t=>t.type==="income"&&(t.date||"").startsWith(ym)).reduce((s,t)=>s+t.amount,0);
+      const exp=allTx.filter(t=>t.type==="expense"&&(t.date||"").startsWith(ym)).reduce((s,t)=>s+t.amount,0);
+      months.push({label,inc,exp});
+    }
+    return months;
+  })();
+  const maxBar = Math.max(...monthlyData.map(m=>Math.max(m.inc,m.exp)),1);
+
+  // Form handlers
+  const startAdd = (type="income") => {
+    setForm({...blankForm, type, category: type==="income"?"vehicle_rental":"maintenance", date:today});
+    setEditId(null); setShowForm(true);
+  };
+  const startEdit = (tx) => {
+    setForm({...tx, amount:String(tx.amount), date:tx.date?tx.date.slice(0,10):today});
+    setEditId(tx._id); setShowForm(true);
+  };
+  const cancel = () => { setShowForm(false); setEditId(null); setForm({...blankForm}); };
   const save = async () => {
-    if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount)<=0) { alert("Enter a valid amount."); return; }
-    const payload = { ...form, amount: Number(form.amount) };
-    if (editId) await api.put(`/accounting/${editId}`, payload);
-    else        await api.post("/accounting", payload);
+    if (!form.amount||isNaN(Number(form.amount))||Number(form.amount)<=0){alert("Enter a valid amount.");return;}
+    const payload={...form,amount:Number(form.amount)};
+    if(editId) await api.put(`/accounting/${editId}`,payload);
+    else       await api.post("/accounting",payload);
     cancel(); showSaved(); await reload();
   };
-
   const del = async (id) => {
-    if (!window.confirm("Delete this transaction?")) return;
-    await api.delete(`/accounting/${id}`);
-    await reload();
+    if(!window.confirm("Delete this transaction?"))return;
+    await api.delete(`/accounting/${id}`); await reload();
   };
 
-  const income   = allTx.filter(t=>t.type==="income");
-  const expenses = allTx.filter(t=>t.type==="expense");
-  const displayed = filterCat==="all" ? allTx : allTx.filter(t=>t.type===filterCat);
-
-  const categoryLabel = (cat) => {
-    const all = [...INCOME_CATEGORIES,...EXPENSE_CATEGORIES];
-    return all.find(c=>c.value===cat)?.label || cat;
+  // CSV export
+  const exportCSV = () => {
+    const rows=[["Date","Type","Category","Amount","Client","Agency","Payment Method","Payment Status","Description"]];
+    filtered.forEach(t=>rows.push([t.date,t.type,t.category,t.amount,t.clientName,t.agencyName,t.paymentMethod,t.paymentStatus,t.description]));
+    const csv=rows.map(r=>r.map(v=>`"${String(v||"").replace(/"/g,'""')}"`).join(",")).join("\n");
+    const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv);a.download="accounting.csv";a.click();
   };
-  const fmt = (n) => `₹${Number(n||0).toLocaleString("en-IN")}`;
-  const profitColor = summary.netProfit >= 0 ? "#4ade80" : "#ff6b6b";
+
+  const profitColor = filteredProfit>=0?"#4ade80":"#ff6b6b";
+  const categories  = form.type==="income"?INCOME_CATEGORIES:EXPENSE_CATEGORIES;
 
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h2 style={{fontFamily:"'Playfair Display'",fontSize:28}}>Accounting</h2>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>{setTxType("income");startAdd();}} style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"9px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Income</button>
-          <button onClick={()=>{setTxType("expense");setForm(f=>({...blankForm,type:"expense",category:"maintenance"}));setEditId(null);setTab("add");}} style={{background:"rgba(255,100,100,0.15)",border:"1px solid rgba(255,100,100,0.3)",color:"#ff6b6b",padding:"9px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Expense</button>
+      {/* ── Header ── */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
+        <div>
+          <h2 style={{fontFamily:"'Playfair Display'",fontSize:30,marginBottom:4}}>Accounting</h2>
+          <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>{allTx.length} total transactions · All time</p>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button onClick={exportCSV} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",color:"rgba(255,255,255,0.6)",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>↓ Export CSV</button>
+          <button onClick={()=>startAdd("income")} style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Income</button>
+          <button onClick={()=>startAdd("expense")} style={{background:"rgba(255,100,100,0.15)",border:"1px solid rgba(255,100,100,0.3)",color:"#ff6b6b",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Expense</button>
         </div>
       </div>
 
-      {/* P&L summary cards */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:20}}>
+      {/* ── Date Range Filter ── */}
+      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 20px",marginBottom:20}}>
+        <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>Date range</div>
+        {/* Presets */}
+        <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+          {[["today","Today"],["week","Last 7d"],["month","This Month"],["quarter","This Quarter"],["year","This Year"],["all","All Time"]].map(([p,l])=>(
+            <button key={p} onClick={()=>applyPreset(p)} style={{padding:"6px 14px",borderRadius:20,border:`1px solid ${datePreset===p?"#d4850a":"rgba(255,255,255,0.1)"}`,background:datePreset===p?"rgba(212,133,10,0.2)":"transparent",color:datePreset===p?"#f0c060":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:12,fontWeight:datePreset===p?600:400,transition:"all 0.15s"}}>
+              {l}
+            </button>
+          ))}
+        </div>
+        {/* Custom date pickers */}
+        <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:12,color:"rgba(255,255,255,0.35)"}}>From</span>
+            <input type="date" className="adm-input" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setDatePreset("custom");}} style={{width:"auto"}}/>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:12,color:"rgba(255,255,255,0.35)"}}>To</span>
+            <input type="date" className="adm-input" value={dateTo} onChange={e=>{setDateTo(e.target.value);setDatePreset("custom");}} style={{width:"auto"}}/>
+          </div>
+          <div style={{flex:1,minWidth:160,position:"relative"}}>
+            <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:13,opacity:0.4}}>🔍</span>
+            <input className="adm-input" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search client, description…" style={{paddingLeft:34}}/>
+          </div>
+        </div>
+      </div>
+
+      {/* ── KPI Cards ── */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10,marginBottom:20}}>
         {[
-          {label:"Total income",  value:fmt(summary.totalIncome),  color:"#4ade80"},
-          {label:"Total expenses",value:fmt(summary.totalExpense), color:"#ff6b6b"},
-          {label:"Net profit",    value:fmt(summary.netProfit),    color:profitColor},
+          {label:"Income",    value:fmt(filteredIncome),  color:"#4ade80", sub:`${filtered.filter(t=>t.type==="income").length} entries`},
+          {label:"Expenses",  value:fmt(filteredExpense), color:"#ff6b6b", sub:`${filtered.filter(t=>t.type==="expense").length} entries`},
+          {label:"Net Profit",value:fmt(filteredProfit),  color:profitColor, sub: filteredProfit>=0?"Positive ✅":"Negative ⚠️"},
+          {label:"Pending",   value:fmt(pendingAmt),      color:"#f0c060", sub:`${filtered.filter(t=>t.paymentStatus==="pending").length} unpaid`},
         ].map(s=>(
-          <div key={s.label} className="adm-stat">
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>{s.label}</div>
-            <div style={{fontSize:22,fontWeight:700,color:s.color,fontFamily:"'Playfair Display'"}}>{s.value}</div>
+          <div key={s.label} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 18px"}}>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>{s.label}</div>
+            <div style={{fontSize:22,fontWeight:800,color:s.color,fontFamily:"'Playfair Display'",marginBottom:4}}>{s.value}</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>{s.sub}</div>
           </div>
         ))}
       </div>
 
-      {/* Revenue breakdown by category */}
-      {Object.keys(summary.breakdown||{}).length>0&&(
-        <div className="adm-card" style={{marginBottom:20}}>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Revenue breakdown</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:8}}>
-            {Object.entries(summary.breakdown).map(([cat,amt])=>(
-              <div key={cat} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"rgba(255,255,255,0.04)",borderRadius:8,padding:"8px 12px"}}>
-                <span style={{fontSize:12,color:"rgba(255,255,255,0.6)"}}>{categoryLabel(cat)}</span>
-                <span style={{fontSize:13,fontWeight:600,color:"#f0c060"}}>{fmt(amt)}</span>
-              </div>
-            ))}
+      {/* ── Charts Row ── */}
+      {allTx.length>0&&(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}}>
+          {/* Monthly trend */}
+          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 20px"}}>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:14}}>6-month trend</div>
+            <div style={{display:"flex",gap:6,alignItems:"flex-end",height:72}}>
+              {monthlyData.map((m,i)=>(
+                <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                  <div style={{width:"100%",display:"flex",gap:2,alignItems:"flex-end",height:60}}>
+                    <div title={`Income: ₹${m.inc.toLocaleString("en-IN")}`} style={{flex:1,background:"rgba(74,222,128,0.5)",borderRadius:"3px 3px 0 0",height:`${Math.max(2,(m.inc/maxBar)*100)}%`}}/>
+                    <div title={`Expense: ₹${m.exp.toLocaleString("en-IN")}`} style={{flex:1,background:"rgba(255,100,100,0.5)",borderRadius:"3px 3px 0 0",height:`${Math.max(2,(m.exp/maxBar)*100)}%`}}/>
+                  </div>
+                  <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",textTransform:"uppercase"}}>{m.label}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:12,marginTop:8}}>
+              {[["rgba(74,222,128,0.7)","Income"],["rgba(255,100,100,0.7)","Expense"]].map(([c,l])=>(
+                <div key={l} style={{display:"flex",alignItems:"center",gap:5,fontSize:10,color:"rgba(255,255,255,0.35)"}}>
+                  <div style={{width:8,height:8,borderRadius:2,background:c}}/>{l}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Revenue breakdown donut */}
+          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 20px"}}>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Income by category</div>
+            {donutSegments.length===0
+              ? <div style={{color:"rgba(255,255,255,0.2)",fontSize:12,paddingTop:20}}>No income in range</div>
+              : (
+                <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                  <DonutChart segments={donutSegments} size={88}/>
+                  <div style={{flex:1,display:"grid",gap:6}}>
+                    {donutSegments.map((s,i)=>(
+                      <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <div style={{width:8,height:8,borderRadius:"50%",background:s.color,flexShrink:0}}/>
+                          <span style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{s.label.split(" ").slice(1).join(" ")}</span>
+                        </div>
+                        <span style={{fontSize:11,fontWeight:600,color:s.color}}>{fmt(s.value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            }
           </div>
         </div>
       )}
 
-      {/* Add / Edit form */}
-      {tab==="add"&&(
-        <div className="adm-card" style={{marginBottom:24,border:"1px solid rgba(212,133,10,0.3)"}}>
-          <h3 style={{color:"#f0c060",marginBottom:20}}>{editId?"Edit Transaction":"New Transaction"}</h3>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
-            <div>
-              <label className="adm-label">Type</label>
-              <select className="adm-input" value={form.type} onChange={e=>{set("type",e.target.value);set("category",e.target.value==="income"?"vehicle_rental":"maintenance");}}>
-                <option value="income">Income</option>
-                <option value="expense">Expense</option>
-              </select>
+      {/* ── Add / Edit Form ── */}
+      {showForm&&(
+        <div style={{background:"rgba(212,133,10,0.04)",border:"1px solid rgba(212,133,10,0.35)",borderRadius:14,padding:"20px 24px",marginBottom:24}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+            <h3 style={{color:"#f0c060",fontSize:18}}>{editId?"✏️ Edit Transaction":form.type==="income"?"➕ New Income":"➖ New Expense"}</h3>
+            <button onClick={cancel} style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.3)",fontSize:20,cursor:"pointer"}}>✕</button>
+          </div>
+          {/* Type toggle */}
+          {!editId&&(
+            <div style={{display:"flex",gap:8,marginBottom:20}}>
+              {[["income","✅ Income","#4ade80"],["expense","❌ Expense","#ff6b6b"]].map(([t,l,c])=>(
+                <button key={t} onClick={()=>{set("type",t);set("category",t==="income"?"vehicle_rental":"maintenance");}}
+                  style={{padding:"8px 20px",borderRadius:8,border:`2px solid ${form.type===t?c:"rgba(255,255,255,0.1)"}`,background:form.type===t?`rgba(${t==="income"?"74,222,128":"255,100,100"},0.1)`:"transparent",color:form.type===t?c:"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:13,fontWeight:600}}>
+                  {l}
+                </button>
+              ))}
             </div>
+          )}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
             <div>
               <label className="adm-label">Category</label>
               <select className="adm-input" value={form.category} onChange={e=>set("category",e.target.value)}>
@@ -1073,66 +1385,80 @@ function AccountingEditor({ data, api, reload, showSaved }) {
             <div>
               <label className="adm-label">Payment method</label>
               <select className="adm-input" value={form.paymentMethod} onChange={e=>set("paymentMethod",e.target.value)}>
-                {PAYMENT_METHODS.map(m=><option key={m} value={m}>{m.replace("_"," ")}</option>)}
+                {PAYMENT_METHODS.map(m=><option key={m} value={m}>{m.replace(/_/g," ")}</option>)}
               </select>
             </div>
             <div>
               <label className="adm-label">Payment status</label>
               <select className="adm-input" value={form.paymentStatus} onChange={e=>set("paymentStatus",e.target.value)}>
-                <option value="paid">Paid</option>
-                <option value="pending">Pending</option>
-                <option value="partial">Partial</option>
+                <option value="paid">✅ Paid</option>
+                <option value="pending">⏳ Pending</option>
+                <option value="partial">🔶 Partial</option>
               </select>
             </div>
-            <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Description</label><input className="adm-input" value={form.description||""} onChange={e=>set("description",e.target.value)} placeholder="e.g. Honda Activa rental - 3 days"/></div>
+            <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Description</label><input className="adm-input" value={form.description||""} onChange={e=>set("description",e.target.value)} placeholder="e.g. Honda Activa rental — 3 days"/></div>
             <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Notes (internal)</label><textarea className="adm-input" value={form.notes||""} onChange={e=>set("notes",e.target.value)} rows={2}/></div>
           </div>
           <div style={{display:"flex",gap:10}}>
-            <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 24px",borderRadius:8,fontWeight:700,cursor:"pointer"}}>Save</button>
+            <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 28px",borderRadius:8,fontWeight:700,cursor:"pointer"}}>Save Transaction</button>
             <button onClick={cancel} style={{background:"transparent",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.5)",padding:"10px 20px",borderRadius:8,cursor:"pointer"}}>Cancel</button>
           </div>
         </div>
       )}
 
-      {/* Ledger filter */}
-      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
-        <span style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>Filter:</span>
-        {[["all","All"],["income","Income"],["expense","Expenses"]].map(([val,lbl])=>(
-          <button key={val} onClick={()=>setFilterCat(val)} style={{padding:"6px 14px",borderRadius:16,border:`1px solid ${filterCat===val?"#d4850a":"rgba(255,255,255,0.1)"}`,background:filterCat===val?"rgba(212,133,10,0.15)":"transparent",color:filterCat===val?"#f0c060":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:12}}>
-            {lbl} ({val==="all"?allTx.length:val==="income"?income.length:expenses.length})
+      {/* ── Ledger Filter Bar ── */}
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {[["all","All",allTx.length],["income","Income",allTx.filter(t=>t.type==="income").length],["expense","Expenses",allTx.filter(t=>t.type==="expense").length],["pending","Pending",allTx.filter(t=>t.paymentStatus==="pending").length]].map(([val,lbl,cnt])=>(
+            <button key={val} onClick={()=>setFilterCat(val)} style={{padding:"6px 14px",borderRadius:16,border:`1px solid ${filterCat===val?"#d4850a":"rgba(255,255,255,0.1)"}`,background:filterCat===val?"rgba(212,133,10,0.15)":"transparent",color:filterCat===val?"#f0c060":"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:12,fontWeight:filterCat===val?600:400}}>
+              {lbl} ({cnt})
+            </button>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <span style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>Showing {filtered.length} entries</span>
+          <button onClick={()=>setSortDir(d=>d==="desc"?"asc":"desc")} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.5)",padding:"5px 12px",borderRadius:7,cursor:"pointer",fontSize:11}}>
+            Date {sortDir==="desc"?"↓":"↑"}
           </button>
-        ))}
+        </div>
       </div>
 
-      {/* Transaction ledger */}
+      {/* ── Transaction Ledger ── */}
       <div style={{display:"grid",gap:8}}>
-        {displayed.length===0&&<div style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:48}}>No transactions yet. Add your first entry above!</div>}
-        {displayed.map(tx=>{
+        {filtered.length===0&&(
+          <div style={{textAlign:"center",padding:"60px 0",color:"rgba(255,255,255,0.2)"}}>
+            <div style={{fontSize:40,marginBottom:12}}>💳</div>
+            <div style={{fontSize:14}}>{allTx.length===0?"No transactions yet — add your first entry above":"No results for this date range / filter"}</div>
+          </div>
+        )}
+        {filtered.map(tx=>{
           const isIncome = tx.type==="income";
           const paidColor = tx.paymentStatus==="paid"?"#4ade80":tx.paymentStatus==="pending"?"#f0c060":"#fb923c";
           return (
-            <div key={tx._id} className="adm-card" style={{display:"flex",gap:14,alignItems:"center",borderLeft:`3px solid ${isIncome?"#4ade80":"#ff6b6b"}`,borderRadius:"0 16px 16px 0"}}>
-              <div style={{width:44,height:44,borderRadius:10,background:isIncome?"rgba(74,222,128,0.1)":"rgba(255,100,100,0.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
+            <div key={tx._id} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"14px 18px",display:"flex",gap:14,alignItems:"center",borderLeft:`3px solid ${isIncome?"#4ade80":"#ff6b6b"}`,borderRadius:"0 14px 14px 0",transition:"border-color 0.2s"}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.06)"}
+              onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.04)"}>
+              <div style={{width:42,height:42,borderRadius:10,background:isIncome?"rgba(74,222,128,0.1)":"rgba(255,100,100,0.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
                 {isIncome?"📥":"📤"}
               </div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginBottom:3}}>
                   <span style={{fontWeight:600,fontSize:14}}>{tx.description||categoryLabel(tx.category)}</span>
-                  <span style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.4)"}}>{categoryLabel(tx.category)}</span>
-                  <span style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:"transparent",border:`1px solid ${paidColor}`,color:paidColor}}>{tx.paymentStatus}</span>
+                  <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:0.5}}>{categoryLabel(tx.category)}</span>
+                  <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"transparent",border:`1px solid ${paidColor}33`,color:paidColor}}>{tx.paymentStatus}</span>
                 </div>
-                <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",display:"flex",gap:10,flexWrap:"wrap"}}>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",display:"flex",gap:10,flexWrap:"wrap"}}>
                   {tx.clientName&&<span>👤 {tx.clientName}</span>}
                   {tx.agencyName&&<span>🤝 {tx.agencyName}</span>}
-                  {tx.paymentMethod&&<span>{tx.paymentMethod.replace("_"," ")}</span>}
+                  {tx.paymentMethod&&<span>{tx.paymentMethod.replace(/_/g," ")}</span>}
                   <span>{tx.date?new Date(tx.date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}):""}</span>
                 </div>
               </div>
               <div style={{textAlign:"right",flexShrink:0}}>
                 <div style={{fontSize:18,fontWeight:700,color:isIncome?"#4ade80":"#ff6b6b",fontFamily:"'Playfair Display'"}}>{isIncome?"+":"-"}{fmt(tx.amount)}</div>
                 <div style={{display:"flex",gap:6,marginTop:6,justifyContent:"flex-end"}}>
-                  <button onClick={()=>startEdit(tx)} style={{background:"rgba(212,133,10,0.15)",border:"1px solid rgba(212,133,10,0.3)",color:"#f0c060",padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:11}}>Edit</button>
-                  <button onClick={()=>del(tx._id)} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"4px 8px",borderRadius:6,cursor:"pointer"}}><Icon name="trash" size={12}/></button>
+                  <button onClick={()=>startEdit(tx)} style={{background:"rgba(212,133,10,0.12)",border:"1px solid rgba(212,133,10,0.25)",color:"#f0c060",padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:11}}>Edit</button>
+                  <button onClick={()=>del(tx._id)} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.15)",color:"#ff6b6b",padding:"4px 8px",borderRadius:6,cursor:"pointer"}}><Icon name="trash" size={12}/></button>
                 </div>
               </div>
             </div>
