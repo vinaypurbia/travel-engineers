@@ -74,15 +74,19 @@ export default function App() {
 
   const loadAllData = async () => {
     try {
-      const [agency, rentals, villa, testimonials, inventory, accounting, bookings] = await Promise.all([
+      const [agency, rentals, villa, testimonials, inventory, accounting] = await Promise.all([
         api.get("/agency"),
         api.get("/rentals"),
         api.get("/villa"),
         api.get("/testimonials"),
         api.get("/inventory"),
         api.get("/accounting"),
-        api.get("/bookings"),
       ]);
+
+      // Fetch bookings separately so a failure here never breaks everything else
+      let bookings = [];
+      try { bookings = await api.get("/bookings"); } catch {}
+
       setData({ agency, rentals, villa, testimonials, inventory, accounting, bookings });
       setLoading(false);
     } catch (err) {
