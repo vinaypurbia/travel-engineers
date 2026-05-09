@@ -703,10 +703,15 @@ function VillaEditor({ data, api, showSaved }) {
 function TestimonialsEditor({ data, api, reload, showSaved }) {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(null);
-  const [tab, setTab] = useState("pending"); // start on pending so you see new reviews first
-  const [actionId, setActionId] = useState(null); // tracks which review is being actioned
-  const approved = data.testimonials.filter(t => t.approved);
-  const pending = data.testimonials.filter(t => !t.approved);
+  const [tab, setTab] = useState("pending");
+  const [actionId, setActionId] = useState(null);
+  // Local copy of testimonials so UI updates instantly without waiting for reload
+  const [localList, setLocalList] = useState(data.testimonials);
+  // Keep localList in sync if parent data changes (e.g. after add/delete)
+  useEffect(() => { setLocalList(data.testimonials); }, [data.testimonials]);
+
+  const approved = localList.filter(t => t.approved);
+  const pending = localList.filter(t => !t.approved);
   const startEdit = (t) => { setForm({...t}); setEditId(t._id); };
   const startAdd = () => { setForm({name:"",location:"",text:"",rating:5,approved:true}); setEditId("new"); };
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -715,21 +720,39 @@ function TestimonialsEditor({ data, api, reload, showSaved }) {
     else await api.put(`/testimonials/${editId}`, form);
     await reload(); showSaved(); setEditId(null); setForm(null);
   };
-  const del = async (id) => { if(window.confirm("Delete review?")){ await api.delete(`/testimonials/${id}`); await reload(); } };
+  const del = async (id) => {
+    if(window.confirm("Delete review?")) {
+      setLocalList(l => l.filter(t => t._id !== id));
+      await api.delete(`/testimonials/${id}`);
+      await reload();
+    }
+  };
   const approve = async (t) => {
     setActionId(t._id + "_approve");
+    // Update UI instantly
+    setLocalList(l => l.map(r => r._id === t._id ? {...r, approved:true} : r));
     try {
       await api.put(`/testimonials/${t._id}`, {...t, approved:true});
-      await reload(); showSaved();
-    } catch(err) { alert("Approve failed: " + err.message); }
+      showSaved();
+      await reload();
+    } catch(err) {
+      // Revert on failure
+      setLocalList(l => l.map(r => r._id === t._id ? {...r, approved:false} : r));
+      alert("Approve failed: " + err.message);
+    }
     setActionId(null);
   };
   const reject = async (t) => {
     setActionId(t._id + "_reject");
+    // Update UI instantly
+    setLocalList(l => l.map(r => r._id === t._id ? {...r, approved:false} : r));
     try {
       await api.put(`/testimonials/${t._id}`, {...t, approved:false});
       await reload();
-    } catch(err) { alert("Hide failed: " + err.message); }
+    } catch(err) {
+      setLocalList(l => l.map(r => r._id === t._id ? {...r, approved:true} : r));
+      alert("Hide failed: " + err.message);
+    }
     setActionId(null);
   };
   const list = tab === "approved" ? approved : pending;
