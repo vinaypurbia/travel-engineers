@@ -57,8 +57,8 @@ function ImageUpload({ value, onChange, label="Image" }) {
 }
 
 export default function App() {
-  const [data, setData] = useState(DEFAULT_DATA);
-  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [view, setView] = useState("home");
   const [loginInput, setLoginInput] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -76,8 +76,10 @@ export default function App() {
         api.get("/testimonials"),
       ]);
       setData({ agency, rentals, villa, testimonials });
+      setLoading(false);
     } catch (err) {
-      console.error("API failed, using defaults:", err);
+      console.error("API failed:", err);
+      setLoading(false);
       setData(DEFAULT_DATA);
     }
 
@@ -92,9 +94,8 @@ export default function App() {
   const showSaved = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
 
   if (loading) return (
-    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"#0a1628",color:"#f0c060",fontFamily:"serif",fontSize:24,flexDirection:"column",gap:16}}>
-      <div style={{width:48,height:48,border:"3px solid rgba(240,192,96,0.2)",borderTopColor:"#f0c060",borderRadius:"50%",animation:"spin 1s linear infinite"}} />
-      Loading IslandDrift...
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"#faf8f3"}}>
+      <div style={{width:32,height:32,border:"3px solid #eee",borderTopColor:"#d4850a",borderRadius:"50%",animation:"spin 1s linear infinite"}} />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
