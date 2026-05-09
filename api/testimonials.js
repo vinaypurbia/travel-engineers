@@ -10,15 +10,7 @@ module.exports = async (req, res) => {
     await connectDB();
 
     if (req.method === "GET") {
-      let testimonials = await Testimonial.find().sort({ createdAt: -1 });
-      if (testimonials.length === 0) {
-        await Testimonial.insertMany([
-          { name: "Priya Sharma", location: "Mumbai", text: "The villa was absolutely gorgeous. Pool was clean and staff super helpful!", rating: 5, approved: true },
-          { name: "Rohan Mehta", location: "Bangalore", text: "Rented 3 scooties for our gang. Best decision ever!", rating: 5, approved: true },
-          { name: "Sarah & James", location: "London", text: "4 nights in the villa — complete paradise!", rating: 5, approved: true },
-        ]);
-        testimonials = await Testimonial.find().sort({ createdAt: -1 });
-      }
+      const testimonials = await Testimonial.find().sort({ createdAt: -1 });
       return res.json(testimonials);
     }
 
