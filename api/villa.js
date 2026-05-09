@@ -28,21 +28,18 @@ module.exports = async (req, res) => {
     await connectDB();
 
     if (req.method === "GET") {
-      let villa = await Villa.findOne();
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+      let villa = await Villa.findOne().lean();
       if (!villa) villa = await Villa.create(DEFAULT_VILLA);
       return res.json(villa);
     }
 
     if (req.method === "PUT" || req.method === "POST") {
-      let villa = await Villa.findOne();
-      if (!villa) {
-        villa = await Villa.create({ ...DEFAULT_VILLA, ...req.body });
-      } else {
-        Object.assign(villa, req.body);
-        villa.markModified("amenities");
-        villa.markModified("rooms");
-        await villa.save();
-      }
+      const villa = await Villa.findOneAndUpdate(
+        {},
+        { $set: req.body },
+        { new: true, upsert: true, runValidators: false }
+      ).lean();
       return res.json(villa);
     }
 
