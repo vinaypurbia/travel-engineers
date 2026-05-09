@@ -60,6 +60,11 @@ const testimonialSchema = new mongoose.Schema({
   location: String,
   text: String,
   rating: { type: Number, default: 5 },
+  approved: { type: Boolean, default: false },
+  category: { type: String, enum: ["villa", "rental"], default: "villa" },
+  vehicleType: String,
+  vehicleName: String,
+  vehicleId: String,
   createdAt: { type: Date, default: Date.now },
 });
 
