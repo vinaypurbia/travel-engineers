@@ -11,10 +11,10 @@ const DEFAULT_DATA = {
 
 const api = {
   get: (path) => fetch(`${API}${path}`).then(r => r.json()),
-  post: (path, body) => fetch(`${API}${path}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }).then(r => r.json()),
- put: (path, body) => fetch(`${API}${path}`, { method:"PUT", ...}).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
-  delete: (path) => fetch(`${API}${path}`, { method:"DELETE" }).then(r => r.json()),
-  patch: (path, body) => fetch(`${API}${path}`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }).then(r => r.json()),
+  post: (path, body) => fetch(`${API}${path}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
+  put: (path, body) => fetch(`${API}${path}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
+  delete: (path) => fetch(`${API}${path}`, { method:"DELETE" }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
+  patch: (path, body) => fetch(`${API}${path}`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
   upload: async (file) => { const fd = new FormData(); fd.append("file", file); const r = await fetch(`${API}/upload`, { method:"POST", body:fd }); return r.json(); },
 };
 
@@ -719,10 +719,7 @@ function TestimonialsEditor({ data, api, reload, showSaved }) {
   const approve = async (t) => {
     setActionId(t._id + "_approve");
     try {
-      // Try PUT with full object first, fall back to PATCH with just the field
-      let res;
-      try { res = await api.put(`/testimonials/${t._id}`, {...t, approved:true}); }
-      catch { res = await api.patch(`/testimonials/${t._id}`, { approved:true }); }
+      await api.put(`/testimonials/${t._id}`, {...t, approved:true});
       await reload(); showSaved();
     } catch(err) { alert("Approve failed: " + err.message); }
     setActionId(null);
@@ -730,9 +727,7 @@ function TestimonialsEditor({ data, api, reload, showSaved }) {
   const reject = async (t) => {
     setActionId(t._id + "_reject");
     try {
-      let res;
-      try { res = await api.put(`/testimonials/${t._id}`, {...t, approved:false}); }
-      catch { res = await api.patch(`/testimonials/${t._id}`, { approved:false }); }
+      await api.put(`/testimonials/${t._id}`, {...t, approved:false});
       await reload();
     } catch(err) { alert("Hide failed: " + err.message); }
     setActionId(null);
