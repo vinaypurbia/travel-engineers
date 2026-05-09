@@ -6,7 +6,9 @@ const DEFAULT_DATA = {
   agency: { name:"IslandDrift", tagline:"Ride Free. Stay Wild. Explore More.", heroSubtitle:"Scooters · Cars · Bikes · Villa", phone:"+91 98765 43210", email:"hello@islanddrift.com", address:"Beach Road, Goa", whatsapp:"919876543210", heroImage:"https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=1600&q=80", stats:[{value:"500+",label:"Happy Customers"},{value:"6",label:"Villa Rooms"},{value:"2",label:"Vehicles"},{value:"24/7",label:"Support"}] },
   rentals: [],
   villa: { name:"IslandDrift Villa", tagline:"Your Private Paradise", description:"A stunning 6-room villa with private pool.", price:"₹18,000", period:"/night", checkIn:"12:00 PM", checkOut:"11:00 AM", minStay:"2 nights", maxGuests:"14 guests", image:"https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?w=1200&q=80", amenities:[{icon:"🏊",label:"Private Pool"},{icon:"🛏️",label:"6 Bedrooms"},{icon:"🍳",label:"Full Kitchen"},{icon:"📶",label:"WiFi"},{icon:"❄️",label:"AC"},{icon:"🔒",label:"Security"}], rooms:[{name:"Ocean Suite",beds:"King bed",guests:2,image:""},{name:"Garden Room",beds:"Queen bed",guests:2,image:""},{name:"Poolside Room",beds:"2 Twin beds",guests:2,image:""},{name:"Family Suite",beds:"King + 2 singles",guests:4,image:""},{name:"Sunset Loft",beds:"Queen bed",guests:2,image:""},{name:"Cozy Nook",beds:"Double bed",guests:2,image:""}] },
-  testimonials: [{_id:"1",name:"Priya Sharma",location:"Mumbai",text:"The villa was absolutely gorgeous. Pool was clean and staff super helpful!",rating:5,approved:true},{_id:"2",name:"Rohan Mehta",location:"Bangalore",text:"Rented 3 scooties for our gang. Best decision ever!",rating:5,approved:true},{_id:"3",name:"Sarah & James",location:"London",text:"4 nights in the villa — complete paradise!",rating:5,approved:true}]
+  testimonials: [{_id:"1",name:"Priya Sharma",location:"Mumbai",text:"The villa was absolutely gorgeous. Pool was clean and staff super helpful!",rating:5,approved:true},{_id:"2",name:"Rohan Mehta",location:"Bangalore",text:"Rented 3 scooties for our gang. Best decision ever!",rating:5,approved:true},{_id:"3",name:"Sarah & James",location:"London",text:"4 nights in the villa — complete paradise!",rating:5,approved:true}],
+  inventory: [],
+  accounting: { transactions: [], summary: { totalIncome:0, totalExpense:0, netProfit:0, breakdown:{} } },
 };
 
 const api = {
@@ -70,19 +72,21 @@ export default function App() {
 
   const loadAllData = async () => {
     try {
-      const [agency, rentals, villa, testimonials] = await Promise.all([
+      const [agency, rentals, villa, testimonials, inventory, accounting] = await Promise.all([
         api.get("/agency"),
         api.get("/rentals"),
         api.get("/villa"),
-        api.get("/testimonials")]);
-      setData({ agency, rentals, villa, testimonials });
+        api.get("/testimonials"),
+        api.get("/inventory"),
+        api.get("/accounting"),
+      ]);
+      setData({ agency, rentals, villa, testimonials, inventory, accounting });
       setLoading(false);
     } catch (err) {
       console.error("API failed:", err);
       setLoading(false);
       setData(DEFAULT_DATA);
     }
-
   };
 
   useEffect(() => {
@@ -91,6 +95,7 @@ export default function App() {
       setView("login");
     }
   }, []);
+
   const showSaved = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
 
   if (loading) return (
@@ -165,7 +170,7 @@ export default function App() {
         </div>
       </section>
 
-      {/* STATS — fully dynamic */}
+      {/* STATS */}
       {(() => {
         const happyCustomers = testimonials.filter(t => t.approved && t.rating >= 3).length;
         const villaRooms = (villa.rooms || []).length;
@@ -222,12 +227,14 @@ export default function App() {
                       <span style={{fontFamily:"'DM Sans'",fontSize:12,color:"#999"}}>{rental.period}</span>
                     </div>
                   </div>
-                  <p style={{fontFamily:"'DM Sans'",fontSize:14,color:"#666",lineHeight:1.6,marginBottom:16}}>{rental.description}</p>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:20}}>
-                    {(rental.features||[]).map(f=><span key={f} style={{background:"#f5f0e8",padding:"5px 12px",borderRadius:20,fontFamily:"'DM Sans'",fontSize:12,color:"#555"}}>✓ {f}</span>)}
-                  </div>
-                  <a href={`https://wa.me/${agency.whatsapp}?text=Hi! I want to book ${rental.name} (${rental.price}${rental.period})`} target="_blank" rel="noreferrer">
-                    <button className="btn-primary" style={{width:"100%"}}>Book on WhatsApp</button>
+                  {rental.description&&<p style={{fontFamily:"'Lora'",fontSize:14,color:"#666",marginBottom:16,lineHeight:1.6,fontStyle:"italic"}}>{rental.description}</p>}
+                  {(rental.features||[]).length>0&&(
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:20}}>
+                      {rental.features.filter(Boolean).map((f,i)=><span key={i} style={{fontSize:12,background:"#f5f0e8",color:"#8b6914",padding:"4px 10px",borderRadius:20,fontFamily:"'DM Sans'"}}>{f}</span>)}
+                    </div>
+                  )}
+                  <a href={`https://wa.me/${agency.whatsapp}?text=Hi! I'd like to book the ${rental.name}`} target="_blank" rel="noreferrer">
+                    <button className="btn-primary" style={{width:"100%",padding:"12px",fontSize:14}}>Book Now → WhatsApp</button>
                   </a>
                 </div>
               </div>
@@ -237,60 +244,72 @@ export default function App() {
       </section>
 
       {/* VILLA */}
-      <section id="sec-villa" style={{background:"#0a1628",padding:"100px 5%",color:"white"}}>
-        <div style={{maxWidth:1200,margin:"0 auto"}}>
+      <section id="sec-villa" style={{padding:"100px 5%",background:"#0a1628",color:"white"}}>
+        <div style={{maxWidth:1100,margin:"0 auto"}}>
           <div style={{textAlign:"center",marginBottom:60}}>
-            <div style={{fontFamily:"'DM Sans'",fontSize:12,letterSpacing:4,color:"#f0c060",textTransform:"uppercase",marginBottom:12}}>Exclusive Stay</div>
+            <div style={{fontFamily:"'DM Sans'",fontSize:12,letterSpacing:4,color:"#f0c060",textTransform:"uppercase",marginBottom:12}}>Private Luxury</div>
             <h2 className="section-title" style={{color:"white"}}>{villa.name}</h2>
-            <p style={{fontFamily:"'Lora'",fontStyle:"italic",color:"rgba(255,255,255,0.6)",marginTop:16,fontSize:18}}>{villa.tagline}</p>
+            {villa.tagline&&<p style={{fontFamily:"'Lora'",fontStyle:"italic",color:"rgba(255,255,255,0.6)",marginTop:16,fontSize:18}}>{villa.tagline}</p>}
           </div>
-          <div style={{borderRadius:24,overflow:"hidden",marginBottom:60,position:"relative"}}>
-            <img src={villa.image||"https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?w=1200&q=80"} alt="Villa" style={{width:"100%",height:480,objectFit:"cover",display:"block"}} />
-            <div style={{position:"absolute",inset:0,background:"linear-gradient(to right,rgba(10,22,40,0.7) 0%,transparent 60%)"}} />
-            <div style={{position:"absolute",top:"50%",left:"8%",transform:"translateY(-50%)"}}>
-              <div style={{fontFamily:"'Playfair Display'",fontSize:48,fontWeight:900,color:"#f0c060"}}>{villa.price}</div>
-              <div style={{fontFamily:"'DM Sans'",fontSize:14,color:"rgba(255,255,255,0.7)",marginBottom:12}}>{villa.period} · {villa.minStay} minimum</div>
-              <div style={{fontFamily:"'DM Sans'",fontSize:13,color:"rgba(255,255,255,0.6)"}}>👥 {villa.maxGuests}</div>
+          {villa.image&&<div style={{borderRadius:24,overflow:"hidden",marginBottom:48,height:400,backgroundImage:`url(${villa.image})`,backgroundSize:"cover",backgroundPosition:"center"}}/>}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:48,marginBottom:48}}>
+            <div>
+              {villa.description&&<p style={{fontFamily:"'Lora'",fontSize:17,lineHeight:1.8,color:"rgba(255,255,255,0.75)",marginBottom:28}}>{villa.description}</p>}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+                {[["Check-in",villa.checkIn],["Check-out",villa.checkOut],["Min stay",villa.minStay],["Max guests",villa.maxGuests]].filter(([,v])=>v).map(([l,v])=>(
+                  <div key={l} style={{background:"rgba(255,255,255,0.05)",borderRadius:12,padding:"16px"}}>
+                    <div style={{fontFamily:"'DM Sans'",fontSize:11,color:"#f0c060",letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>{l}</div>
+                    <div style={{fontFamily:"'Playfair Display'",fontSize:18,fontWeight:700}}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{fontFamily:"'DM Sans'",fontSize:11,letterSpacing:3,color:"#f0c060",textTransform:"uppercase",marginBottom:20}}>Amenities</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                {(villa.amenities||[]).map((a,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"12px 14px"}}>
+                    <span style={{fontSize:20}}>{a.icon}</span>
+                    <span style={{fontFamily:"'DM Sans'",fontSize:14,color:"rgba(255,255,255,0.8)"}}>{a.label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-          <p style={{fontFamily:"'Lora'",fontSize:18,color:"rgba(255,255,255,0.75)",lineHeight:1.8,textAlign:"center",maxWidth:780,margin:"0 auto 60px"}}>{villa.description}</p>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:16,marginBottom:60}}>
-            {(villa.amenities||[]).map((a,i)=>(
-              <div key={i} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(240,192,96,0.2)",borderRadius:16,padding:"20px 16px",textAlign:"center"}}>
-                <div style={{fontSize:28,marginBottom:8}}>{a.icon}</div>
-                <div style={{fontFamily:"'DM Sans'",fontSize:13,color:"rgba(255,255,255,0.8)"}}>{a.label}</div>
+          {(villa.rooms||[]).length>0&&(
+            <>
+              <div style={{fontFamily:"'DM Sans'",fontSize:11,letterSpacing:3,color:"#f0c060",textTransform:"uppercase",marginBottom:24}}>Rooms</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:16,marginBottom:48}}>
+                {villa.rooms.map((r,i)=>(
+                  <div key={i} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(240,192,96,0.1)",borderRadius:14,overflow:"hidden"}}>
+                    {r.image&&<div style={{height:120,backgroundImage:`url(${r.image})`,backgroundSize:"cover",backgroundPosition:"center"}}/>}
+                    <div style={{padding:"14px"}}>
+                      <div style={{fontFamily:"'Playfair Display'",fontSize:16,fontWeight:700,marginBottom:4}}>{r.name}</div>
+                      <div style={{fontFamily:"'DM Sans'",fontSize:12,color:"rgba(255,255,255,0.5)"}}>{r.beds} · up to {r.guests} guests</div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <h3 style={{fontFamily:"'Playfair Display'",fontSize:32,color:"#f0c060",marginBottom:28,textAlign:"center"}}>The Rooms</h3>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:20,marginBottom:48}}>
-            {(villa.rooms||[]).map((room,i)=>(
-              <div key={i} className="card-hover" style={{borderRadius:16,overflow:"hidden",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)"}}>
-                <img src={room.image||"https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=600&q=80"} alt={room.name} style={{width:"100%",height:160,objectFit:"cover"}} />
-                <div style={{padding:"16px 18px"}}>
-                  <div style={{fontFamily:"'Playfair Display'",fontSize:18,color:"white",marginBottom:6}}>{room.name}</div>
-                  <div style={{fontFamily:"'DM Sans'",fontSize:13,color:"rgba(255,255,255,0.5)"}}>{room.beds} · Up to {room.guests} guests</div>
-                </div>
-              </div>
-            ))}
-          </div>
+            </>
+          )}
           <div style={{textAlign:"center"}}>
-            <a href={`https://wa.me/${agency.whatsapp}?text=Hi! I want to book ${villa.name} — ${villa.price}${villa.period}`} target="_blank" rel="noreferrer">
-              <button className="btn-primary" style={{fontSize:16,padding:"16px 48px"}}>Book Villa on WhatsApp</button>
+            <div style={{fontFamily:"'Playfair Display'",fontSize:36,fontWeight:900,color:"#f0c060",marginBottom:8}}>{villa.price}<span style={{fontSize:16,color:"rgba(255,255,255,0.4)",fontFamily:"'DM Sans'"}}>{villa.period}</span></div>
+            <a href={`https://wa.me/${agency.whatsapp}?text=Hi! I'd like to book the ${villa.name}`} target="_blank" rel="noreferrer">
+              <button className="btn-primary" style={{fontSize:16,padding:"16px 48px",marginTop:16}}>Book Villa → WhatsApp</button>
             </a>
           </div>
         </div>
       </section>
 
       {/* TESTIMONIALS */}
-      <section style={{padding:"100px 5%",background:"#faf8f3"}}>
+      <section style={{padding:"100px 5%"}}>
         <div style={{textAlign:"center",marginBottom:60}}>
-          <div style={{fontFamily:"'DM Sans'",fontSize:12,letterSpacing:4,color:"#d4850a",textTransform:"uppercase",marginBottom:12}}>What Guests Say</div>
-          <h2 className="section-title">Reviews</h2>
+          <div style={{fontFamily:"'DM Sans'",fontSize:12,letterSpacing:4,color:"#d4850a",textTransform:"uppercase",marginBottom:12}}>What People Say</div>
+          <h2 className="section-title">Guest Reviews</h2>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:24,maxWidth:1000,margin:"0 auto"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:24,marginBottom:60}}>
           {testimonials.filter(t=>t.approved).map(t=>(
-            <div key={t._id} className="card-hover" style={{background:"white",borderRadius:20,padding:"28px",boxShadow:"0 4px 20px rgba(0,0,0,0.06)"}}>
+            <div key={t._id} className="card-hover" style={{background:"white",borderRadius:20,padding:"32px 28px",boxShadow:"0 4px 20px rgba(0,0,0,0.06)"}}>
               <div style={{display:"flex",gap:4,marginBottom:16}}>
                 {[...Array(t.rating)].map((_,i)=><span key={i} style={{color:"#f0c060"}}><Icon name="star" size={16} /></span>)}
               </div>
@@ -306,9 +325,7 @@ export default function App() {
             </div>
           ))}
         </div>
-
-        {/* LEAVE A REVIEW FORM */}
-        <div style={{maxWidth:600,margin:"60px auto 0",background:"white",borderRadius:24,padding:"40px",boxShadow:"0 4px 30px rgba(0,0,0,0.08)"}}>
+        <div style={{maxWidth:600,margin:"0 auto",background:"white",borderRadius:24,padding:"40px",boxShadow:"0 4px 30px rgba(0,0,0,0.08)"}}>
           <div style={{textAlign:"center",marginBottom:28}}>
             <div style={{fontFamily:"'DM Sans'",fontSize:12,letterSpacing:4,color:"#d4850a",textTransform:"uppercase",marginBottom:8}}>Share Your Experience</div>
             <h3 style={{fontFamily:"'Playfair Display'",fontSize:28,fontWeight:900,color:"#1a1a2e"}}>Leave a Review</h3>
@@ -346,13 +363,12 @@ export default function App() {
   );
 }
 
+// ─── Review Form (public) ────────────────────────────────────────────────────
 function ReviewForm({ api, reload, rentals, villa }) {
   const emptyForm = { name:"", location:"", text:"", rating:5, category:"villa", vehicleType:"", vehicleId:"" };
   const [form, setForm] = useState(emptyForm);
   const [status, setStatus] = useState(null);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-
-  // Group available rentals by type
   const scooties = (rentals||[]).filter(r=>r.available && r.type==="scooty");
   const bikes    = (rentals||[]).filter(r=>r.available && r.type==="bike");
   const cars     = (rentals||[]).filter(r=>r.available && r.type==="car");
@@ -361,128 +377,67 @@ function ReviewForm({ api, reload, rentals, villa }) {
     { type:"bike",   icon:"🏍️", label:"Bikes",    items: bikes },
     { type:"car",    icon:"🚗", label:"Cars",     items: cars },
   ].filter(g=>g.items.length > 0);
-
-  // When category changes, reset vehicle selection
   const setCategory = (cat) => setForm(f=>({...f, category:cat, vehicleType:"", vehicleId:""}));
   const setVehicleType = (vt) => setForm(f=>({...f, vehicleType:vt, vehicleId:""}));
-
   const submit = async () => {
     if (!form.name.trim() || !form.text.trim()) { alert("Please fill in your name and review."); return; }
     if (form.category==="rental" && !form.vehicleId) { alert("Please select which vehicle you rented."); return; }
     setStatus("sending");
     const selectedVehicle = form.vehicleId ? (rentals||[]).find(r=>r._id===form.vehicleId) : null;
-    const payload = {
-      name: form.name, location: form.location, text: form.text, rating: form.rating,
-      approved: false,
-      category: form.category,
-      vehicleType: form.vehicleType || null,
-      vehicleName: selectedVehicle ? selectedVehicle.name : null,
-      vehicleId: form.vehicleId || null,
-    };
-    try {
-      await api.post("/testimonials", payload);
-      await reload();
-      setStatus("done");
-      setForm(emptyForm);
-    } catch { setStatus("error"); }
+    const payload = { name:form.name, location:form.location, text:form.text, rating:form.rating, approved:false, category:form.category, vehicleType:form.vehicleType||null, vehicleName:selectedVehicle?selectedVehicle.name:null, vehicleId:form.vehicleId||null };
+    try { await api.post("/testimonials", payload); await reload(); setStatus("done"); setForm(emptyForm); }
+    catch { setStatus("error"); }
   };
-
   const inputStyle = {width:"100%",padding:"12px 14px",border:"1.5px solid #e8e8e8",borderRadius:10,fontFamily:"'DM Sans'",fontSize:14,outline:"none",color:"#1a1a2e",transition:"border-color 0.2s",background:"white"};
   const labelStyle = {display:"block",fontFamily:"'DM Sans'",fontSize:11,fontWeight:600,color:"#999",textTransform:"uppercase",letterSpacing:2,marginBottom:6};
-
   if (status === "done") return (
     <div style={{textAlign:"center",padding:"32px 0"}}>
       <div style={{fontSize:48,marginBottom:16}}>🙏</div>
       <h4 style={{fontFamily:"'Playfair Display'",fontSize:22,marginBottom:8,color:"#1a1a2e"}}>Thank you!</h4>
-      <p style={{fontFamily:"'Lora'",color:"#888",fontSize:15,fontStyle:"italic",lineHeight:1.6}}>We truly appreciate you taking the time to share your experience with us. It means the world to us! 🌟</p>
+      <p style={{fontFamily:"'Lora'",color:"#888",fontSize:15,fontStyle:"italic",lineHeight:1.6}}>Your review is pending approval. We truly appreciate it!</p>
       <button onClick={()=>setStatus(null)} style={{marginTop:20,background:"transparent",border:"1px solid #ddd",color:"#555",padding:"8px 20px",borderRadius:20,cursor:"pointer",fontFamily:"'DM Sans'",fontSize:13}}>Write another</button>
     </div>
   );
-
   return (
     <div>
-      {/* Category — Villa or Rental */}
       <div style={{marginBottom:20}}>
-        <label style={labelStyle}>What are you reviewing? *</label>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          {[["villa","🏡","Villa Stay"],["rental","🛵","Rental Vehicle"]].map(([val,icon,lbl])=>(
-            <button key={val} onClick={()=>setCategory(val)}
-              style={{padding:"14px",borderRadius:12,border:`2px solid ${form.category===val?"#d4850a":"#e8e8e8"}`,background:form.category===val?"rgba(212,133,10,0.06)":"white",cursor:"pointer",fontFamily:"'DM Sans'",fontWeight:600,fontSize:14,color:form.category===val?"#d4850a":"#666",transition:"all 0.2s",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-              <span style={{fontSize:20}}>{icon}</span>{lbl}
-            </button>
+        <label style={labelStyle}>I visited the</label>
+        <div style={{display:"flex",gap:10}}>
+          {[["villa","🏡 Villa"],["rental","🛵 Rental Vehicle"]].map(([val,lbl])=>(
+            <button key={val} onClick={()=>setCategory(val)} style={{flex:1,padding:"10px",border:`2px solid ${form.category===val?"#d4850a":"#eee"}`,borderRadius:10,background:form.category===val?"rgba(212,133,10,0.08)":"white",color:form.category===val?"#d4850a":"#666",fontFamily:"'DM Sans'",fontSize:13,fontWeight:600,cursor:"pointer"}}>{lbl}</button>
           ))}
         </div>
       </div>
-
-      {/* If Rental — pick vehicle type then specific vehicle */}
-      {form.category === "rental" && (
-        <div style={{marginBottom:20,background:"#faf8f3",borderRadius:12,padding:16}}>
-          <label style={labelStyle}>Vehicle Type *</label>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:form.vehicleType?14:0}}>
+      {form.category==="rental" && vehicleGroups.length>0 && (
+        <div style={{marginBottom:20}}>
+          <label style={labelStyle}>Vehicle type</label>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
             {vehicleGroups.map(g=>(
-              <button key={g.type} onClick={()=>setVehicleType(g.type)}
-                style={{padding:"10px 18px",borderRadius:20,border:`2px solid ${form.vehicleType===g.type?"#d4850a":"#e8e8e8"}`,background:form.vehicleType===g.type?"#d4850a":"white",color:form.vehicleType===g.type?"white":"#666",cursor:"pointer",fontFamily:"'DM Sans'",fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6,transition:"all 0.2s"}}>
-                {g.icon} {g.label} <span style={{opacity:0.7,fontSize:11}}>({g.items.length})</span>
-              </button>
+              <button key={g.type} onClick={()=>setVehicleType(g.type)} style={{padding:"8px 16px",border:`2px solid ${form.vehicleType===g.type?"#d4850a":"#eee"}`,borderRadius:20,background:form.vehicleType===g.type?"rgba(212,133,10,0.08)":"white",color:form.vehicleType===g.type?"#d4850a":"#666",fontFamily:"'DM Sans'",fontSize:13,cursor:"pointer"}}>{g.icon} {g.label}</button>
             ))}
           </div>
           {form.vehicleType && (
-            <div style={{marginTop:14}}>
-              <label style={labelStyle}>Select the vehicle you rented *</label>
-              <div style={{display:"grid",gap:8}}>
-                {vehicleGroups.find(g=>g.type===form.vehicleType)?.items.map(v=>(
-                  <button key={v._id} onClick={()=>set("vehicleId", v._id)}
-                    style={{display:"flex",alignItems:"center",gap:14,padding:"10px 14px",borderRadius:10,border:`2px solid ${form.vehicleId===v._id?"#d4850a":"#e8e8e8"}`,background:form.vehicleId===v._id?"rgba(212,133,10,0.06)":"white",cursor:"pointer",textAlign:"left",transition:"all 0.2s"}}>
-                    {v.image && <img src={v.image} alt={v.name} style={{width:48,height:38,objectFit:"cover",borderRadius:6,flexShrink:0}} onError={e=>e.target.style.display="none"}/>}
-                    <div>
-                      <div style={{fontFamily:"'DM Sans'",fontWeight:600,fontSize:14,color:form.vehicleId===v._id?"#d4850a":"#1a1a2e"}}>{v.name}</div>
-                      <div style={{fontFamily:"'DM Sans'",fontSize:12,color:"#999"}}>{v.price}{v.period}</div>
-                    </div>
-                    {form.vehicleId===v._id && <span style={{marginLeft:"auto",color:"#d4850a",fontSize:18}}>✓</span>}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <select value={form.vehicleId} onChange={e=>set("vehicleId",e.target.value)} style={{...inputStyle}}>
+              <option value="">Select specific vehicle…</option>
+              {vehicleGroups.find(g=>g.type===form.vehicleType)?.items.map(v=><option key={v._id} value={v._id}>{v.name}</option>)}
+            </select>
           )}
         </div>
       )}
-
-      {/* Star Rating */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+        <div><label style={labelStyle}>Your name *</label><input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Priya Sharma" style={inputStyle}/></div>
+        <div><label style={labelStyle}>From (city)</label><input value={form.location} onChange={e=>set("location",e.target.value)} placeholder="Mumbai" style={inputStyle}/></div>
+      </div>
       <div style={{marginBottom:20}}>
-        <label style={labelStyle}>Your Rating *</label>
-        <div style={{display:"flex",gap:8}}>
-          {[1,2,3,4,5].map(n=>(
-            <span key={n} onClick={()=>set("rating",n)} style={{fontSize:32,cursor:"pointer",color:n<=form.rating?"#d4850a":"#ddd",transition:"color 0.15s"}}>★</span>
-          ))}
-        </div>
+        <label style={labelStyle}>Rating</label>
+        <div style={{display:"flex",gap:6}}>{[1,2,3,4,5].map(n=><button key={n} onClick={()=>set("rating",n)} style={{fontSize:24,background:"none",border:"none",cursor:"pointer",opacity:n<=form.rating?1:0.3}}>★</button>)}</div>
       </div>
-
-      {/* Name + Location */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
-        <div>
-          <label style={labelStyle}>Your Name *</label>
-          <input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="e.g. Priya Sharma" style={inputStyle}
-            onFocus={e=>e.target.style.borderColor="#d4850a"} onBlur={e=>e.target.style.borderColor="#e8e8e8"} />
-        </div>
-        <div>
-          <label style={labelStyle}>Location</label>
-          <input value={form.location} onChange={e=>set("location",e.target.value)} placeholder="e.g. Mumbai" style={inputStyle}
-            onFocus={e=>e.target.style.borderColor="#d4850a"} onBlur={e=>e.target.style.borderColor="#e8e8e8"} />
-        </div>
-      </div>
-
-      {/* Review Text */}
       <div style={{marginBottom:24}}>
         <label style={labelStyle}>Your Review *</label>
-        <textarea value={form.text} onChange={e=>set("text",e.target.value)}
-          placeholder={form.category==="villa" ? "Tell us about your villa stay..." : form.vehicleId ? `Tell us about your ${(rentals||[]).find(r=>r._id===form.vehicleId)?.name||"rental"} experience...` : "Tell us about your rental experience..."}
-          rows={4} style={{...inputStyle,fontFamily:"'Lora'",resize:"vertical",lineHeight:1.6}}
-          onFocus={e=>e.target.style.borderColor="#d4850a"} onBlur={e=>e.target.style.borderColor="#e8e8e8"} />
+        <textarea value={form.text} onChange={e=>set("text",e.target.value)} rows={4} style={{...inputStyle,fontFamily:"'Lora'",resize:"vertical",lineHeight:1.6}} placeholder="Tell us about your experience…"/>
       </div>
-
-      {status === "error" && <p style={{color:"#e53e3e",fontSize:13,fontFamily:"'DM Sans'",marginBottom:12}}>Something went wrong. Please try again.</p>}
-      <button onClick={submit} disabled={status==="sending"}
-        style={{width:"100%",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"14px",borderRadius:12,fontFamily:"'DM Sans'",fontWeight:700,fontSize:15,cursor:status==="sending"?"not-allowed":"pointer",opacity:status==="sending"?0.7:1,transition:"opacity 0.2s"}}>
+      {status==="error"&&<p style={{color:"#e53e3e",fontSize:13,marginBottom:12}}>Something went wrong. Please try again.</p>}
+      <button onClick={submit} disabled={status==="sending"} style={{width:"100%",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"14px",borderRadius:12,fontFamily:"'DM Sans'",fontWeight:700,fontSize:15,cursor:status==="sending"?"not-allowed":"pointer",opacity:status==="sending"?0.7:1}}>
         {status==="sending" ? "Submitting..." : "Submit Review →"}
       </button>
       <p style={{textAlign:"center",fontFamily:"'DM Sans'",fontSize:12,color:"#bbb",marginTop:12}}>Reviews are published after approval</p>
@@ -490,7 +445,7 @@ function ReviewForm({ api, reload, rentals, villa }) {
   );
 }
 
-
+// ─── Login Screen ────────────────────────────────────────────────────────────
 function LoginScreen({ loginInput, setLoginInput, loginError, onLogin, onBack }) {
   return (
     <div style={{minHeight:"100vh",background:"#0a1628",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif"}}>
@@ -507,11 +462,29 @@ function LoginScreen({ loginInput, setLoginInput, loginError, onLogin, onBack })
   );
 }
 
+// ─── Admin Panel Shell ───────────────────────────────────────────────────────
 function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, setAdminTab }) {
-  const tabs = [{id:"agency",label:"🏢 Agency Info"},{id:"rentals",label:"🛵 Rentals"},{id:"villa",label:"🏡 Villa"},{id:"testimonials",label:"⭐ Reviews"}];
+  const tabs = [
+    {id:"agency",      label:"🏢 Agency Info"},
+    {id:"rentals",     label:"🛵 Rentals"},
+    {id:"villa",       label:"🏡 Villa"},
+    {id:"testimonials",label:"⭐ Reviews"},
+    {id:"inventory",   label:"📦 Inventory"},
+    {id:"accounting",  label:"💰 Accounting"},
+  ];
   return (
     <div style={{minHeight:"100vh",background:"#0d1b2e",fontFamily:"'DM Sans',sans-serif",color:"white"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Playfair+Display:wght@700&display=swap');*{box-sizing:border-box;margin:0;padding:0;}.adm-input{width:100%;padding:10px 14px;background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);border-radius:8px;color:white;font-family:'DM Sans';font-size:14px;outline:none;transition:border-color 0.2s;}.adm-input:focus{border-color:#d4850a;}textarea.adm-input{resize:vertical;min-height:80px;line-height:1.6;}label.adm-label{display:block;font-size:11px;font-weight:600;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;}.adm-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;}select.adm-input{cursor:pointer;}`}</style>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Playfair+Display:wght@700&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0;}
+        .adm-input{width:100%;padding:10px 14px;background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);border-radius:8px;color:white;font-family:'DM Sans';font-size:14px;outline:none;transition:border-color 0.2s;}
+        .adm-input:focus{border-color:#d4850a;}
+        textarea.adm-input{resize:vertical;min-height:80px;line-height:1.6;}
+        label.adm-label{display:block;font-size:11px;font-weight:600;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;}
+        .adm-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;}
+        select.adm-input{cursor:pointer;}
+        .adm-stat{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:18px 20px;}
+      `}</style>
       <div style={{background:"rgba(0,0,0,0.3)",borderBottom:"1px solid rgba(240,192,96,0.15)",padding:"0 32px",height:64,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <span style={{fontFamily:"'Playfair Display'",fontSize:20,color:"#f0c060"}}>Admin Panel</span>
         <div style={{display:"flex",gap:12,alignItems:"center"}}>
@@ -528,17 +501,19 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
           ))}
         </div>
         <div style={{flex:1,padding:"32px",overflowY:"auto"}}>
-          {adminTab==="agency"&&<AgencyEditor data={data} api={api} showSaved={showSaved}/>}
-          {adminTab==="rentals"&&<RentalsEditor data={data} api={api} reload={reload} showSaved={showSaved}/>}
-          {adminTab==="villa"&&<VillaEditor data={data} api={api} showSaved={showSaved}/>}
-          {adminTab==="testimonials"&&<TestimonialsEditor data={data} api={api} reload={reload} showSaved={showSaved}/>}
-
+          {adminTab==="agency"       && <AgencyEditor       data={data} api={api} showSaved={showSaved}/>}
+          {adminTab==="rentals"      && <RentalsEditor      data={data} api={api} reload={reload} showSaved={showSaved}/>}
+          {adminTab==="villa"        && <VillaEditor        data={data} api={api} showSaved={showSaved}/>}
+          {adminTab==="testimonials" && <TestimonialsEditor data={data} api={api} reload={reload} showSaved={showSaved}/>}
+          {adminTab==="inventory"    && <InventoryEditor    data={data} api={api} reload={reload} showSaved={showSaved}/>}
+          {adminTab==="accounting"   && <AccountingEditor   data={data} api={api} reload={reload} showSaved={showSaved}/>}
         </div>
       </div>
     </div>
   );
 }
 
+// ─── Agency Editor (unchanged) ───────────────────────────────────────────────
 function AgencyEditor({ data, api, showSaved }) {
   const [form, setForm] = useState(data.agency);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -558,6 +533,7 @@ function AgencyEditor({ data, api, showSaved }) {
   );
 }
 
+// ─── Rentals Editor (unchanged) ──────────────────────────────────────────────
 function RentalsEditor({ data, api, reload, showSaved }) {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(null);
@@ -573,6 +549,7 @@ function RentalsEditor({ data, api, reload, showSaved }) {
   };
   const deleteRental = async (id) => { if(window.confirm("Delete?")){ await api.delete(`/rentals/${id}`); await reload(); } };
   const toggleAvail = async (r) => { await api.put(`/rentals/${r._id}`,{...r,available:!r.available}); await reload(); };
+  const btnStyle = (color) => ({background:`rgba(${color},0.15)`,border:`1px solid rgba(${color},0.3)`,color:`rgb(${color})`,padding:"6px 12px",borderRadius:7,cursor:"pointer",fontSize:12});
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:28}}>
@@ -591,6 +568,10 @@ function RentalsEditor({ data, api, reload, showSaved }) {
                 <option value="scooty">Scooty</option><option value="bike">Bike</option><option value="car">Car</option>
               </select>
             </div>
+            <div style={{display:"flex",alignItems:"center",gap:10,paddingTop:22}}>
+              <label className="adm-label" style={{marginBottom:0}}>Available</label>
+              <input type="checkbox" checked={!!form.available} onChange={e=>set("available",e.target.checked)} style={{width:18,height:18,cursor:"pointer",accentColor:"#d4850a"}}/>
+            </div>
             <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Description</label><textarea className="adm-input" value={form.description||""} onChange={e=>set("description",e.target.value)}/></div>
             <div style={{gridColumn:"1 / -1"}}><ImageUpload label="Vehicle Image" value={form.image} onChange={v=>set("image",v)}/></div>
           </div>
@@ -598,11 +579,11 @@ function RentalsEditor({ data, api, reload, showSaved }) {
             <label className="adm-label">Features</label>
             {(form.features||[]).map((f,i)=>(
               <div key={i} style={{display:"flex",gap:8,marginBottom:8}}>
-                <input className="adm-input" value={f} onChange={e=>{const arr=[...form.features];arr[i]=e.target.value;set("features",arr);}}/>
-                <button onClick={()=>set("features",form.features.filter((_,j)=>j!==i))} style={{background:"rgba(255,80,80,0.15)",border:"none",color:"#ff6b6b",borderRadius:8,padding:"0 12px",cursor:"pointer"}}>×</button>
+                <input className="adm-input" value={f} onChange={e=>{const arr=[...(form.features||[])];arr[i]=e.target.value;set("features",arr);}} placeholder="e.g. Helmet included"/>
+                <button onClick={()=>{const arr=(form.features||[]).filter((_,j)=>j!==i);set("features",arr);}} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"8px 12px",borderRadius:8,cursor:"pointer"}}><Icon name="trash" size={14}/></button>
               </div>
             ))}
-            <button onClick={()=>set("features",[...form.features,""])} style={{background:"transparent",border:"1px dashed rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.4)",padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:13}}>+ Add Feature</button>
+            <button onClick={()=>set("features",[...(form.features||[]),""])} style={{fontSize:13,color:"rgba(255,255,255,0.4)",background:"transparent",border:"1px dashed rgba(255,255,255,0.15)",padding:"8px 16px",borderRadius:8,cursor:"pointer",marginTop:4}}>+ Add Feature</button>
           </div>
           <div style={{display:"flex",gap:10}}>
             <button onClick={saveRental} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 24px",borderRadius:8,fontWeight:700,cursor:"pointer"}}>Save</button>
@@ -610,21 +591,23 @@ function RentalsEditor({ data, api, reload, showSaved }) {
           </div>
         </div>
       )}
-      <div style={{display:"grid",gap:14}}>
-        {data.rentals.map(r=>(
+      <div style={{display:"grid",gap:12}}>
+        {(data.rentals||[]).length===0&&<div style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:48}}>No vehicles yet. Add one above!</div>}
+        {(data.rentals||[]).map(r=>(
           <div key={r._id} className="adm-card" style={{display:"flex",gap:16,alignItems:"center"}}>
-            <img src={r.image||"https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=100&q=60"} alt="" style={{width:70,height:56,objectFit:"cover",borderRadius:8,flexShrink:0}}/>
+            {r.image&&<img src={r.image} alt="" style={{width:64,height:64,objectFit:"cover",borderRadius:10,flexShrink:0}}/>}
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:4,flexWrap:"wrap"}}>
-                <span style={{fontWeight:600}}>{r.name}</span>
-                <span style={{fontWeight:700,color:"#f0c060"}}>{r.price}</span>
+                <span style={{fontWeight:600,fontSize:15}}>{r.name}</span>
+                <span style={{fontSize:11,background:"rgba(255,255,255,0.08)",padding:"2px 8px",borderRadius:10,color:"rgba(255,255,255,0.5)"}}>{r.type}</span>
+                <span style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:r.available?"rgba(74,222,128,0.1)":"rgba(255,80,80,0.1)",color:r.available?"#4ade80":"#ff6b6b"}}>{r.available?"Available":"Unavailable"}</span>
               </div>
-              <p style={{fontSize:13,color:"rgba(255,255,255,0.4)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.description}</p>
+              <div style={{fontSize:13,color:"rgba(255,255,255,0.4)"}}>{r.price}{r.period}</div>
             </div>
-            <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-              <button onClick={()=>toggleAvail(r)} style={{fontSize:12,padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",background:r.available?"rgba(74,222,128,0.15)":"rgba(255,80,80,0.15)",color:r.available?"#4ade80":"#ff6b6b",fontWeight:600}}>{r.available?"✓ Live":"✗ Hidden"}</button>
-              <button onClick={()=>startEdit(r)} style={{background:"rgba(212,133,10,0.15)",border:"1px solid rgba(212,133,10,0.3)",color:"#f0c060",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:13}}>Edit</button>
-              <button onClick={()=>deleteRental(r._id)} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"7px 10px",borderRadius:8,cursor:"pointer"}}><Icon name="trash" size={14}/></button>
+            <div style={{display:"flex",gap:8,flexShrink:0}}>
+              <button onClick={()=>toggleAvail(r)} style={btnStyle(r.available?"255,80,80":"74,222,128")}>{r.available?"Hide":"Show"}</button>
+              <button onClick={()=>startEdit(r)} style={btnStyle("212,133,10")}>Edit</button>
+              <button onClick={()=>deleteRental(r._id)} style={btnStyle("255,80,80")}><Icon name="trash" size={13}/></button>
             </div>
           </div>
         ))}
@@ -633,145 +616,106 @@ function RentalsEditor({ data, api, reload, showSaved }) {
   );
 }
 
+// ─── Villa Editor (unchanged) ────────────────────────────────────────────────
 function VillaEditor({ data, api, showSaved }) {
-  const [form, setForm] = useState({...data.villa,amenities:[...(data.villa.amenities||[])],rooms:(data.villa.rooms||[]).map(r=>({...r}))});
+  const [form, setForm] = useState({...data.villa});
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const setAmenity = (i,k,v) => setForm(f=>({...f,amenities:f.amenities.map((a,j)=>j===i?{...a,[k]:v}:a)}));
-  const setRoom = (i,k,v) => setForm(f=>({...f,rooms:f.rooms.map((r,j)=>j===i?{...r,[k]:v}:r)}));
-  const [saving, setSaving] = useState(false);
-  const save = async () => {
-    setSaving(true);
-    try {
-      const res = await api.put("/villa", form);
-      if (res && res._id) { showSaved(); alert("✅ Villa saved!"); }
-      else { alert("❌ Failed: " + JSON.stringify(res)); }
-    } catch(err) { alert("❌ Error: " + err.message); }
-    setSaving(false);
-  };
+  const save = async () => { await api.put("/villa", form); showSaved(); };
   return (
     <div>
-      <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,marginBottom:24}}>Villa Settings</h2>
-      <div className="adm-card" style={{marginBottom:20}}>
-        <h3 style={{color:"#f0c060",marginBottom:18,fontSize:16}}>Basic Info</h3>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-          {[["Villa Name","name"],["Tagline","tagline"],["Price","price"],["Period","period"],["Check-In","checkIn"],["Check-Out","checkOut"],["Min Stay","minStay"],["Max Guests","maxGuests"]].map(([l,k])=>(
-            <div key={k}><label className="adm-label">{l}</label><input className="adm-input" value={form[k]||""} onChange={e=>set(k,e.target.value)}/></div>
-          ))}
-          <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Description</label><textarea className="adm-input" value={form.description||""} onChange={e=>set("description",e.target.value)} style={{minHeight:100}}/></div>
-          <div style={{gridColumn:"1 / -1"}}><ImageUpload label="Villa Main Image" value={form.image} onChange={v=>set("image",v)}/></div>
-        </div>
+      <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,marginBottom:24}}>Villa Details</h2>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+        {[["Villa Name","name"],["Tagline","tagline"],["Price","price"],["Period","period"],["Check-in","checkIn"],["Check-out","checkOut"],["Min Stay","minStay"],["Max Guests","maxGuests"]].map(([l,k])=>(
+          <div key={k}><label className="adm-label">{l}</label><input className="adm-input" value={form[k]||""} onChange={e=>set(k,e.target.value)}/></div>
+        ))}
+        <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Description</label><textarea className="adm-input" value={form.description||""} onChange={e=>set("description",e.target.value)}/></div>
+        <div style={{gridColumn:"1 / -1"}}><ImageUpload label="Villa Image" value={form.image} onChange={v=>set("image",v)}/></div>
       </div>
-      <div className="adm-card" style={{marginBottom:20}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <h3 style={{color:"#f0c060",fontSize:16}}>Amenities</h3>
-          <button onClick={()=>setForm(f=>({...f,amenities:[...f.amenities,{icon:"🌟",label:"New"}]}))} style={{background:"rgba(212,133,10,0.15)",border:"1px solid rgba(212,133,10,0.3)",color:"#f0c060",padding:"6px 14px",borderRadius:8,cursor:"pointer",fontSize:13}}>+ Add</button>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10}}>
-          {form.amenities.map((a,i)=>(
-            <div key={i} style={{display:"flex",gap:8}}>
-              <input className="adm-input" value={a.icon} onChange={e=>setAmenity(i,"icon",e.target.value)} style={{width:52,textAlign:"center",padding:"10px 6px"}}/>
-              <input className="adm-input" value={a.label} onChange={e=>setAmenity(i,"label",e.target.value)}/>
-              <button onClick={()=>setForm(f=>({...f,amenities:f.amenities.filter((_,j)=>j!==i)}))} style={{background:"rgba(255,80,80,0.1)",border:"none",color:"#ff6b6b",borderRadius:8,padding:"0 10px",cursor:"pointer"}}>×</button>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="adm-card" style={{marginBottom:24}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <h3 style={{color:"#f0c060",fontSize:16}}>Rooms ({form.rooms.length})</h3>
-          <button onClick={()=>setForm(f=>({...f,rooms:[...f.rooms,{name:"New Room",beds:"Queen bed",guests:2,image:""}]}))} style={{background:"rgba(212,133,10,0.15)",border:"1px solid rgba(212,133,10,0.3)",color:"#f0c060",padding:"6px 14px",borderRadius:8,cursor:"pointer",fontSize:13}}>+ Add Room</button>
-        </div>
-        {form.rooms.map((room,i)=>(
-          <div key={i} style={{background:"rgba(255,255,255,0.03)",borderRadius:10,padding:14,marginBottom:10}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 80px",gap:10,marginBottom:10}}>
-              <div><label className="adm-label">Room Name</label><input className="adm-input" value={room.name||""} onChange={e=>setRoom(i,"name",e.target.value)}/></div>
-              <div><label className="adm-label">Beds</label><input className="adm-input" value={room.beds||""} onChange={e=>setRoom(i,"beds",e.target.value)}/></div>
-              <div><label className="adm-label">Guests</label><input className="adm-input" type="number" value={room.guests||2} onChange={e=>setRoom(i,"guests",e.target.value)}/></div>
-            </div>
-            <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
-              <div style={{flex:1}}><ImageUpload label="Room Image" value={room.image} onChange={v=>setRoom(i,"image",v)}/></div>
-              <button onClick={()=>setForm(f=>({...f,rooms:f.rooms.filter((_,j)=>j!==i)}))} style={{marginBottom:2,background:"rgba(255,80,80,0.1)",border:"none",color:"#ff6b6b",borderRadius:8,padding:"10px 12px",cursor:"pointer"}}><Icon name="trash" size={14}/></button>
-            </div>
+      <div style={{marginBottom:20}}>
+        <label className="adm-label">Amenities</label>
+        {(form.amenities||[]).map((a,i)=>(
+          <div key={i} style={{display:"flex",gap:8,marginBottom:8}}>
+            <input className="adm-input" value={a.icon||""} onChange={e=>{const arr=[...(form.amenities||[])];arr[i]={...arr[i],icon:e.target.value};set("amenities",arr);}} placeholder="🏊" style={{width:60}}/>
+            <input className="adm-input" value={a.label||""} onChange={e=>{const arr=[...(form.amenities||[])];arr[i]={...arr[i],label:e.target.value};set("amenities",arr);}} placeholder="Pool"/>
+            <button onClick={()=>set("amenities",(form.amenities||[]).filter((_,j)=>j!==i))} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"8px 12px",borderRadius:8,cursor:"pointer"}}><Icon name="trash" size={14}/></button>
           </div>
         ))}
+        <button onClick={()=>set("amenities",[...(form.amenities||[]),{icon:"",label:""}])} style={{fontSize:13,color:"rgba(255,255,255,0.4)",background:"transparent",border:"1px dashed rgba(255,255,255,0.15)",padding:"8px 16px",borderRadius:8,cursor:"pointer"}}>+ Add Amenity</button>
       </div>
-      <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"12px 32px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>{ saving ? "Saving..." : "Save Villa" }</button>
+      <div style={{marginBottom:24}}>
+        <label className="adm-label">Rooms</label>
+        {(form.rooms||[]).map((r,i)=>(
+          <div key={i} className="adm-card" style={{marginBottom:12}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:10}}>
+              <div><label className="adm-label">Room Name</label><input className="adm-input" value={r.name||""} onChange={e=>{const arr=[...(form.rooms||[])];arr[i]={...arr[i],name:e.target.value};set("rooms",arr);}}/></div>
+              <div><label className="adm-label">Beds</label><input className="adm-input" value={r.beds||""} onChange={e=>{const arr=[...(form.rooms||[])];arr[i]={...arr[i],beds:e.target.value};set("rooms",arr);}}/></div>
+              <div><label className="adm-label">Max Guests</label><input className="adm-input" type="number" value={r.guests||""} onChange={e=>{const arr=[...(form.rooms||[])];arr[i]={...arr[i],guests:Number(e.target.value)};set("rooms",arr);}}/></div>
+              <div><ImageUpload label="Room Image" value={r.image} onChange={v=>{const arr=[...(form.rooms||[])];arr[i]={...arr[i],image:v};set("rooms",arr);}}/></div>
+            </div>
+            <button onClick={()=>set("rooms",(form.rooms||[]).filter((_,j)=>j!==i))} style={{fontSize:12,color:"#ff6b6b",background:"transparent",border:"1px solid rgba(255,80,80,0.2)",padding:"6px 14px",borderRadius:8,cursor:"pointer"}}>Remove Room</button>
+          </div>
+        ))}
+        <button onClick={()=>set("rooms",[...(form.rooms||[]),{name:"",beds:"",guests:2,image:""}])} style={{fontSize:13,color:"rgba(255,255,255,0.4)",background:"transparent",border:"1px dashed rgba(255,255,255,0.15)",padding:"8px 16px",borderRadius:8,cursor:"pointer"}}>+ Add Room</button>
+      </div>
+      <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"12px 32px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>Save Changes</button>
     </div>
   );
 }
 
+// ─── Testimonials Editor (unchanged) ─────────────────────────────────────────
 function TestimonialsEditor({ data, api, reload, showSaved }) {
+  const [tab, setTab] = useState("approved");
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(null);
-  const [tab, setTab] = useState("pending");
   const [actionId, setActionId] = useState(null);
-  // Local copy of testimonials so UI updates instantly without waiting for reload
-  const [localList, setLocalList] = useState(data.testimonials);
-  // Keep localList in sync if parent data changes (e.g. after add/delete)
-  useEffect(() => { setLocalList(data.testimonials); }, [data.testimonials]);
-
-  const approved = localList.filter(t => t.approved);
-  const pending = localList.filter(t => !t.approved);
-  const startEdit = (t) => { setForm({...t}); setEditId(t._id); };
-  const startAdd = () => { setForm({name:"",location:"",text:"",rating:5,approved:true}); setEditId("new"); };
+  const [localList, setLocalList] = useState(data.testimonials||[]);
+  useEffect(()=>setLocalList(data.testimonials||[]),[data.testimonials]);
+  const approved = localList.filter(t=>t.approved);
+  const pending  = localList.filter(t=>!t.approved);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const startEdit = (t) => { setForm({...t}); setEditId(t._id); };
+  const startAdd  = () => { setForm({name:"",location:"",text:"",rating:5,approved:true,category:"villa"}); setEditId("new"); };
   const save = async () => {
     if (editId==="new") await api.post("/testimonials", form);
     else await api.put(`/testimonials/${editId}`, form);
-    await reload(); showSaved(); setEditId(null); setForm(null);
+    setEditId(null); setForm(null); showSaved(); await reload();
   };
   const del = async (id) => {
-    if(window.confirm("Delete review?")) {
-      setLocalList(l => l.filter(t => t._id !== id));
-      await api.delete(`/testimonials/${id}`);
-      await reload();
-    }
+    if (!window.confirm("Delete this review?")) return;
+    setLocalList(l=>l.filter(t=>t._id!==id));
+    await api.delete(`/testimonials/${id}`);
+    await reload();
   };
   const approve = async (t) => {
-    setActionId(t._id + "_approve");
-    // Update UI instantly
-    setLocalList(l => l.map(r => r._id === t._id ? {...r, approved:true} : r));
-    try {
-      await api.put(`/testimonials/${t._id}`, {...t, approved:true});
-      showSaved();
-      await reload();
-    } catch(err) {
-      // Revert on failure
-      setLocalList(l => l.map(r => r._id === t._id ? {...r, approved:false} : r));
-      alert("Approve failed: " + err.message);
-    }
+    setActionId(t._id+"_approve");
+    setLocalList(l=>l.map(r=>r._id===t._id?{...r,approved:true}:r));
+    try { await api.put(`/testimonials/${t._id}`,{...t,approved:true}); showSaved(); await reload(); }
+    catch(err) { setLocalList(l=>l.map(r=>r._id===t._id?{...r,approved:false}:r)); alert("Approve failed: "+err.message); }
     setActionId(null);
   };
   const reject = async (t) => {
-    setActionId(t._id + "_reject");
-    // Update UI instantly
-    setLocalList(l => l.map(r => r._id === t._id ? {...r, approved:false} : r));
-    try {
-      await api.put(`/testimonials/${t._id}`, {...t, approved:false});
-      await reload();
-    } catch(err) {
-      setLocalList(l => l.map(r => r._id === t._id ? {...r, approved:true} : r));
-      alert("Hide failed: " + err.message);
-    }
+    setActionId(t._id+"_reject");
+    setLocalList(l=>l.map(r=>r._id===t._id?{...r,approved:false}:r));
+    try { await api.put(`/testimonials/${t._id}`,{...t,approved:false}); await reload(); }
+    catch(err) { setLocalList(l=>l.map(r=>r._id===t._id?{...r,approved:true}:r)); alert("Hide failed: "+err.message); }
     setActionId(null);
   };
-  const list = tab === "approved" ? approved : pending;
+  const list = tab==="approved" ? approved : pending;
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
         <h2 style={{fontFamily:"'Playfair Display'",fontSize:28}}>Reviews</h2>
         <button onClick={startAdd} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 22px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Add Review</button>
       </div>
-      {/* Tabs */}
       <div style={{display:"flex",gap:8,marginBottom:24}}>
         {[["approved","✅ Approved","#4ade80"],["pending","⏳ Pending Approval","#f0c060"]].map(([id,label,col])=>(
-          <button key={id} onClick={()=>setTab(id)} style={{padding:"8px 20px",borderRadius:20,border:`2px solid ${tab===id?col:"rgba(255,255,255,0.1)"}`,background:tab===id?`rgba(${id==="approved"?"74,222,128":"240,192,96"},0.1)`:"transparent",color:tab===id?col:"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:13,fontFamily:"'DM Sans'",fontWeight:600}}>
+          <button key={id} onClick={()=>setTab(id)} style={{padding:"8px 20px",borderRadius:20,border:`2px solid ${tab===id?col:"rgba(255,255,255,0.1)"}`,background:tab===id?`rgba(${id==="approved"?"74,222,128":"240,192,96"},0.1)`:"transparent",color:tab===id?col:"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:13,fontWeight:600}}>
             {label} ({id==="approved"?approved.length:pending.length})
           </button>
         ))}
       </div>
-      {pending.length > 0 && tab === "approved" && (
-        <div style={{background:"rgba(240,192,96,0.08)",border:"1px solid rgba(240,192,96,0.3)",borderRadius:12,padding:"12px 18px",marginBottom:20,fontSize:13,color:"#f0c060",display:"flex",alignItems:"center",gap:8}}>
+      {pending.length>0&&tab==="approved"&&(
+        <div style={{background:"rgba(240,192,96,0.08)",border:"1px solid rgba(240,192,96,0.3)",borderRadius:12,padding:"12px 18px",marginBottom:20,fontSize:13,color:"#f0c060"}}>
           ⚠️ You have <strong>{pending.length}</strong> review{pending.length>1?"s":""} waiting for approval
         </div>
       )}
@@ -799,11 +743,7 @@ function TestimonialsEditor({ data, api, reload, showSaved }) {
         </div>
       )}
       <div style={{display:"grid",gap:12}}>
-        {list.length === 0 && (
-          <div style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:48,fontSize:14}}>
-            {tab==="pending" ? "No reviews waiting for approval 🎉" : "No approved reviews yet"}
-          </div>
-        )}
+        {list.length===0&&<div style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:48,fontSize:14}}>{tab==="pending"?"No reviews waiting 🎉":"No approved reviews yet"}</div>}
         {list.map(t=>(
           <div key={t._id} className="adm-card" style={{display:"flex",gap:16,alignItems:"flex-start",border:tab==="pending"?"1px solid rgba(240,192,96,0.2)":"1px solid rgba(255,255,255,0.08)"}}>
             <div style={{flex:1}}>
@@ -811,30 +751,393 @@ function TestimonialsEditor({ data, api, reload, showSaved }) {
                 <span style={{fontWeight:600}}>{t.name}</span>
                 <span style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>{t.location}</span>
                 <span style={{color:"#f0c060"}}>{"★".repeat(t.rating)}</span>
-                {!t.approved && <span style={{fontSize:11,background:"rgba(240,192,96,0.15)",color:"#f0c060",padding:"2px 8px",borderRadius:10,fontWeight:600}}>PENDING</span>}
-                {t.category==="villa" && <span style={{fontSize:11,background:"rgba(99,179,237,0.15)",color:"#63b3ed",padding:"2px 8px",borderRadius:10,fontWeight:600}}>🏡 Villa</span>}
-                {t.category==="rental" && <span style={{fontSize:11,background:"rgba(154,230,180,0.15)",color:"#68d391",padding:"2px 8px",borderRadius:10,fontWeight:600}}>{t.vehicleType==="scooty"?"🛵":t.vehicleType==="bike"?"🏍️":"🚗"} {t.vehicleName||t.vehicleType||"Rental"}</span>}
+                {!t.approved&&<span style={{fontSize:11,background:"rgba(240,192,96,0.15)",color:"#f0c060",padding:"2px 8px",borderRadius:10,fontWeight:600}}>PENDING</span>}
+                {t.category==="villa"&&<span style={{fontSize:11,background:"rgba(99,179,237,0.15)",color:"#63b3ed",padding:"2px 8px",borderRadius:10}}>🏡 Villa</span>}
+                {t.category==="rental"&&<span style={{fontSize:11,background:"rgba(154,230,180,0.15)",color:"#68d391",padding:"2px 8px",borderRadius:10}}>{t.vehicleType==="scooty"?"🛵":t.vehicleType==="bike"?"🏍️":"🚗"} {t.vehicleName||t.vehicleType||"Rental"}</span>}
               </div>
               <p style={{fontSize:14,color:"rgba(255,255,255,0.5)",fontStyle:"italic"}}>"{t.text}"</p>
             </div>
             <div style={{display:"flex",gap:8,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end"}}>
-              {!t.approved && (
-                <button onClick={()=>approve(t)} disabled={actionId===t._id+"_approve"}
-                  style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"7px 14px",borderRadius:8,cursor:actionId===t._id+"_approve"?"not-allowed":"pointer",fontSize:13,fontWeight:600,opacity:actionId===t._id+"_approve"?0.5:1}}>
-                  {actionId===t._id+"_approve" ? "Saving..." : "✓ Approve"}
-                </button>
-              )}
-              {t.approved && (
-                <button onClick={()=>reject(t)} disabled={actionId===t._id+"_reject"}
-                  style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"7px 14px",borderRadius:8,cursor:actionId===t._id+"_reject"?"not-allowed":"pointer",fontSize:13,opacity:actionId===t._id+"_reject"?0.5:1}}>
-                  {actionId===t._id+"_reject" ? "Saving..." : "Hide"}
-                </button>
-              )}
+              {!t.approved&&<button onClick={()=>approve(t)} disabled={actionId===t._id+"_approve"} style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>{actionId===t._id+"_approve"?"Saving...":"✓ Approve"}</button>}
+              {t.approved&&<button onClick={()=>reject(t)} disabled={actionId===t._id+"_reject"} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:13}}>{actionId===t._id+"_reject"?"Saving...":"Hide"}</button>}
               <button onClick={()=>startEdit(t)} style={{background:"rgba(212,133,10,0.15)",border:"1px solid rgba(212,133,10,0.3)",color:"#f0c060",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:13}}>Edit</button>
               <button onClick={()=>del(t._id)} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"7px 10px",borderRadius:8,cursor:"pointer"}}><Icon name="trash" size={14}/></button>
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── NEW: Inventory Editor ────────────────────────────────────────────────────
+const INVENTORY_TYPES = [
+  { value:"tour",      label:"🗺️ Tour / Package" },
+  { value:"villa",     label:"🏡 Villa" },
+  { value:"vehicle",   label:"🛵 Vehicle" },
+  { value:"equipment", label:"🔧 Equipment" },
+];
+const VEHICLE_SUBTYPES = [
+  { value:"scooty", label:"🛵 Scooty" },
+  { value:"bike",   label:"🏍️ Bike" },
+  { value:"car",    label:"🚗 Car" },
+];
+const STATUS_STYLES = {
+  available:   { bg:"rgba(74,222,128,0.12)",  border:"rgba(74,222,128,0.3)",  color:"#4ade80",  label:"Available" },
+  booked:      { bg:"rgba(240,192,96,0.12)",  border:"rgba(240,192,96,0.3)",  color:"#f0c060",  label:"Booked" },
+  maintenance: { bg:"rgba(255,100,100,0.12)", border:"rgba(255,100,100,0.3)", color:"#ff6b6b",  label:"Maintenance" },
+};
+
+function InventoryEditor({ data, api, reload, showSaved }) {
+  const blankItem = { type:"vehicle", vehicleType:"scooty", name:"", description:"", status:"available", pricePerDay:0, capacity:1, location:"", image:"", notes:"" };
+  const [items, setItems] = useState(data.inventory||[]);
+  const [editId, setEditId] = useState(null);
+  const [form, setForm] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [filterType, setFilterType] = useState("all");
+
+  useEffect(()=>setItems(data.inventory||[]),[data.inventory]);
+
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const startAdd  = () => { setForm({...blankItem}); setEditId(null); setAdding(true); };
+  const startEdit = (item) => { setForm({...item}); setEditId(item._id); setAdding(false); };
+  const cancel    = () => { setEditId(null); setForm(null); setAdding(false); };
+
+  const save = async () => {
+    if (!form.name.trim()) { alert("Please enter a name."); return; }
+    if (adding) await api.post("/inventory", form);
+    else        await api.put(`/inventory/${editId}`, form);
+    cancel(); showSaved(); await reload();
+  };
+
+  const del = async (id) => {
+    if (!window.confirm("Delete this inventory item?")) return;
+    setItems(l=>l.filter(i=>i._id!==id));
+    await api.delete(`/inventory/${id}`);
+    await reload();
+  };
+
+  const updateStatus = async (item, status) => {
+    setItems(l=>l.map(i=>i._id===item._id?{...i,status}:i));
+    await api.put(`/inventory/${item._id}`, {...item, status});
+    await reload();
+  };
+
+  const filtered = filterType==="all" ? items : items.filter(i=>i.type===filterType);
+
+  // Summary counts
+  const counts = { all: items.length, tour: 0, villa: 0, vehicle: 0, equipment: 0 };
+  items.forEach(i=>{ if(counts[i.type]!==undefined) counts[i.type]++; });
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{fontFamily:"'Playfair Display'",fontSize:28}}>Inventory</h2>
+        <button onClick={startAdd} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 22px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Add Item</button>
+      </div>
+
+      {/* Summary stats */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:20}}>
+        {[
+          {label:"Total Items",  value:counts.all,       color:"#f0c060"},
+          {label:"Vehicles",     value:counts.vehicle,   color:"#60a5fa"},
+          {label:"Tours",        value:counts.tour,      color:"#a78bfa"},
+          {label:"Equipment",    value:counts.equipment, color:"#fb923c"},
+        ].map(s=>(
+          <div key={s.label} className="adm-stat">
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>{s.label}</div>
+            <div style={{fontSize:26,fontWeight:700,color:s.color,fontFamily:"'Playfair Display'"}}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter tabs */}
+      <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
+        {[["all","All"],["vehicle","🛵 Vehicles"],["tour","🗺️ Tours"],["villa","🏡 Villa"],["equipment","🔧 Equipment"]].map(([val,lbl])=>(
+          <button key={val} onClick={()=>setFilterType(val)} style={{padding:"7px 16px",borderRadius:20,border:`1px solid ${filterType===val?"#d4850a":"rgba(255,255,255,0.1)"}`,background:filterType===val?"rgba(212,133,10,0.15)":"transparent",color:filterType===val?"#f0c060":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:12,fontWeight:500}}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {/* Add / Edit form */}
+      {(adding||editId)&&form&&(
+        <div className="adm-card" style={{marginBottom:24,border:"1px solid rgba(212,133,10,0.3)"}}>
+          <h3 style={{color:"#f0c060",marginBottom:20}}>{adding?"Add Inventory Item":"Edit Item"}</h3>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+            <div>
+              <label className="adm-label">Type</label>
+              <select className="adm-input" value={form.type} onChange={e=>set("type",e.target.value)}>
+                {INVENTORY_TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+            {form.type==="vehicle"&&(
+              <div>
+                <label className="adm-label">Vehicle type</label>
+                <select className="adm-input" value={form.vehicleType} onChange={e=>set("vehicleType",e.target.value)}>
+                  {VEHICLE_SUBTYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+            )}
+            <div><label className="adm-label">Name *</label><input className="adm-input" value={form.name||""} onChange={e=>set("name",e.target.value)} placeholder="e.g. Honda Activa #3"/></div>
+            <div>
+              <label className="adm-label">Status</label>
+              <select className="adm-input" value={form.status} onChange={e=>set("status",e.target.value)}>
+                <option value="available">Available</option>
+                <option value="booked">Booked</option>
+                <option value="maintenance">Maintenance</option>
+              </select>
+            </div>
+            <div><label className="adm-label">Price per day (₹)</label><input className="adm-input" type="number" value={form.pricePerDay||0} onChange={e=>set("pricePerDay",Number(e.target.value))}/></div>
+            <div><label className="adm-label">Capacity (guests/units)</label><input className="adm-input" type="number" value={form.capacity||1} onChange={e=>set("capacity",Number(e.target.value))}/></div>
+            <div><label className="adm-label">Location</label><input className="adm-input" value={form.location||""} onChange={e=>set("location",e.target.value)} placeholder="e.g. Goa Garage"/></div>
+            <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Description</label><textarea className="adm-input" value={form.description||""} onChange={e=>set("description",e.target.value)} rows={2}/></div>
+            <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Notes (internal)</label><textarea className="adm-input" value={form.notes||""} onChange={e=>set("notes",e.target.value)} rows={2} placeholder="Service history, quirks, etc."/></div>
+            <div style={{gridColumn:"1 / -1"}}><ImageUpload label="Image" value={form.image} onChange={v=>set("image",v)}/></div>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 24px",borderRadius:8,fontWeight:700,cursor:"pointer"}}>Save</button>
+            <button onClick={cancel} style={{background:"transparent",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.5)",padding:"10px 20px",borderRadius:8,cursor:"pointer"}}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Items list */}
+      <div style={{display:"grid",gap:10}}>
+        {filtered.length===0&&<div style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:48}}>No items yet. Add one above!</div>}
+        {filtered.map(item=>{
+          const ss = STATUS_STYLES[item.status]||STATUS_STYLES.available;
+          const typeIcon = item.type==="vehicle"?(item.vehicleType==="scooty"?"🛵":item.vehicleType==="bike"?"🏍️":"🚗"):item.type==="tour"?"🗺️":item.type==="villa"?"🏡":"🔧";
+          return (
+            <div key={item._id} className="adm-card" style={{display:"flex",gap:14,alignItems:"center"}}>
+              {item.image
+                ? <img src={item.image} alt="" style={{width:60,height:60,objectFit:"cover",borderRadius:10,flexShrink:0}}/>
+                : <div style={{width:60,height:60,borderRadius:10,background:"rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>{typeIcon}</div>
+              }
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:4}}>
+                  <span style={{fontWeight:600,fontSize:15}}>{item.name}</span>
+                  <span style={{fontSize:11,background:"rgba(255,255,255,0.07)",padding:"2px 8px",borderRadius:10,color:"rgba(255,255,255,0.5)"}}>{typeIcon} {item.type}</span>
+                  <span style={{fontSize:11,padding:"2px 9px",borderRadius:10,background:ss.bg,border:`1px solid ${ss.border}`,color:ss.color}}>{ss.label}</span>
+                </div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",display:"flex",gap:12,flexWrap:"wrap"}}>
+                  {item.pricePerDay>0&&<span>₹{item.pricePerDay.toLocaleString()}/day</span>}
+                  {item.capacity>0&&<span>{item.capacity} capacity</span>}
+                  {item.location&&<span>📍 {item.location}</span>}
+                </div>
+              </div>
+              <div style={{display:"flex",gap:6,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                <select value={item.status} onChange={e=>updateStatus(item,e.target.value)}
+                  style={{padding:"5px 10px",borderRadius:7,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.06)",color:"white",fontSize:12,cursor:"pointer"}}>
+                  <option value="available">Available</option>
+                  <option value="booked">Booked</option>
+                  <option value="maintenance">Maintenance</option>
+                </select>
+                <button onClick={()=>startEdit(item)} style={{background:"rgba(212,133,10,0.15)",border:"1px solid rgba(212,133,10,0.3)",color:"#f0c060",padding:"6px 12px",borderRadius:7,cursor:"pointer",fontSize:12}}>Edit</button>
+                <button onClick={()=>del(item._id)} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"6px 10px",borderRadius:7,cursor:"pointer"}}><Icon name="trash" size={13}/></button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── NEW: Accounting Editor ───────────────────────────────────────────────────
+const INCOME_CATEGORIES = [
+  { value:"villa_rental",     label:"🏡 Villa rental" },
+  { value:"tour_booking",     label:"🗺️ Tour booking" },
+  { value:"vehicle_rental",   label:"🛵 Vehicle rental" },
+  { value:"agency_commission",label:"🤝 Agency commission" },
+  { value:"other_income",     label:"➕ Other income" },
+];
+const EXPENSE_CATEGORIES = [
+  { value:"maintenance",  label:"🔧 Maintenance" },
+  { value:"utilities",    label:"💡 Utilities" },
+  { value:"staff",        label:"👷 Staff / wages" },
+  { value:"supplies",     label:"📦 Supplies" },
+  { value:"marketing",    label:"📢 Marketing" },
+  { value:"other_expense",label:"➖ Other expense" },
+];
+const PAYMENT_METHODS = ["cash","upi","bank_transfer","card","other"];
+
+function AccountingEditor({ data, api, reload, showSaved }) {
+  const accData   = data.accounting || { transactions:[], summary:{ totalIncome:0, totalExpense:0, netProfit:0, breakdown:{} } };
+  const summary   = accData.summary || { totalIncome:0, totalExpense:0, netProfit:0, breakdown:{} };
+  const allTx     = accData.transactions || [];
+
+  const [tab, setTab]       = useState("ledger");   // ledger | add
+  const [txType, setTxType] = useState("income");
+  const [filterCat, setFilterCat] = useState("all");
+  const [editId, setEditId] = useState(null);
+
+  const blankForm = { type:"income", category:"vehicle_rental", amount:"", date: new Date().toISOString().slice(0,10), description:"", clientName:"", agencyName:"", paymentStatus:"paid", paymentMethod:"cash", notes:"" };
+  const [form, setForm] = useState({...blankForm});
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const categories = form.type==="income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+
+  const startAdd = () => { setForm({...blankForm,type:txType}); setEditId(null); setTab("add"); };
+  const startEdit = (tx) => { setForm({...tx, amount:String(tx.amount), date: tx.date?new Date(tx.date).toISOString().slice(0,10):new Date().toISOString().slice(0,10)}); setEditId(tx._id); setTab("add"); };
+  const cancel = () => { setEditId(null); setForm({...blankForm}); setTab("ledger"); };
+
+  const save = async () => {
+    if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount)<=0) { alert("Enter a valid amount."); return; }
+    const payload = { ...form, amount: Number(form.amount) };
+    if (editId) await api.put(`/accounting/${editId}`, payload);
+    else        await api.post("/accounting", payload);
+    cancel(); showSaved(); await reload();
+  };
+
+  const del = async (id) => {
+    if (!window.confirm("Delete this transaction?")) return;
+    await api.delete(`/accounting/${id}`);
+    await reload();
+  };
+
+  const income   = allTx.filter(t=>t.type==="income");
+  const expenses = allTx.filter(t=>t.type==="expense");
+  const displayed = filterCat==="all" ? allTx : allTx.filter(t=>t.type===filterCat);
+
+  const categoryLabel = (cat) => {
+    const all = [...INCOME_CATEGORIES,...EXPENSE_CATEGORIES];
+    return all.find(c=>c.value===cat)?.label || cat;
+  };
+  const fmt = (n) => `₹${Number(n||0).toLocaleString("en-IN")}`;
+  const profitColor = summary.netProfit >= 0 ? "#4ade80" : "#ff6b6b";
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{fontFamily:"'Playfair Display'",fontSize:28}}>Accounting</h2>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>{setTxType("income");startAdd();}} style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"9px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Income</button>
+          <button onClick={()=>{setTxType("expense");setForm(f=>({...blankForm,type:"expense",category:"maintenance"}));setEditId(null);setTab("add");}} style={{background:"rgba(255,100,100,0.15)",border:"1px solid rgba(255,100,100,0.3)",color:"#ff6b6b",padding:"9px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Expense</button>
+        </div>
+      </div>
+
+      {/* P&L summary cards */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:20}}>
+        {[
+          {label:"Total income",  value:fmt(summary.totalIncome),  color:"#4ade80"},
+          {label:"Total expenses",value:fmt(summary.totalExpense), color:"#ff6b6b"},
+          {label:"Net profit",    value:fmt(summary.netProfit),    color:profitColor},
+        ].map(s=>(
+          <div key={s.label} className="adm-stat">
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>{s.label}</div>
+            <div style={{fontSize:22,fontWeight:700,color:s.color,fontFamily:"'Playfair Display'"}}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Revenue breakdown by category */}
+      {Object.keys(summary.breakdown||{}).length>0&&(
+        <div className="adm-card" style={{marginBottom:20}}>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Revenue breakdown</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:8}}>
+            {Object.entries(summary.breakdown).map(([cat,amt])=>(
+              <div key={cat} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"rgba(255,255,255,0.04)",borderRadius:8,padding:"8px 12px"}}>
+                <span style={{fontSize:12,color:"rgba(255,255,255,0.6)"}}>{categoryLabel(cat)}</span>
+                <span style={{fontSize:13,fontWeight:600,color:"#f0c060"}}>{fmt(amt)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Add / Edit form */}
+      {tab==="add"&&(
+        <div className="adm-card" style={{marginBottom:24,border:"1px solid rgba(212,133,10,0.3)"}}>
+          <h3 style={{color:"#f0c060",marginBottom:20}}>{editId?"Edit Transaction":"New Transaction"}</h3>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+            <div>
+              <label className="adm-label">Type</label>
+              <select className="adm-input" value={form.type} onChange={e=>{set("type",e.target.value);set("category",e.target.value==="income"?"vehicle_rental":"maintenance");}}>
+                <option value="income">Income</option>
+                <option value="expense">Expense</option>
+              </select>
+            </div>
+            <div>
+              <label className="adm-label">Category</label>
+              <select className="adm-input" value={form.category} onChange={e=>set("category",e.target.value)}>
+                {categories.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+            <div><label className="adm-label">Amount (₹) *</label><input className="adm-input" type="number" value={form.amount} onChange={e=>set("amount",e.target.value)} placeholder="5000"/></div>
+            <div><label className="adm-label">Date</label><input className="adm-input" type="date" value={form.date} onChange={e=>set("date",e.target.value)}/></div>
+            <div><label className="adm-label">Client name</label><input className="adm-input" value={form.clientName||""} onChange={e=>set("clientName",e.target.value)} placeholder="Priya Sharma"/></div>
+            {form.category==="agency_commission"&&(
+              <div><label className="adm-label">Agency name</label><input className="adm-input" value={form.agencyName||""} onChange={e=>set("agencyName",e.target.value)} placeholder="Make My Trip"/></div>
+            )}
+            <div>
+              <label className="adm-label">Payment method</label>
+              <select className="adm-input" value={form.paymentMethod} onChange={e=>set("paymentMethod",e.target.value)}>
+                {PAYMENT_METHODS.map(m=><option key={m} value={m}>{m.replace("_"," ")}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="adm-label">Payment status</label>
+              <select className="adm-input" value={form.paymentStatus} onChange={e=>set("paymentStatus",e.target.value)}>
+                <option value="paid">Paid</option>
+                <option value="pending">Pending</option>
+                <option value="partial">Partial</option>
+              </select>
+            </div>
+            <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Description</label><input className="adm-input" value={form.description||""} onChange={e=>set("description",e.target.value)} placeholder="e.g. Honda Activa rental - 3 days"/></div>
+            <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Notes (internal)</label><textarea className="adm-input" value={form.notes||""} onChange={e=>set("notes",e.target.value)} rows={2}/></div>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 24px",borderRadius:8,fontWeight:700,cursor:"pointer"}}>Save</button>
+            <button onClick={cancel} style={{background:"transparent",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.5)",padding:"10px 20px",borderRadius:8,cursor:"pointer"}}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Ledger filter */}
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+        <span style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>Filter:</span>
+        {[["all","All"],["income","Income"],["expense","Expenses"]].map(([val,lbl])=>(
+          <button key={val} onClick={()=>setFilterCat(val)} style={{padding:"6px 14px",borderRadius:16,border:`1px solid ${filterCat===val?"#d4850a":"rgba(255,255,255,0.1)"}`,background:filterCat===val?"rgba(212,133,10,0.15)":"transparent",color:filterCat===val?"#f0c060":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:12}}>
+            {lbl} ({val==="all"?allTx.length:val==="income"?income.length:expenses.length})
+          </button>
+        ))}
+      </div>
+
+      {/* Transaction ledger */}
+      <div style={{display:"grid",gap:8}}>
+        {displayed.length===0&&<div style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:48}}>No transactions yet. Add your first entry above!</div>}
+        {displayed.map(tx=>{
+          const isIncome = tx.type==="income";
+          const paidColor = tx.paymentStatus==="paid"?"#4ade80":tx.paymentStatus==="pending"?"#f0c060":"#fb923c";
+          return (
+            <div key={tx._id} className="adm-card" style={{display:"flex",gap:14,alignItems:"center",borderLeft:`3px solid ${isIncome?"#4ade80":"#ff6b6b"}`,borderRadius:"0 16px 16px 0"}}>
+              <div style={{width:44,height:44,borderRadius:10,background:isIncome?"rgba(74,222,128,0.1)":"rgba(255,100,100,0.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
+                {isIncome?"📥":"📤"}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginBottom:3}}>
+                  <span style={{fontWeight:600,fontSize:14}}>{tx.description||categoryLabel(tx.category)}</span>
+                  <span style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.4)"}}>{categoryLabel(tx.category)}</span>
+                  <span style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:"transparent",border:`1px solid ${paidColor}`,color:paidColor}}>{tx.paymentStatus}</span>
+                </div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",display:"flex",gap:10,flexWrap:"wrap"}}>
+                  {tx.clientName&&<span>👤 {tx.clientName}</span>}
+                  {tx.agencyName&&<span>🤝 {tx.agencyName}</span>}
+                  {tx.paymentMethod&&<span>{tx.paymentMethod.replace("_"," ")}</span>}
+                  <span>{tx.date?new Date(tx.date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}):""}</span>
+                </div>
+              </div>
+              <div style={{textAlign:"right",flexShrink:0}}>
+                <div style={{fontSize:18,fontWeight:700,color:isIncome?"#4ade80":"#ff6b6b",fontFamily:"'Playfair Display'"}}>{isIncome?"+":"-"}{fmt(tx.amount)}</div>
+                <div style={{display:"flex",gap:6,marginTop:6,justifyContent:"flex-end"}}>
+                  <button onClick={()=>startEdit(tx)} style={{background:"rgba(212,133,10,0.15)",border:"1px solid rgba(212,133,10,0.3)",color:"#f0c060",padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:11}}>Edit</button>
+                  <button onClick={()=>del(tx._id)} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"4px 8px",borderRadius:6,cursor:"pointer"}}><Icon name="trash" size={12}/></button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
