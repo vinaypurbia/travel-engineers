@@ -177,6 +177,25 @@ const transactionSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
+// ── NEW: Booking Model ───────────────────────────────────────────────────────
+// Customer booking requests submitted from the public site
+const bookingSchema = new mongoose.Schema({
+  customerName: { type: String, required: true },
+  phone:        { type: String, required: true },
+  vehicleName:  { type: String, default: "" },
+  vehicleId:    { type: mongoose.Schema.Types.ObjectId, ref: "Rental", default: null },
+  checkIn:      { type: Date, default: null },
+  checkOut:     { type: Date, default: null },
+  stayAddress:  { type: String, default: "" },
+  notes:        { type: String, default: "" },
+  status: {
+    type: String,
+    enum: ["pending", "confirmed", "cancelled", "completed"],
+    default: "pending",
+  },
+  createdAt: { type: Date, default: Date.now },
+});
+
 module.exports = {
   connectDB,
   Agency:      mongoose.models.Agency      || mongoose.model("Agency",      agencySchema),
@@ -185,4 +204,5 @@ module.exports = {
   Testimonial: mongoose.models.Testimonial || mongoose.model("Testimonial", testimonialSchema),
   Inventory:   mongoose.models.Inventory   || mongoose.model("Inventory",   inventorySchema),
   Transaction: mongoose.models.Transaction || mongoose.model("Transaction", transactionSchema),
+  Booking:     mongoose.models.Booking     || mongoose.model("Booking",     bookingSchema),
 };
