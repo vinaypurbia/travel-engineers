@@ -10,6 +10,7 @@ module.exports = async (req, res) => {
     await connectDB();
 
     if (req.method === "GET") {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
       let agency = await Agency.findOne().lean();
       if (!agency) agency = await Agency.create({});
       return res.json(agency);
