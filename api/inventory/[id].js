@@ -1,4 +1,4 @@
-const { connectDB, Transaction } = require("../../_db");
+const { connectDB, Inventory } = require("../../_db");
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -12,25 +12,29 @@ module.exports = async (req, res) => {
     await connectDB();
 
     if (req.method === "GET") {
-      const tx = await Transaction.findById(id);
-      if (!tx) return res.status(404).json({ error: "Not found" });
-      return res.json(tx);
+      const item = await Inventory.findById(id);
+      if (!item) return res.status(404).json({ error: "Not found" });
+      return res.json(item);
     }
 
     if (req.method === "PUT" || req.method === "PATCH") {
-      const tx = await Transaction.findByIdAndUpdate(id, req.body, { new: true });
-      if (!tx) return res.status(404).json({ error: "Not found" });
-      return res.json(tx);
+      const item = await Inventory.findByIdAndUpdate(
+        id,
+        { ...req.body, updatedAt: new Date() },
+        { new: true }
+      );
+      if (!item) return res.status(404).json({ error: "Not found" });
+      return res.json(item);
     }
 
     if (req.method === "DELETE") {
-      await Transaction.findByIdAndDelete(id);
+      await Inventory.findByIdAndDelete(id);
       return res.json({ success: true });
     }
 
     res.status(405).json({ error: "Method not allowed" });
   } catch (err) {
-    console.error("Accounting [id] error:", err);
+    console.error("Inventory [id] error:", err);
     res.status(500).json({ error: err.message });
   }
 };
