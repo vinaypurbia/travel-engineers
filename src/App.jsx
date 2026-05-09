@@ -518,9 +518,9 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
           ))}
         </div>
         <div style={{flex:1,padding:"32px",overflowY:"auto"}}>
-          {adminTab==="agency"       && <AgencyEditor       data={data} api={api} showSaved={showSaved}/>}
+          {adminTab==="agency"       && <AgencyEditor       data={data} api={api} reload={reload} showSaved={showSaved}/>}
           {adminTab==="rentals"      && <RentalsEditor      data={data} api={api} reload={reload} showSaved={showSaved}/>}
-          {adminTab==="villa"        && <VillaEditor        data={data} api={api} showSaved={showSaved}/>}
+          {adminTab==="villa"        && <VillaEditor        data={data} api={api} reload={reload} showSaved={showSaved}/>}
           {adminTab==="testimonials" && <TestimonialsEditor data={data} api={api} reload={reload} showSaved={showSaved}/>}
           {adminTab==="inventory"    && <InventoryEditor    data={data} api={api} reload={reload} showSaved={showSaved}/>}
           {adminTab==="accounting"   && <AccountingEditor   data={data} api={api} reload={reload} showSaved={showSaved}/>}
@@ -531,10 +531,10 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
 }
 
 // ─── Agency Editor (unchanged) ───────────────────────────────────────────────
-function AgencyEditor({ data, api, showSaved }) {
+function AgencyEditor({ data, api, reload, showSaved }) {
   const [form, setForm] = useState(data.agency);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const save = async () => { await api.put("/agency", form); showSaved(); };
+  const save = async () => { await api.put("/agency", form); await reload(); showSaved(); };
   return (
     <div>
       <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,marginBottom:24}}>Agency Information</h2>
@@ -634,10 +634,10 @@ function RentalsEditor({ data, api, reload, showSaved }) {
 }
 
 // ─── Villa Editor (unchanged) ────────────────────────────────────────────────
-function VillaEditor({ data, api, showSaved }) {
+function VillaEditor({ data, api, reload, showSaved }) {
   const [form, setForm] = useState({...data.villa});
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const save = async () => { await api.put("/villa", form); showSaved(); };
+  const save = async () => { await api.put("/villa", form); await reload(); showSaved(); };
   return (
     <div>
       <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,marginBottom:24}}>Villa Details</h2>
