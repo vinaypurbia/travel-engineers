@@ -14,6 +14,7 @@ const api = {
   post: (path, body) => fetch(`${API}${path}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }).then(r => r.json()),
   put: (path, body) => fetch(`${API}${path}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }).then(r => r.json()),
   delete: (path) => fetch(`${API}${path}`, { method:"DELETE" }).then(r => r.json()),
+  patch: (path, body) => fetch(`${API}${path}`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }).then(r => r.json()),
   upload: async (file) => { const fd = new FormData(); fd.append("file", file); const r = await fetch(`${API}/upload`, { method:"POST", body:fd }); return r.json(); },
 };
 
@@ -702,7 +703,8 @@ function VillaEditor({ data, api, showSaved }) {
 function TestimonialsEditor({ data, api, reload, showSaved }) {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(null);
-  const [tab, setTab] = useState("approved"); // "approved" | "pending"
+  const [tab, setTab] = useState("pending"); // start on pending so you see new reviews first
+  const [actionId, setActionId] = useState(null); // tracks which review is being actioned
   const approved = data.testimonials.filter(t => t.approved);
   const pending = data.testimonials.filter(t => !t.approved);
   const startEdit = (t) => { setForm({...t}); setEditId(t._id); };
@@ -714,8 +716,27 @@ function TestimonialsEditor({ data, api, reload, showSaved }) {
     await reload(); showSaved(); setEditId(null); setForm(null);
   };
   const del = async (id) => { if(window.confirm("Delete review?")){ await api.delete(`/testimonials/${id}`); await reload(); } };
-  const approve = async (t) => { await api.put(`/testimonials/${t._id}`, {...t, approved:true}); await reload(); showSaved(); };
-  const reject = async (t) => { await api.put(`/testimonials/${t._id}`, {...t, approved:false}); await reload(); };
+  const approve = async (t) => {
+    setActionId(t._id + "_approve");
+    try {
+      // Try PUT with full object first, fall back to PATCH with just the field
+      let res;
+      try { res = await api.put(`/testimonials/${t._id}`, {...t, approved:true}); }
+      catch { res = await api.patch(`/testimonials/${t._id}`, { approved:true }); }
+      await reload(); showSaved();
+    } catch(err) { alert("Approve failed: " + err.message); }
+    setActionId(null);
+  };
+  const reject = async (t) => {
+    setActionId(t._id + "_reject");
+    try {
+      let res;
+      try { res = await api.put(`/testimonials/${t._id}`, {...t, approved:false}); }
+      catch { res = await api.patch(`/testimonials/${t._id}`, { approved:false }); }
+      await reload();
+    } catch(err) { alert("Hide failed: " + err.message); }
+    setActionId(null);
+  };
   const list = tab === "approved" ? approved : pending;
   return (
     <div>
@@ -780,10 +801,16 @@ function TestimonialsEditor({ data, api, reload, showSaved }) {
             </div>
             <div style={{display:"flex",gap:8,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end"}}>
               {!t.approved && (
-                <button onClick={()=>approve(t)} style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>✓ Approve</button>
+                <button onClick={()=>approve(t)} disabled={actionId===t._id+"_approve"}
+                  style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"7px 14px",borderRadius:8,cursor:actionId===t._id+"_approve"?"not-allowed":"pointer",fontSize:13,fontWeight:600,opacity:actionId===t._id+"_approve"?0.5:1}}>
+                  {actionId===t._id+"_approve" ? "Saving..." : "✓ Approve"}
+                </button>
               )}
               {t.approved && (
-                <button onClick={()=>reject(t)} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:13}}>Hide</button>
+                <button onClick={()=>reject(t)} disabled={actionId===t._id+"_reject"}
+                  style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"7px 14px",borderRadius:8,cursor:actionId===t._id+"_reject"?"not-allowed":"pointer",fontSize:13,opacity:actionId===t._id+"_reject"?0.5:1}}>
+                  {actionId===t._id+"_reject" ? "Saving..." : "Hide"}
+                </button>
               )}
               <button onClick={()=>startEdit(t)} style={{background:"rgba(212,133,10,0.15)",border:"1px solid rgba(212,133,10,0.3)",color:"#f0c060",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:13}}>Edit</button>
               <button onClick={()=>del(t._id)} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"7px 10px",borderRadius:8,cursor:"pointer"}}><Icon name="trash" size={14}/></button>
