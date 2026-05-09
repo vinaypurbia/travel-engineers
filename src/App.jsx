@@ -466,7 +466,16 @@ function VillaEditor({ data, api, showSaved }) {
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const setAmenity = (i,k,v) => setForm(f=>({...f,amenities:f.amenities.map((a,j)=>j===i?{...a,[k]:v}:a)}));
   const setRoom = (i,k,v) => setForm(f=>({...f,rooms:f.rooms.map((r,j)=>j===i?{...r,[k]:v}:r)}));
-  const save = async () => { await api.put("/villa", form); showSaved(); };
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await api.put("/villa", form);
+      if (res && res._id) { showSaved(); alert("✅ Villa saved!"); }
+      else { alert("❌ Failed: " + JSON.stringify(res)); }
+    } catch(err) { alert("❌ Error: " + err.message); }
+    setSaving(false);
+  };
   return (
     <div>
       <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,marginBottom:24}}>Villa Settings</h2>
@@ -514,7 +523,7 @@ function VillaEditor({ data, api, showSaved }) {
           </div>
         ))}
       </div>
-      <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"12px 32px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>Save Villa</button>
+      <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"12px 32px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>{ saving ? "Saving..." : "Save Villa" }</button>
     </div>
   );
 }
