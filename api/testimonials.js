@@ -13,9 +13,9 @@ module.exports = async (req, res) => {
       let testimonials = await Testimonial.find().sort({ createdAt: -1 });
       if (testimonials.length === 0) {
         await Testimonial.insertMany([
-          { name: "Priya Sharma", location: "Mumbai", text: "The villa was absolutely gorgeous. Pool was clean and staff super helpful!", rating: 5 },
-          { name: "Rohan Mehta", location: "Bangalore", text: "Rented 3 scooties for our gang. Best decision ever!", rating: 5 },
-          { name: "Sarah & James", location: "London", text: "4 nights in the villa — complete paradise!", rating: 5 },
+          { name: "Priya Sharma", location: "Mumbai", text: "The villa was absolutely gorgeous. Pool was clean and staff super helpful!", rating: 5, approved: true },
+          { name: "Rohan Mehta", location: "Bangalore", text: "Rented 3 scooties for our gang. Best decision ever!", rating: 5, approved: true },
+          { name: "Sarah & James", location: "London", text: "4 nights in the villa — complete paradise!", rating: 5, approved: true },
         ]);
         testimonials = await Testimonial.find().sort({ createdAt: -1 });
       }
@@ -23,7 +23,7 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === "POST") {
-      const t = await Testimonial.create(req.body);
+      const t = await Testimonial.create({ ...req.body, approved: req.body.approved ?? false });
       return res.json(t);
     }
 
