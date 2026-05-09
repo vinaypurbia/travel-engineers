@@ -295,7 +295,11 @@ export default function App() {
               </div>
               <p style={{fontFamily:"'Lora'",fontStyle:"italic",color:"#444",lineHeight:1.7,marginBottom:20}}>"{t.text}"</p>
               <div>
-                <div style={{fontFamily:"'DM Sans'",fontWeight:600}}>{t.name}</div>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  <div style={{fontFamily:"'DM Sans'",fontWeight:600}}>{t.name}</div>
+                  {t.category==="villa" && <span style={{fontSize:11,background:"#e8f4fd",color:"#3182ce",padding:"2px 8px",borderRadius:10,fontWeight:600}}>🏡 Villa</span>}
+                  {t.category==="rental" && <span style={{fontSize:11,background:"#f0fff4",color:"#38a169",padding:"2px 8px",borderRadius:10,fontWeight:600}}>{t.vehicleType==="scooty"?"🛵":t.vehicleType==="bike"?"🏍️":"🚗"} {t.vehicleName||"Rental"}</span>}
+                </div>
                 <div style={{fontFamily:"'DM Sans'",fontSize:12,color:"#999"}}>{t.location}</div>
               </div>
             </div>
@@ -308,7 +312,7 @@ export default function App() {
             <div style={{fontFamily:"'DM Sans'",fontSize:12,letterSpacing:4,color:"#d4850a",textTransform:"uppercase",marginBottom:8}}>Share Your Experience</div>
             <h3 style={{fontFamily:"'Playfair Display'",fontSize:28,fontWeight:900,color:"#1a1a2e"}}>Leave a Review</h3>
           </div>
-          <ReviewForm api={api} reload={loadAllData} />
+          <ReviewForm api={api} reload={loadAllData} rentals={rentals} villa={villa} />
         </div>
       </section>
 
@@ -341,20 +345,50 @@ export default function App() {
   );
 }
 
-function ReviewForm({ api, reload }) {
-  const [form, setForm] = useState({ name:"", location:"", text:"", rating:5 });
-  const [status, setStatus] = useState(null); // null | "sending" | "done" | "error"
+function ReviewForm({ api, reload, rentals, villa }) {
+  const emptyForm = { name:"", location:"", text:"", rating:5, category:"villa", vehicleType:"", vehicleId:"" };
+  const [form, setForm] = useState(emptyForm);
+  const [status, setStatus] = useState(null);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  // Group available rentals by type
+  const scooties = (rentals||[]).filter(r=>r.available && r.type==="scooty");
+  const bikes    = (rentals||[]).filter(r=>r.available && r.type==="bike");
+  const cars     = (rentals||[]).filter(r=>r.available && r.type==="car");
+  const vehicleGroups = [
+    { type:"scooty", icon:"🛵", label:"Scooties", items: scooties },
+    { type:"bike",   icon:"🏍️", label:"Bikes",    items: bikes },
+    { type:"car",    icon:"🚗", label:"Cars",     items: cars },
+  ].filter(g=>g.items.length > 0);
+
+  // When category changes, reset vehicle selection
+  const setCategory = (cat) => setForm(f=>({...f, category:cat, vehicleType:"", vehicleId:""}));
+  const setVehicleType = (vt) => setForm(f=>({...f, vehicleType:vt, vehicleId:""}));
+
   const submit = async () => {
     if (!form.name.trim() || !form.text.trim()) { alert("Please fill in your name and review."); return; }
+    if (form.category==="rental" && !form.vehicleId) { alert("Please select which vehicle you rented."); return; }
     setStatus("sending");
+    const selectedVehicle = form.vehicleId ? (rentals||[]).find(r=>r._id===form.vehicleId) : null;
+    const payload = {
+      name: form.name, location: form.location, text: form.text, rating: form.rating,
+      approved: false,
+      category: form.category,
+      vehicleType: form.vehicleType || null,
+      vehicleName: selectedVehicle ? selectedVehicle.name : null,
+      vehicleId: form.vehicleId || null,
+    };
     try {
-      await api.post("/testimonials", { ...form, approved: false });
+      await api.post("/testimonials", payload);
       await reload();
       setStatus("done");
-      setForm({ name:"", location:"", text:"", rating:5 });
+      setForm(emptyForm);
     } catch { setStatus("error"); }
   };
+
+  const inputStyle = {width:"100%",padding:"12px 14px",border:"1.5px solid #e8e8e8",borderRadius:10,fontFamily:"'DM Sans'",fontSize:14,outline:"none",color:"#1a1a2e",transition:"border-color 0.2s",background:"white"};
+  const labelStyle = {display:"block",fontFamily:"'DM Sans'",fontSize:11,fontWeight:600,color:"#999",textTransform:"uppercase",letterSpacing:2,marginBottom:6};
+
   if (status === "done") return (
     <div style={{textAlign:"center",padding:"32px 0"}}>
       <div style={{fontSize:48,marginBottom:16}}>🙏</div>
@@ -363,39 +397,88 @@ function ReviewForm({ api, reload }) {
       <button onClick={()=>setStatus(null)} style={{marginTop:20,background:"transparent",border:"1px solid #ddd",color:"#555",padding:"8px 20px",borderRadius:20,cursor:"pointer",fontFamily:"'DM Sans'",fontSize:13}}>Write another</button>
     </div>
   );
+
   return (
     <div>
+      {/* Category — Villa or Rental */}
+      <div style={{marginBottom:20}}>
+        <label style={labelStyle}>What are you reviewing? *</label>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          {[["villa","🏡","Villa Stay"],["rental","🛵","Rental Vehicle"]].map(([val,icon,lbl])=>(
+            <button key={val} onClick={()=>setCategory(val)}
+              style={{padding:"14px",borderRadius:12,border:`2px solid ${form.category===val?"#d4850a":"#e8e8e8"}`,background:form.category===val?"rgba(212,133,10,0.06)":"white",cursor:"pointer",fontFamily:"'DM Sans'",fontWeight:600,fontSize:14,color:form.category===val?"#d4850a":"#666",transition:"all 0.2s",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              <span style={{fontSize:20}}>{icon}</span>{lbl}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* If Rental — pick vehicle type then specific vehicle */}
+      {form.category === "rental" && (
+        <div style={{marginBottom:20,background:"#faf8f3",borderRadius:12,padding:16}}>
+          <label style={labelStyle}>Vehicle Type *</label>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:form.vehicleType?14:0}}>
+            {vehicleGroups.map(g=>(
+              <button key={g.type} onClick={()=>setVehicleType(g.type)}
+                style={{padding:"10px 18px",borderRadius:20,border:`2px solid ${form.vehicleType===g.type?"#d4850a":"#e8e8e8"}`,background:form.vehicleType===g.type?"#d4850a":"white",color:form.vehicleType===g.type?"white":"#666",cursor:"pointer",fontFamily:"'DM Sans'",fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6,transition:"all 0.2s"}}>
+                {g.icon} {g.label} <span style={{opacity:0.7,fontSize:11}}>({g.items.length})</span>
+              </button>
+            ))}
+          </div>
+          {form.vehicleType && (
+            <div style={{marginTop:14}}>
+              <label style={labelStyle}>Select the vehicle you rented *</label>
+              <div style={{display:"grid",gap:8}}>
+                {vehicleGroups.find(g=>g.type===form.vehicleType)?.items.map(v=>(
+                  <button key={v._id} onClick={()=>set("vehicleId", v._id)}
+                    style={{display:"flex",alignItems:"center",gap:14,padding:"10px 14px",borderRadius:10,border:`2px solid ${form.vehicleId===v._id?"#d4850a":"#e8e8e8"}`,background:form.vehicleId===v._id?"rgba(212,133,10,0.06)":"white",cursor:"pointer",textAlign:"left",transition:"all 0.2s"}}>
+                    {v.image && <img src={v.image} alt={v.name} style={{width:48,height:38,objectFit:"cover",borderRadius:6,flexShrink:0}} onError={e=>e.target.style.display="none"}/>}
+                    <div>
+                      <div style={{fontFamily:"'DM Sans'",fontWeight:600,fontSize:14,color:form.vehicleId===v._id?"#d4850a":"#1a1a2e"}}>{v.name}</div>
+                      <div style={{fontFamily:"'DM Sans'",fontSize:12,color:"#999"}}>{v.price}{v.period}</div>
+                    </div>
+                    {form.vehicleId===v._id && <span style={{marginLeft:"auto",color:"#d4850a",fontSize:18}}>✓</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Star Rating */}
       <div style={{marginBottom:20}}>
-        <label style={{display:"block",fontFamily:"'DM Sans'",fontSize:11,fontWeight:600,color:"#999",textTransform:"uppercase",letterSpacing:2,marginBottom:10}}>Your Rating</label>
+        <label style={labelStyle}>Your Rating *</label>
         <div style={{display:"flex",gap:8}}>
           {[1,2,3,4,5].map(n=>(
             <span key={n} onClick={()=>set("rating",n)} style={{fontSize:32,cursor:"pointer",color:n<=form.rating?"#d4850a":"#ddd",transition:"color 0.15s"}}>★</span>
           ))}
         </div>
       </div>
+
       {/* Name + Location */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
         <div>
-          <label style={{display:"block",fontFamily:"'DM Sans'",fontSize:11,fontWeight:600,color:"#999",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Your Name *</label>
-          <input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="e.g. Priya Sharma"
-            style={{width:"100%",padding:"12px 14px",border:"1.5px solid #e8e8e8",borderRadius:10,fontFamily:"'DM Sans'",fontSize:14,outline:"none",color:"#1a1a2e",transition:"border-color 0.2s"}}
+          <label style={labelStyle}>Your Name *</label>
+          <input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="e.g. Priya Sharma" style={inputStyle}
             onFocus={e=>e.target.style.borderColor="#d4850a"} onBlur={e=>e.target.style.borderColor="#e8e8e8"} />
         </div>
         <div>
-          <label style={{display:"block",fontFamily:"'DM Sans'",fontSize:11,fontWeight:600,color:"#999",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Location</label>
-          <input value={form.location} onChange={e=>set("location",e.target.value)} placeholder="e.g. Mumbai"
-            style={{width:"100%",padding:"12px 14px",border:"1.5px solid #e8e8e8",borderRadius:10,fontFamily:"'DM Sans'",fontSize:14,outline:"none",color:"#1a1a2e",transition:"border-color 0.2s"}}
+          <label style={labelStyle}>Location</label>
+          <input value={form.location} onChange={e=>set("location",e.target.value)} placeholder="e.g. Mumbai" style={inputStyle}
             onFocus={e=>e.target.style.borderColor="#d4850a"} onBlur={e=>e.target.style.borderColor="#e8e8e8"} />
         </div>
       </div>
+
       {/* Review Text */}
       <div style={{marginBottom:24}}>
-        <label style={{display:"block",fontFamily:"'DM Sans'",fontSize:11,fontWeight:600,color:"#999",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Your Review *</label>
-        <textarea value={form.text} onChange={e=>set("text",e.target.value)} placeholder="Tell us about your experience..." rows={4}
-          style={{width:"100%",padding:"12px 14px",border:"1.5px solid #e8e8e8",borderRadius:10,fontFamily:"'Lora'",fontSize:14,outline:"none",color:"#1a1a2e",resize:"vertical",lineHeight:1.6,transition:"border-color 0.2s"}}
+        <label style={labelStyle}>Your Review *</label>
+        <textarea value={form.text} onChange={e=>set("text",e.target.value)}
+          placeholder={form.category==="villa" ? "Tell us about your villa stay..." : form.vehicleId ? `Tell us about your ${(rentals||[]).find(r=>r._id===form.vehicleId)?.name||"rental"} experience...` : "Tell us about your rental experience..."}
+          rows={4} style={{...inputStyle,fontFamily:"'Lora'",resize:"vertical",lineHeight:1.6}}
           onFocus={e=>e.target.style.borderColor="#d4850a"} onBlur={e=>e.target.style.borderColor="#e8e8e8"} />
       </div>
+
       {status === "error" && <p style={{color:"#e53e3e",fontSize:13,fontFamily:"'DM Sans'",marginBottom:12}}>Something went wrong. Please try again.</p>}
       <button onClick={submit} disabled={status==="sending"}
         style={{width:"100%",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"14px",borderRadius:12,fontFamily:"'DM Sans'",fontWeight:700,fontSize:15,cursor:status==="sending"?"not-allowed":"pointer",opacity:status==="sending"?0.7:1,transition:"opacity 0.2s"}}>
@@ -690,6 +773,8 @@ function TestimonialsEditor({ data, api, reload, showSaved }) {
                 <span style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>{t.location}</span>
                 <span style={{color:"#f0c060"}}>{"★".repeat(t.rating)}</span>
                 {!t.approved && <span style={{fontSize:11,background:"rgba(240,192,96,0.15)",color:"#f0c060",padding:"2px 8px",borderRadius:10,fontWeight:600}}>PENDING</span>}
+                {t.category==="villa" && <span style={{fontSize:11,background:"rgba(99,179,237,0.15)",color:"#63b3ed",padding:"2px 8px",borderRadius:10,fontWeight:600}}>🏡 Villa</span>}
+                {t.category==="rental" && <span style={{fontSize:11,background:"rgba(154,230,180,0.15)",color:"#68d391",padding:"2px 8px",borderRadius:10,fontWeight:600}}>{t.vehicleType==="scooty"?"🛵":t.vehicleType==="bike"?"🏍️":"🚗"} {t.vehicleName||t.vehicleType||"Rental"}</span>}
               </div>
               <p style={{fontSize:14,color:"rgba(255,255,255,0.5)",fontStyle:"italic"}}>"{t.text}"</p>
             </div>
