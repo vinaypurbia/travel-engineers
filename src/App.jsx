@@ -83,7 +83,12 @@ export default function App() {
     setLoading(false);
   };
 
-  useEffect(() => { loadAllData(); }, []);
+  useEffect(() => {
+  loadAllData();
+  if (window.location.pathname === "/admin") {
+    setView("login");
+  }
+}, []);
   const showSaved = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
 
   if (loading) return (
