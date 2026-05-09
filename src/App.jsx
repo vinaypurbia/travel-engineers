@@ -301,6 +301,15 @@ export default function App() {
             </div>
           ))}
         </div>
+
+        {/* LEAVE A REVIEW FORM */}
+        <div style={{maxWidth:600,margin:"60px auto 0",background:"white",borderRadius:24,padding:"40px",boxShadow:"0 4px 30px rgba(0,0,0,0.08)"}}>
+          <div style={{textAlign:"center",marginBottom:28}}>
+            <div style={{fontFamily:"'DM Sans'",fontSize:12,letterSpacing:4,color:"#d4850a",textTransform:"uppercase",marginBottom:8}}>Share Your Experience</div>
+            <h3 style={{fontFamily:"'Playfair Display'",fontSize:28,fontWeight:900,color:"#1a1a2e"}}>Leave a Review</h3>
+          </div>
+          <ReviewForm api={api} reload={loadAllData} />
+        </div>
       </section>
 
       {/* CONTACT */}
@@ -331,6 +340,72 @@ export default function App() {
     </div>
   );
 }
+
+function ReviewForm({ api, reload }) {
+  const [form, setForm] = useState({ name:"", location:"", text:"", rating:5 });
+  const [status, setStatus] = useState(null); // null | "sending" | "done" | "error"
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const submit = async () => {
+    if (!form.name.trim() || !form.text.trim()) { alert("Please fill in your name and review."); return; }
+    setStatus("sending");
+    try {
+      await api.post("/testimonials", { ...form, approved: false });
+      await reload();
+      setStatus("done");
+      setForm({ name:"", location:"", text:"", rating:5 });
+    } catch { setStatus("error"); }
+  };
+  if (status === "done") return (
+    <div style={{textAlign:"center",padding:"32px 0"}}>
+      <div style={{fontSize:48,marginBottom:16}}>🙏</div>
+      <h4 style={{fontFamily:"'Playfair Display'",fontSize:22,marginBottom:8,color:"#1a1a2e"}}>Thank you!</h4>
+      <p style={{fontFamily:"'DM Sans'",color:"#888",fontSize:14}}>Your review has been submitted and is awaiting approval.</p>
+      <button onClick={()=>setStatus(null)} style={{marginTop:20,background:"transparent",border:"1px solid #ddd",color:"#555",padding:"8px 20px",borderRadius:20,cursor:"pointer",fontFamily:"'DM Sans'",fontSize:13}}>Write another</button>
+    </div>
+  );
+  return (
+    <div>
+      {/* Star Rating */}
+      <div style={{marginBottom:20}}>
+        <label style={{display:"block",fontFamily:"'DM Sans'",fontSize:11,fontWeight:600,color:"#999",textTransform:"uppercase",letterSpacing:2,marginBottom:10}}>Your Rating</label>
+        <div style={{display:"flex",gap:8}}>
+          {[1,2,3,4,5].map(n=>(
+            <span key={n} onClick={()=>set("rating",n)} style={{fontSize:32,cursor:"pointer",color:n<=form.rating?"#d4850a":"#ddd",transition:"color 0.15s"}}>★</span>
+          ))}
+        </div>
+      </div>
+      {/* Name + Location */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+        <div>
+          <label style={{display:"block",fontFamily:"'DM Sans'",fontSize:11,fontWeight:600,color:"#999",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Your Name *</label>
+          <input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="e.g. Priya Sharma"
+            style={{width:"100%",padding:"12px 14px",border:"1.5px solid #e8e8e8",borderRadius:10,fontFamily:"'DM Sans'",fontSize:14,outline:"none",color:"#1a1a2e",transition:"border-color 0.2s"}}
+            onFocus={e=>e.target.style.borderColor="#d4850a"} onBlur={e=>e.target.style.borderColor="#e8e8e8"} />
+        </div>
+        <div>
+          <label style={{display:"block",fontFamily:"'DM Sans'",fontSize:11,fontWeight:600,color:"#999",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Location</label>
+          <input value={form.location} onChange={e=>set("location",e.target.value)} placeholder="e.g. Mumbai"
+            style={{width:"100%",padding:"12px 14px",border:"1.5px solid #e8e8e8",borderRadius:10,fontFamily:"'DM Sans'",fontSize:14,outline:"none",color:"#1a1a2e",transition:"border-color 0.2s"}}
+            onFocus={e=>e.target.style.borderColor="#d4850a"} onBlur={e=>e.target.style.borderColor="#e8e8e8"} />
+        </div>
+      </div>
+      {/* Review Text */}
+      <div style={{marginBottom:24}}>
+        <label style={{display:"block",fontFamily:"'DM Sans'",fontSize:11,fontWeight:600,color:"#999",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Your Review *</label>
+        <textarea value={form.text} onChange={e=>set("text",e.target.value)} placeholder="Tell us about your experience..." rows={4}
+          style={{width:"100%",padding:"12px 14px",border:"1.5px solid #e8e8e8",borderRadius:10,fontFamily:"'Lora'",fontSize:14,outline:"none",color:"#1a1a2e",resize:"vertical",lineHeight:1.6,transition:"border-color 0.2s"}}
+          onFocus={e=>e.target.style.borderColor="#d4850a"} onBlur={e=>e.target.style.borderColor="#e8e8e8"} />
+      </div>
+      {status === "error" && <p style={{color:"#e53e3e",fontSize:13,fontFamily:"'DM Sans'",marginBottom:12}}>Something went wrong. Please try again.</p>}
+      <button onClick={submit} disabled={status==="sending"}
+        style={{width:"100%",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"14px",borderRadius:12,fontFamily:"'DM Sans'",fontWeight:700,fontSize:15,cursor:status==="sending"?"not-allowed":"pointer",opacity:status==="sending"?0.7:1,transition:"opacity 0.2s"}}>
+        {status==="sending" ? "Submitting..." : "Submit Review →"}
+      </button>
+      <p style={{textAlign:"center",fontFamily:"'DM Sans'",fontSize:12,color:"#bbb",marginTop:12}}>Reviews are published after approval</p>
+    </div>
+  );
+}
+
 
 function LoginScreen({ loginInput, setLoginInput, loginError, onLogin, onBack }) {
   return (
