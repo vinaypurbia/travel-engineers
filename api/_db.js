@@ -14,7 +14,7 @@ async function connectDB() {
   return cached.conn;
 }
 
-// ── Models ──────────────────────────────────────────────────────────────────
+// ── Existing Models ──────────────────────────────────────────────────────────
 const agencySchema = new mongoose.Schema({
   name: { type: String, default: "IslandDrift" },
   tagline: { type: String, default: "Ride Free. Stay Wild. Explore More." },
@@ -68,10 +68,121 @@ const testimonialSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
+// ── NEW: Inventory Model ─────────────────────────────────────────────────────
+// Tracks all bookable/ownable assets: tours, villas, vehicles, equipment
+const inventorySchema = new mongoose.Schema({
+  // What kind of asset
+  type: {
+    type: String,
+    enum: ["tour", "villa", "vehicle", "equipment"],
+    required: true,
+  },
+  // Vehicle sub-type (only used when type === "vehicle")
+  vehicleType: {
+    type: String,
+    enum: ["scooty", "bike", "car", ""],
+    default: "",
+  },
+  name: { type: String, required: true },
+  description: { type: String, default: "" },
+
+  // Availability
+  status: {
+    type: String,
+    enum: ["available", "booked", "maintenance"],
+    default: "available",
+  },
+
+  // Pricing
+  pricePerDay: { type: Number, default: 0 },   // numeric, in INR
+  currency: { type: String, default: "INR" },
+
+  // Capacity / meta
+  capacity: { type: Number, default: 1 },       // guests / seats / units
+  location: { type: String, default: "" },
+  image: { type: String, default: "" },
+
+  // Booking windows
+  bookedDates: [
+    {
+      from: Date,
+      to: Date,
+      clientName: String,
+      bookingRef: String,
+    },
+  ],
+
+  // Link back to an existing Rental doc (for vehicles already in rentals collection)
+  linkedRentalId: { type: mongoose.Schema.Types.ObjectId, ref: "Rental", default: null },
+
+  notes: { type: String, default: "" },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+});
+
+// ── NEW: Transaction Model ───────────────────────────────────────────────────
+// Records every income or expense entry for the accounting ledger
+const transactionSchema = new mongoose.Schema({
+  // Income or expense
+  type: { type: String, enum: ["income", "expense"], required: true },
+
+  // Category tells us the revenue/cost stream
+  category: {
+    type: String,
+    enum: [
+      "villa_rental",       // income: villa booking revenue
+      "tour_booking",       // income: tour package revenue
+      "vehicle_rental",     // income: scooty/bike/car rental revenue
+      "agency_commission",  // income: commission earned from agency referrals
+      "other_income",       // income: anything else
+      "maintenance",        // expense: vehicle/property maintenance
+      "utilities",          // expense: electricity, water, etc.
+      "staff",              // expense: salaries, wages
+      "supplies",           // expense: consumables, equipment purchases
+      "marketing",          // expense: ads, promotions
+      "other_expense",      // expense: anything else
+    ],
+    required: true,
+  },
+
+  amount: { type: Number, required: true },       // always positive
+  currency: { type: String, default: "INR" },
+  date: { type: Date, default: Date.now },
+
+  // Human-readable description / memo
+  description: { type: String, default: "" },
+
+  // Optional links to other documents
+  linkedBookingId: { type: String, default: "" },
+  linkedInventoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Inventory", default: null },
+  linkedRentalId: { type: mongoose.Schema.Types.ObjectId, ref: "Rental", default: null },
+
+  // Client / agency info
+  clientName: { type: String, default: "" },
+  agencyName: { type: String, default: "" },
+
+  // Payment tracking
+  paymentStatus: {
+    type: String,
+    enum: ["paid", "pending", "partial"],
+    default: "paid",
+  },
+  paymentMethod: {
+    type: String,
+    enum: ["cash", "upi", "bank_transfer", "card", "other"],
+    default: "cash",
+  },
+
+  notes: { type: String, default: "" },
+  createdAt: { type: Date, default: Date.now },
+});
+
 module.exports = {
   connectDB,
-  Agency: mongoose.models.Agency || mongoose.model("Agency", agencySchema),
-  Rental: mongoose.models.Rental || mongoose.model("Rental", rentalSchema),
-  Villa: mongoose.models.Villa || mongoose.model("Villa", villaSchema),
+  Agency:      mongoose.models.Agency      || mongoose.model("Agency",      agencySchema),
+  Rental:      mongoose.models.Rental      || mongoose.model("Rental",      rentalSchema),
+  Villa:       mongoose.models.Villa       || mongoose.model("Villa",       villaSchema),
   Testimonial: mongoose.models.Testimonial || mongoose.model("Testimonial", testimonialSchema),
+  Inventory:   mongoose.models.Inventory   || mongoose.model("Inventory",   inventorySchema),
+  Transaction: mongoose.models.Transaction || mongoose.model("Transaction", transactionSchema),
 };
