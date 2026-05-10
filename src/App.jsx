@@ -52,6 +52,46 @@ function ImageUpload({ value, onChange, label="Image" }) {
   );
 }
 
+// ─── Mobile-Responsive Navbar ─────────────────────────────────────────────────
+function MobileNav({ agency, activeNav, setActiveNav }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const scrollTo = (id) => {
+    document.getElementById(`sec-${id}`)?.scrollIntoView({behavior:"smooth"});
+    setActiveNav(id);
+    setMenuOpen(false);
+  };
+  return (
+    <>
+      <nav style={{position:"fixed",top:0,left:0,right:0,zIndex:100,padding:"0 5%",height:70,display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(10,22,40,0.95)",backdropFilter:"blur(12px)",borderBottom:"1px solid rgba(212,133,10,0.2)"}}>
+        <div style={{fontFamily:"'Playfair Display'",fontWeight:900,fontSize:22,color:"#f0c060",cursor:"pointer"}} onClick={()=>scrollTo("home")}>
+          {agency.name}
+        </div>
+        <div className="nav-desktop" style={{display:"flex",gap:28,alignItems:"center"}}>
+          {["home","rentals","villa","contact"].map(n=>(
+            <span key={n} className="nav-link" style={{color:activeNav===n?"#f0c060":"rgba(255,255,255,0.7)"}}
+              onClick={()=>scrollTo(n)}>{n}</span>
+          ))}
+        </div>
+        <button onClick={()=>setMenuOpen(o=>!o)} className="hamburger"
+          style={{background:"transparent",border:"none",color:"#f0c060",fontSize:24,cursor:"pointer",padding:"4px 8px",display:"none"}}>
+          {menuOpen ? "\u2715" : "\u2630"}
+        </button>
+        <style>{".hamburger{display:none!important;} @media(max-width:640px){.hamburger{display:block!important;} .nav-desktop{display:none!important;}}"}</style>
+      </nav>
+      {menuOpen&&(
+        <div style={{position:"fixed",top:70,left:0,right:0,zIndex:99,background:"rgba(10,22,40,0.98)",borderBottom:"1px solid rgba(212,133,10,0.2)",padding:"12px 0",display:"flex",flexDirection:"column"}}>
+          {["home","rentals","villa","contact"].map(n=>(
+            <button key={n} onClick={()=>scrollTo(n)}
+              style={{background:"transparent",border:"none",color:activeNav===n?"#f0c060":"rgba(255,255,255,0.7)",padding:"14px 5%",textAlign:"left",fontFamily:"'DM Sans'",fontSize:15,fontWeight:500,textTransform:"uppercase",letterSpacing:2,cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+              {n}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function App() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -124,7 +164,7 @@ export default function App() {
   const filtered = filterType === "all" ? rentals : rentals.filter(r => r.type === filterType);
 
   return (
-    <div style={{fontFamily:"'Lora',Georgia,serif",background:"#faf8f3",color:"#1a1a2e",minHeight:"100vh"}}>
+    <div style={{fontFamily:"'Lora',Georgia,serif",background:"#faf8f3",color:"#1a1a2e",minHeight:"100vh",overflowX:"hidden",maxWidth:"100vw"}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Lora:wght@400;600;700&family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
@@ -141,23 +181,16 @@ export default function App() {
         .nav-link{font-family:'DM Sans';font-weight:500;font-size:14px;text-transform:uppercase;letter-spacing:2px;cursor:pointer;transition:color 0.2s;}
         .section-title{font-family:'Playfair Display',serif;font-size:clamp(32px,5vw,52px);font-weight:900;line-height:1.1;}
         ::-webkit-scrollbar{width:6px;} ::-webkit-scrollbar-thumb{background:#d4850a;border-radius:3px;}
+        @media(max-width:768px){
+          .nav-link{display:none;}
+          nav{padding:0 4% !important;}
+          .section-title{font-size:28px !important;}
+          .btn-primary,.btn-outline{padding:12px 20px !important;font-size:13px !important;}
+        }
       `}</style>
 
       {/* NAVBAR */}
-      <nav style={{position:"fixed",top:0,left:0,right:0,zIndex:100,padding:"0 5%",height:70,display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(10,22,40,0.95)",backdropFilter:"blur(12px)",borderBottom:"1px solid rgba(212,133,10,0.2)"}}>
-        <div style={{fontFamily:"'Playfair Display'",fontWeight:900,fontSize:24,color:"#f0c060",cursor:"pointer"}} onClick={()=>document.getElementById("sec-home")?.scrollIntoView({behavior:"smooth"})}>
-          {agency.name}
-        </div>
-        <div style={{display:"flex",gap:28,alignItems:"center"}}>
-          {["home","rentals","villa","contact"].map(n=>(
-            <span key={n} className="nav-link" style={{color:activeNav===n?"#f0c060":"rgba(255,255,255,0.7)"}}
-              onClick={()=>{setActiveNav(n);document.getElementById(`sec-${n}`)?.scrollIntoView({behavior:"smooth"});}}>
-              {n}
-            </span>
-          ))}
-          <button onClick={()=>setView("login")} style={{background:"rgba(212,133,10,0.2)",border:"1px solid #d4850a",color:"#f0c060",padding:"7px 16px",borderRadius:20,cursor:"pointer",fontFamily:"'DM Sans'",fontSize:12,fontWeight:600}}>ADMIN</button>
-        </div>
-      </nav>
+      <MobileNav agency={agency} activeNav={activeNav} setActiveNav={setActiveNav} />
 
       {/* HERO */}
       <section id="sec-home" style={{height:"100vh",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
@@ -256,7 +289,7 @@ export default function App() {
             {villa.tagline&&<p style={{fontFamily:"'Lora'",fontStyle:"italic",color:"rgba(255,255,255,0.6)",marginTop:16,fontSize:18}}>{villa.tagline}</p>}
           </div>
           {villa.image&&<div style={{borderRadius:24,overflow:"hidden",marginBottom:48,height:400,backgroundImage:`url(${villa.image})`,backgroundSize:"cover",backgroundPosition:"center"}}/>}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:48,marginBottom:48}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:32,marginBottom:48}}>
             <div>
               {villa.description&&<p style={{fontFamily:"'Lora'",fontSize:17,lineHeight:1.8,color:"rgba(255,255,255,0.75)",marginBottom:28}}>{villa.description}</p>}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
