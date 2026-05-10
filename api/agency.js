@@ -10,17 +10,18 @@ module.exports = async (req, res) => {
     await connectDB();
 
     if (req.method === "GET") {
-      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+      res.setHeader("Cache-Control", "no-store");
       let agency = await Agency.findOne().lean();
       if (!agency) agency = await Agency.create({});
       return res.json(agency);
     }
 
     if (req.method === "PUT" || req.method === "POST") {
+      const body = req.body;
       const agency = await Agency.findOneAndUpdate(
         {},
-        { $set: req.body },
-        { new: true, upsert: true, runValidators: false }
+        { $set: body },
+        { new: true, upsert: true, runValidators: false, strict: false }
       ).lean();
       return res.json(agency);
     }
