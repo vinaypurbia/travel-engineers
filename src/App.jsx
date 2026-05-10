@@ -5,7 +5,7 @@ const API = "/api";
 
 
 const api = {
-  get: (path) => fetch(`${API}${path}`).then(r => r.json()),
+  get: (path) => fetch(`${API}${path}`).then(r => r.text()).then(t => { try { return JSON.parse(t); } catch { return {}; } }),
   post: (path, body) => fetch(`${API}${path}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
   put: (path, body) => fetch(`${API}${path}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
   delete: (path) => fetch(`${API}${path}`, { method:"DELETE" }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
@@ -83,8 +83,8 @@ export default function App() {
       setLoading(false);
     } catch (err) {
       console.error("API failed:", err);
+      setData({ agency:{name:"",tagline:"",heroSubtitle:"",phone:"",email:"",address:"",whatsapp:"",heroImage:""}, rentals:[], villa:{name:"",tagline:"",description:"",price:"",period:"/night",checkIn:"",checkOut:"",minStay:"",maxGuests:"",image:"",amenities:[],rooms:[]}, testimonials:[], inventory:[], accounting:[], bookings:[] });
       setLoading(false);
-      // no fallback - show real data only
     }
   };
 
