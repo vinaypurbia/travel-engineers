@@ -526,7 +526,22 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
 function AgencyEditor({ data, api, reload, showSaved }) {
   const [form, setForm] = useState(data.agency);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const save = async () => { await api.put("/agency", form); await reload(); showSaved(); };
+ const save = async () => {
+  setSaving(true);
+  try {
+    const res = await api.put("/agency", form);
+    if (res && (res._id || res.name)) {
+      await reload();
+      showSaved();
+      alert("✅ Agency info saved successfully!");
+    } else {
+      alert("❌ Save failed! Response: " + JSON.stringify(res));
+    }
+  } catch (err) {
+    alert("❌ Error: " + err.message);
+  }
+  setSaving(false);
+};
   return (
     <div>
       <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,marginBottom:24}}>Agency Information</h2>
