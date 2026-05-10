@@ -485,6 +485,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
     {id:"testimonials",label:"⭐ Reviews"},
     {id:"inventory",   label:"📦 Inventory"},
     {id:"accounting",  label:"💰 Accounting"},
+    {id:"bookings",    label:"📋 Bookings", badge: (data.bookings||[]).filter(b=>b.status==="pending").length},
   ];
   return (
     <div style={{minHeight:"100vh",background:"#0d1b2e",fontFamily:"'DM Sans',sans-serif",color:"white"}}>
@@ -509,9 +510,10 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
       <div style={{display:"flex",minHeight:"calc(100vh - 64px)"}}>
         <div style={{width:220,background:"rgba(0,0,0,0.2)",borderRight:"1px solid rgba(255,255,255,0.06)",padding:"24px 0",flexShrink:0}}>
           {tabs.map(t=>(
-            <button key={t.id} onClick={()=>setAdminTab(t.id)} style={{width:"100%",padding:"14px 24px",textAlign:"left",background:adminTab===t.id?"rgba(212,133,10,0.15)":"transparent",border:"none",borderLeft:`3px solid ${adminTab===t.id?"#d4850a":"transparent"}`,color:adminTab===t.id?"#f0c060":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:14,fontFamily:"'DM Sans'",fontWeight:500}}>
-              {t.label}
-            </button>
+            <button key={t.id} onClick={()=>setAdminTab(t.id)} style={{width:"100%",padding:"14px 24px",textAlign:"left",background:adminTab===t.id?"rgba(212,133,10,0.15)":"transparent",border:"none",borderLeft:`3px solid ${adminTab===t.id?"#d4850a":"transparent"}`,color:adminTab===t.id?"#f0c060":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:14,fontFamily:"'DM Sans'",fontWeight:500,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span>{t.label}</span>
+                {t.badge>0&&<span style={{background:"#ef4444",color:"white",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:10,minWidth:18,textAlign:"center"}}>{t.badge}</span>}
+              </button>
           ))}
         </div>
         <div style={{flex:1,padding:"32px",overflowY:"auto"}}>
@@ -521,6 +523,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
           {adminTab==="testimonials" && <TestimonialsEditor data={data} api={api} reload={reload} showSaved={showSaved}/>}
           {adminTab==="inventory"    && <InventoryEditor    data={data} api={api} reload={reload} showSaved={showSaved}/>}
           {adminTab==="accounting"   && <AccountingEditor   data={data} api={api} reload={reload} showSaved={showSaved}/>}
+          {adminTab==="bookings"     && <BookingsEditor     data={data} api={api} reload={reload} showSaved={showSaved}/>}
         </div>
       </div>
     </div>
@@ -1514,6 +1517,319 @@ function AccountingEditor({ data, api, reload, showSaved }) {
                   <button onClick={()=>del(tx._id)} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.15)",color:"#ff6b6b",padding:"4px 8px",borderRadius:6,cursor:"pointer"}}><Icon name="trash" size={12}/></button>
                 </div>
               </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Booking Modal (public site) ─────────────────────────────────────────────
+function BookingModal({ vehicle, whatsapp, api, onClose }) {
+  const today = new Date().toISOString().slice(0,10);
+  const [form, setForm] = useState({ customerName:"", phone:"", checkIn:today, checkOut:"", stayAddress:"", notes:"" });
+  const [step, setStep] = useState("form"); // form | success
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const days = form.checkIn && form.checkOut
+    ? Math.max(0, Math.round((new Date(form.checkOut) - new Date(form.checkIn)) / 864e5))
+    : 0;
+  const priceNum = vehicle.price ? Number(String(vehicle.price).replace(/[^0-9]/g,"")) : 0;
+  const total = priceNum * days;
+
+  const submit = async () => {
+    if (!form.customerName.trim()) { setError("Please enter your name."); return; }
+    if (!form.phone.trim() || form.phone.length < 7) { setError("Please enter a valid phone number."); return; }
+    if (!form.checkIn) { setError("Please select a check-in date."); return; }
+    if (!form.checkOut) { setError("Please select a check-out date."); return; }
+    if (new Date(form.checkOut) <= new Date(form.checkIn)) { setError("Check-out must be after check-in."); return; }
+    if (!form.stayAddress.trim()) { setError("Please enter your hotel or stay address."); return; }
+    setError(""); setLoading(true);
+    try {
+      const res = await api.post("/bookings", { ...form, vehicleName: vehicle.name, vehicleId: vehicle._id });
+      setLoading(false);
+      if (res.whatsappUrl) window.open(res.whatsappUrl, "_blank");
+      setStep("success");
+    } catch(e) {
+      setLoading(false);
+      setError("Something went wrong. Please try again.");
+    }
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
+      {/* Backdrop */}
+      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(4px)"}} onClick={onClose}/>
+      {/* Modal */}
+      <div style={{position:"relative",background:"#0d1b2e",border:"1px solid rgba(240,192,96,0.2)",borderRadius:20,width:"100%",maxWidth:480,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.6)"}}>
+        {/* Header */}
+        <div style={{padding:"22px 24px 16px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",gap:14,alignItems:"center"}}>
+          {vehicle.image && <img src={vehicle.image} alt="" style={{width:56,height:56,objectFit:"cover",borderRadius:10,flexShrink:0}}/>}
+          <div style={{flex:1}}>
+            <div style={{fontFamily:"'Playfair Display'",fontSize:20,fontWeight:700,color:"white"}}>{vehicle.name}</div>
+            <div style={{fontSize:13,color:"#f0c060",fontWeight:600,marginTop:2}}>
+              {vehicle.price && `₹${vehicle.price}`}<span style={{color:"rgba(255,255,255,0.3)",fontWeight:400}}>{vehicle.period||"/day"}</span>
+            </div>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.06)",border:"none",color:"rgba(255,255,255,0.5)",width:32,height:32,borderRadius:"50%",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+        </div>
+
+        {step==="success" ? (
+          <div style={{padding:"40px 24px",textAlign:"center"}}>
+            <div style={{fontSize:56,marginBottom:16}}>🎉</div>
+            <div style={{fontFamily:"'Playfair Display'",fontSize:22,color:"#4ade80",marginBottom:8}}>Booking Requested!</div>
+            <div style={{fontSize:14,color:"rgba(255,255,255,0.5)",lineHeight:1.7,marginBottom:8}}>
+              Your booking for <strong style={{color:"white"}}>{vehicle.name}</strong> has been saved.<br/>
+              A WhatsApp message has been sent to the owner — they'll confirm shortly.
+            </div>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.35)",marginBottom:28}}>You can also reach them directly on WhatsApp if needed.</div>
+            <button onClick={onClose} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"12px 32px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14}}>Done</button>
+          </div>
+        ) : (
+          <div style={{padding:"20px 24px 24px"}}>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:16}}>Booking details</div>
+
+            <div style={{display:"grid",gap:14}}>
+              <div>
+                <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Your name *</label>
+                <input value={form.customerName} onChange={e=>set("customerName",e.target.value)} placeholder="Priya Sharma"
+                  style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none"}}/>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Phone number *</label>
+                <input value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="+91 98765 43210" type="tel"
+                  style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none"}}/>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div>
+                  <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Check-in *</label>
+                  <input type="date" value={form.checkIn} min={today} onChange={e=>set("checkIn",e.target.value)}
+                    style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",colorScheme:"dark"}}/>
+                </div>
+                <div>
+                  <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Check-out *</label>
+                  <input type="date" value={form.checkOut} min={form.checkIn||today} onChange={e=>set("checkOut",e.target.value)}
+                    style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",colorScheme:"dark"}}/>
+                </div>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Hotel / Stay address *</label>
+                <input value={form.stayAddress} onChange={e=>set("stayAddress",e.target.value)} placeholder="Hotel name, area, Udaipur"
+                  style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none"}}/>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Notes (optional)</label>
+                <textarea value={form.notes} onChange={e=>set("notes",e.target.value)} placeholder="Any special requests…" rows={2}
+                  style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",resize:"vertical"}}/>
+              </div>
+            </div>
+
+            {/* Price summary */}
+            {days>0&&priceNum>0&&(
+              <div style={{margin:"16px 0",background:"rgba(212,133,10,0.08)",border:"1px solid rgba(212,133,10,0.2)",borderRadius:10,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:13,color:"rgba(255,255,255,0.5)"}}>₹{priceNum.toLocaleString("en-IN")} × {days} day{days!==1?"s":""}</span>
+                <span style={{fontSize:18,fontWeight:700,color:"#f0c060",fontFamily:"'Playfair Display'"}}>₹{total.toLocaleString("en-IN")}</span>
+              </div>
+            )}
+
+            {error&&<div style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.25)",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#ff6b6b",marginBottom:12}}>{error}</div>}
+
+            <button onClick={submit} disabled={loading}
+              style={{width:"100%",padding:"13px",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",borderRadius:10,fontWeight:700,fontSize:15,cursor:loading?"not-allowed":"pointer",opacity:loading?0.7:1,marginTop:4,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              {loading ? "Sending…" : "📲 Confirm Booking → WhatsApp"}
+            </button>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.25)",textAlign:"center",marginTop:8}}>
+              Owner will confirm via WhatsApp within a few hours
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Bookings Editor (admin tab) ─────────────────────────────────────────────
+const STATUS_CONFIG = {
+  pending:   { color:"#f0c060", bg:"rgba(240,192,96,0.12)",  border:"rgba(240,192,96,0.3)",  label:"⏳ Pending",   dot:"#f0c060" },
+  confirmed: { color:"#4ade80", bg:"rgba(74,222,128,0.12)",  border:"rgba(74,222,128,0.3)",  label:"✅ Confirmed", dot:"#4ade80" },
+  completed: { color:"#60a5fa", bg:"rgba(96,165,250,0.12)",  border:"rgba(96,165,250,0.3)",  label:"🏁 Completed", dot:"#60a5fa" },
+  cancelled: { color:"#ff6b6b", bg:"rgba(255,107,107,0.12)", border:"rgba(255,107,107,0.3)", label:"❌ Cancelled", dot:"#ff6b6b" },
+};
+
+function BookingsEditor({ data, api, reload }) {
+  const bookings = data.bookings || [];
+  const [filter, setFilter]   = useState("all");
+  const [search, setSearch]   = useState("");
+  const [sortDir, setSortDir] = useState("desc");
+  const [expanded, setExpanded] = useState(null);
+
+  const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
+  const days = (b) => (b.checkIn&&b.checkOut) ? Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)) : null;
+
+  // Counts
+  const counts = { all:bookings.length, pending:0, confirmed:0, completed:0, cancelled:0 };
+  bookings.forEach(b=>{ if(counts[b.status]!==undefined) counts[b.status]++; });
+
+  // Filter + search + sort
+  let filtered = bookings;
+  if (filter!=="all") filtered = filtered.filter(b=>b.status===filter);
+  if (search.trim()) {
+    const q = search.toLowerCase();
+    filtered = filtered.filter(b=>(b.customerName||"").toLowerCase().includes(q)||(b.phone||"").toLowerCase().includes(q)||(b.vehicleName||"").toLowerCase().includes(q)||(b.stayAddress||"").toLowerCase().includes(q));
+  }
+  filtered = [...filtered].sort((a,b)=>{
+    const da=a.createdAt||"", db=b.createdAt||"";
+    return sortDir==="desc"?new Date(db)-new Date(da):new Date(da)-new Date(db);
+  });
+
+  const updateStatus = async (id, status) => {
+    await api.put(`/bookings/${id}`, { status });
+    await reload();
+  };
+
+  const del = async (id) => {
+    if (!window.confirm("Delete this booking?")) return;
+    await api.delete(`/bookings/${id}`);
+    await reload();
+  };
+
+  const openWhatsApp = (b) => {
+    const msg = [
+      `✅ *Booking Confirmed!*`,
+      ``,
+      `Hi ${b.customerName}, your booking for *${b.vehicleName||"vehicle"}* is confirmed.`,
+      `📅 ${fmt(b.checkIn)} → ${fmt(b.checkOut)}`,
+      `📍 Delivery to: ${b.stayAddress||"—"}`,
+      ``,
+      `See you soon! — Travel Engineers`,
+    ].join("\n");
+    const num = b.phone.replace(/[^0-9]/g,"");
+    window.open(`https://wa.me/${num.startsWith("91")?num:"91"+num}?text=${encodeURIComponent(msg)}`,"_blank");
+  };
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
+        <div>
+          <h2 style={{fontFamily:"'Playfair Display'",fontSize:30,marginBottom:4}}>Bookings</h2>
+          <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>{bookings.length} total · {counts.pending} pending action</p>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10,marginBottom:20}}>
+        {[
+          {label:"Total",     value:counts.all,       color:"#f0c060"},
+          {label:"Pending",   value:counts.pending,   color:"#f0c060"},
+          {label:"Confirmed", value:counts.confirmed, color:"#4ade80"},
+          {label:"Completed", value:counts.completed, color:"#60a5fa"},
+          {label:"Cancelled", value:counts.cancelled, color:"#ff6b6b"},
+        ].map(s=>(
+          <div key={s.label} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 16px"}}>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>{s.label}</div>
+            <div style={{fontSize:28,fontWeight:800,color:s.color,fontFamily:"'Playfair Display'"}}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Search + Filter */}
+      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 18px",marginBottom:16,display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+        <div style={{flex:1,minWidth:180,position:"relative"}}>
+          <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",opacity:0.4}}>🔍</span>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name, phone, vehicle…"
+            style={{width:"100%",paddingLeft:34,padding:"9px 14px 9px 34px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:13,outline:"none"}}/>
+        </div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {["all","pending","confirmed","completed","cancelled"].map(s=>(
+            <button key={s} onClick={()=>setFilter(s)} style={{padding:"7px 14px",borderRadius:16,border:`1px solid ${filter===s?"#d4850a":"rgba(255,255,255,0.1)"}`,background:filter===s?"rgba(212,133,10,0.15)":"transparent",color:filter===s?"#f0c060":"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:12,fontWeight:filter===s?600:400,textTransform:"capitalize"}}>
+              {s} ({counts[s]??counts.all})
+            </button>
+          ))}
+        </div>
+        <button onClick={()=>setSortDir(d=>d==="desc"?"asc":"desc")} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.5)",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:12}}>
+          Date {sortDir==="desc"?"↓":"↑"}
+        </button>
+      </div>
+
+      {/* Bookings List */}
+      <div style={{display:"grid",gap:10}}>
+        {filtered.length===0&&(
+          <div style={{textAlign:"center",padding:"60px 0",color:"rgba(255,255,255,0.2)"}}>
+            <div style={{fontSize:40,marginBottom:12}}>📋</div>
+            <div style={{fontSize:14}}>{bookings.length===0?"No bookings yet — they'll appear here when customers book":"No results for this filter"}</div>
+          </div>
+        )}
+        {filtered.map(b=>{
+          const sc = STATUS_CONFIG[b.status]||STATUS_CONFIG.pending;
+          const d  = days(b);
+          const isExpanded = expanded===b._id;
+          return (
+            <div key={b._id} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,overflow:"hidden",transition:"border-color 0.2s",borderLeft:`3px solid ${sc.dot}`}}
+              onMouseEnter={e=>e.currentTarget.style.borderColor=sc.border}
+              onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.07)"}>
+              {/* Main row */}
+              <div style={{padding:"14px 18px",display:"flex",gap:14,alignItems:"center",cursor:"pointer"}} onClick={()=>setExpanded(isExpanded?null:b._id)}>
+                <div style={{width:44,height:44,borderRadius:10,background:sc.bg,border:`1px solid ${sc.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
+                  {b.status==="pending"?"⏳":b.status==="confirmed"?"✅":b.status==="completed"?"🏁":"❌"}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:3}}>
+                    <span style={{fontWeight:700,fontSize:15}}>{b.customerName}</span>
+                    <span style={{fontSize:11,padding:"2px 9px",borderRadius:10,background:sc.bg,border:`1px solid ${sc.border}`,color:sc.color}}>{sc.label}</span>
+                    {b.vehicleName&&<span style={{fontSize:11,background:"rgba(255,255,255,0.06)",padding:"2px 8px",borderRadius:10,color:"rgba(255,255,255,0.4)"}}>🛵 {b.vehicleName}</span>}
+                  </div>
+                  <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",display:"flex",gap:12,flexWrap:"wrap"}}>
+                    <span>📞 {b.phone}</span>
+                    {b.checkIn&&<span>📅 {fmt(b.checkIn)} → {fmt(b.checkOut)}{d?` (${d}d)`:""}</span>}
+                    {b.stayAddress&&<span style={{maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📍 {b.stayAddress}</span>}
+                    <span style={{color:"rgba(255,255,255,0.2)"}}>{b.createdAt?new Date(b.createdAt).toLocaleDateString("en-IN",{day:"numeric",month:"short"}):"—"}</span>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:6,flexShrink:0,alignItems:"center"}}>
+                  <button onClick={e=>{e.stopPropagation();openWhatsApp(b);}} title="Message customer on WhatsApp"
+                    style={{background:"rgba(37,211,102,0.12)",border:"1px solid rgba(37,211,102,0.3)",color:"#25d366",padding:"6px 10px",borderRadius:7,cursor:"pointer",fontSize:13}}>💬</button>
+                  <select value={b.status} onChange={e=>{e.stopPropagation();updateStatus(b._id,e.target.value);}}
+                    onClick={e=>e.stopPropagation()}
+                    style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${sc.border}`,background:sc.bg,color:sc.color,fontSize:11,cursor:"pointer",fontWeight:600}}>
+                    <option value="pending">⏳ Pending</option>
+                    <option value="confirmed">✅ Confirmed</option>
+                    <option value="completed">🏁 Completed</option>
+                    <option value="cancelled">❌ Cancelled</option>
+                  </select>
+                  <button onClick={e=>{e.stopPropagation();del(b._id);}} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.15)",color:"#ff6b6b",padding:"6px 10px",borderRadius:7,cursor:"pointer"}}>🗑</button>
+                  <span style={{fontSize:12,color:"rgba(255,255,255,0.2)",userSelect:"none"}}>{isExpanded?"▲":"▼"}</span>
+                </div>
+              </div>
+              {/* Expanded details */}
+              {isExpanded&&(
+                <div style={{borderTop:"1px solid rgba(255,255,255,0.06)",padding:"14px 18px",background:"rgba(0,0,0,0.15)",display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                  {[
+                    ["Customer", b.customerName],
+                    ["Phone", b.phone],
+                    ["Vehicle", b.vehicleName||"—"],
+                    ["Check-in", fmt(b.checkIn)],
+                    ["Check-out", fmt(b.checkOut)],
+                    ["Duration", d?`${d} day${d!==1?"s":""}` :"—"],
+                    ["Stay Address", b.stayAddress||"—"],
+                    ["Booked on", b.createdAt?new Date(b.createdAt).toLocaleString("en-IN"):"—"],
+                  ].map(([l,v])=>(
+                    <div key={l}>
+                      <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:3}}>{l}</div>
+                      <div style={{fontSize:13,color:"rgba(255,255,255,0.8)"}}>{v}</div>
+                    </div>
+                  ))}
+                  {b.notes&&(
+                    <div style={{gridColumn:"1/-1"}}>
+                      <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:3}}>Notes</div>
+                      <div style={{fontSize:13,color:"rgba(255,255,255,0.8)"}}>{b.notes}</div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
