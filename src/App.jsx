@@ -525,23 +525,24 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
 // ─── Agency Editor (unchanged) ───────────────────────────────────────────────
 function AgencyEditor({ data, api, reload, showSaved }) {
   const [form, setForm] = useState(data.agency);
+  const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
- const save = async () => {
-  setSaving(true);
-  try {
-    const res = await api.put("/agency", form);
-    if (res && (res._id || res.name)) {
-      await reload();
-      showSaved();
-      alert("✅ Agency info saved successfully!");
-    } else {
-      alert("❌ Save failed! Response: " + JSON.stringify(res));
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await api.put("/agency", form);
+      if (res && (res._id || res.name)) {
+        await reload();
+        showSaved();
+        alert("✅ Agency info saved successfully!");
+      } else {
+        alert("❌ Save failed! Response: " + JSON.stringify(res));
+      }
+    } catch (err) {
+      alert("❌ Error: " + err.message);
     }
-  } catch (err) {
-    alert("❌ Error: " + err.message);
-  }
-  setSaving(false);
-};
+    setSaving(false);
+  };
   return (
     <div>
       <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,marginBottom:24}}>Agency Information</h2>
@@ -552,7 +553,7 @@ function AgencyEditor({ data, api, reload, showSaved }) {
         <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Address</label><input className="adm-input" value={form.address||""} onChange={e=>set("address",e.target.value)}/></div>
         <div style={{gridColumn:"1 / -1"}}><ImageUpload label="Hero Image" value={form.heroImage} onChange={v=>set("heroImage",v)}/></div>
       </div>
-      <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"12px 32px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>Save Changes</button>
+      <button onClick={save} disabled={saving} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"12px 32px",borderRadius:10,fontWeight:700,fontSize:14,cursor:saving?"not-allowed":"pointer",opacity:saving?0.7:1}}>{saving?"Saving...":"Save Changes"}</button>
     </div>
   );
 }
@@ -643,8 +644,17 @@ function RentalsEditor({ data, api, reload, showSaved }) {
 // ─── Villa Editor (unchanged) ────────────────────────────────────────────────
 function VillaEditor({ data, api, reload, showSaved }) {
   const [form, setForm] = useState({...data.villa});
+  const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const save = async () => { await api.put("/villa", form); await reload(); showSaved(); };
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await api.put("/villa", form);
+      if (res && res._id) { await reload(); showSaved(); alert("✅ Villa saved successfully!"); }
+      else { alert("❌ Save failed: " + JSON.stringify(res)); }
+    } catch(err) { alert("❌ Error: " + err.message); }
+    setSaving(false);
+  };
   return (
     <div>
       <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,marginBottom:24}}>Villa Details</h2>
@@ -681,7 +691,7 @@ function VillaEditor({ data, api, reload, showSaved }) {
         ))}
         <button onClick={()=>set("rooms",[...(form.rooms||[]),{name:"",beds:"",guests:2,image:""}])} style={{fontSize:13,color:"rgba(255,255,255,0.4)",background:"transparent",border:"1px dashed rgba(255,255,255,0.15)",padding:"8px 16px",borderRadius:8,cursor:"pointer"}}>+ Add Room</button>
       </div>
-      <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"12px 32px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>Save Changes</button>
+      <button onClick={save} disabled={saving} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"12px 32px",borderRadius:10,fontWeight:700,fontSize:14,cursor:saving?"not-allowed":"pointer",opacity:saving?0.7:1}}>{saving?"Saving...":"Save Changes"}</button>
     </div>
   );
 }
