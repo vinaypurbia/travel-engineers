@@ -3,15 +3,6 @@ import { useState, useEffect } from "react";
 
 const API = "/api";
 
-const DEFAULT_DATA = {
-  agency: { name:"IslandDrift", tagline:"Ride Free. Stay Wild. Explore More.", heroSubtitle:"Scooters · Cars · Bikes · Villa", phone:"+91 98765 43210", email:"hello@islanddrift.com", address:"Beach Road, Goa", whatsapp:"919876543210", heroImage:"https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=1600&q=80", stats:[{value:"500+",label:"Happy Customers"},{value:"6",label:"Villa Rooms"},{value:"2",label:"Vehicles"},{value:"24/7",label:"Support"}] },
-  rentals: [],
-  villa: { name:"IslandDrift Villa", tagline:"Your Private Paradise", description:"A stunning 6-room villa with private pool.", price:"₹18,000", period:"/night", checkIn:"12:00 PM", checkOut:"11:00 AM", minStay:"2 nights", maxGuests:"14 guests", image:"https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?w=1200&q=80", amenities:[{icon:"🏊",label:"Private Pool"},{icon:"🛏️",label:"6 Bedrooms"},{icon:"🍳",label:"Full Kitchen"},{icon:"📶",label:"WiFi"},{icon:"❄️",label:"AC"},{icon:"🔒",label:"Security"}], rooms:[{name:"Ocean Suite",beds:"King bed",guests:2,image:""},{name:"Garden Room",beds:"Queen bed",guests:2,image:""},{name:"Poolside Room",beds:"2 Twin beds",guests:2,image:""},{name:"Family Suite",beds:"King + 2 singles",guests:4,image:""},{name:"Sunset Loft",beds:"Queen bed",guests:2,image:""},{name:"Cozy Nook",beds:"Double bed",guests:2,image:""}] },
-  testimonials: [{_id:"1",name:"Priya Sharma",location:"Mumbai",text:"The villa was absolutely gorgeous. Pool was clean and staff super helpful!",rating:5,approved:true},{_id:"2",name:"Rohan Mehta",location:"Bangalore",text:"Rented 3 scooties for our gang. Best decision ever!",rating:5,approved:true},{_id:"3",name:"Sarah & James",location:"London",text:"4 nights in the villa — complete paradise!",rating:5,approved:true}],
-  inventory: [],
-  accounting: { transactions: [], summary: { totalIncome:0, totalExpense:0, netProfit:0, breakdown:{} } },
-  bookings: [],
-};
 
 const api = {
   get: (path) => fetch(`${API}${path}`).then(r => r.json()),
@@ -93,7 +84,7 @@ export default function App() {
     } catch (err) {
       console.error("API failed:", err);
       setLoading(false);
-      setData(DEFAULT_DATA);
+      // no fallback - show real data only
     }
   };
 
@@ -165,7 +156,7 @@ export default function App() {
 
       {/* HERO */}
       <section id="sec-home" style={{height:"100vh",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
-        <div style={{position:"absolute",inset:0,backgroundImage:`url(${agency.heroImage||"https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=1600&q=80"})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(0.4)"}} />
+        <div style={{position:"absolute",inset:0,backgroundImage:`url(${agency.heroImage})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(0.4)"}} />
         <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,transparent 40%,rgba(10,22,40,0.9))"}} />
         <div style={{position:"relative",textAlign:"center",color:"white",padding:"0 20px",maxWidth:800}}>
           <div className="hero-text" style={{fontFamily:"'DM Sans'",fontSize:13,letterSpacing:4,color:"#f0c060",marginBottom:18,textTransform:"uppercase"}}>{agency.heroSubtitle}</div>
