@@ -550,7 +550,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
       <div style={{display:"flex",minHeight:"calc(100vh - 64px)"}}>
         <div style={{width:220,background:"rgba(0,0,0,0.2)",borderRight:"1px solid rgba(255,255,255,0.06)",padding:"24px 0",flexShrink:0}}>
           {tabs.map(t=>(
-            <button key={t.id} onClick={()=>setAdminTab(t.id)} style={{width:"100%",padding:"14px 24px",textAlign:"left",background:adminTab===t.id?"rgba(212,133,10,0.15)":"transparent",border:"none",borderLeft:`3px solid ${adminTab===t.id?"#d4850a":"transparent"}`,color:adminTab===t.id?"#f0c060":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:14,fontFamily:"'DM Sans'",fontWeight:500,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <button key={t.id} onClick={()=>{ setAdminTab(t.id); reload(); }} style={{width:"100%",padding:"14px 24px",textAlign:"left",background:adminTab===t.id?"rgba(212,133,10,0.15)":"transparent",border:"none",borderLeft:`3px solid ${adminTab===t.id?"#d4850a":"transparent"}`,color:adminTab===t.id?"#f0c060":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:14,fontFamily:"'DM Sans'",fontWeight:500,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                 <span>{t.label}</span>
                 {t.badge>0&&<span style={{background:"#ef4444",color:"white",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:10,minWidth:18,textAlign:"center"}}>{t.badge}</span>}
               </button>
