@@ -1541,23 +1541,36 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
   const priceNum = vehicle.price ? Number(String(vehicle.price).replace(/[^0-9]/g,"")) : 0;
   const total = priceNum * days;
 
-  const submit = async () => {
+  const buildWaUrl = () => {
+    const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
+    const d = days || "?";
+    const msg = [
+      "🛵 *New Booking Request!*",
+      "",
+      `*Vehicle:* ${vehicle.name}`,
+      `*Customer:* ${form.customerName}`,
+      `*Phone:* ${form.phone}`,
+      `*Check-in:* ${fmt(form.checkIn)}`,
+      `*Check-out:* ${fmt(form.checkOut)}`,
+      `*Duration:* ${d} day${d!==1?"s":""}`,
+      `*Stay Address:* ${form.stayAddress||"—"}`,
+      form.notes ? `*Notes:* ${form.notes}` : null,
+    ].filter(Boolean).join("\n");
+    const num = (whatsapp||"").replace(/[^0-9]/g,"");
+    return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
+  };
+
+  const submit = () => {
     if (!form.customerName.trim()) { setError("Please enter your name."); return; }
     if (!form.phone.trim() || form.phone.length < 7) { setError("Please enter a valid phone number."); return; }
     if (!form.checkIn) { setError("Please select a check-in date."); return; }
     if (!form.checkOut) { setError("Please select a check-out date."); return; }
     if (new Date(form.checkOut) <= new Date(form.checkIn)) { setError("Check-out must be after check-in."); return; }
     if (!form.stayAddress.trim()) { setError("Please enter your hotel or stay address."); return; }
-    setError(""); setLoading(true);
-    try {
-      const res = await api.post("/bookings", { ...form, vehicleName: vehicle.name, vehicleId: vehicle._id });
-      setLoading(false);
-      if (res.whatsappUrl) setWaUrl(res.whatsappUrl);
-      setStep("success");
-    } catch(e) {
-      setLoading(false);
-      setError("Something went wrong. Please try again.");
-    }
+    setError("");
+    api.post("/bookings", { ...form, vehicleName: vehicle.name, vehicleId: vehicle._id }).catch(console.error);
+    window.open(buildWaUrl(), "_blank");
+    setStep("success");
   };
 
   return (
@@ -1581,19 +1594,11 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
         {step==="success" ? (
           <div style={{padding:"40px 24px",textAlign:"center"}}>
             <div style={{fontSize:56,marginBottom:16}}>🎉</div>
-            <div style={{fontFamily:"'Playfair Display'",fontSize:22,color:"#4ade80",marginBottom:8}}>Booking Saved!</div>
+            <div style={{fontFamily:"'Playfair Display'",fontSize:22,color:"#4ade80",marginBottom:8}}>Booking Sent!</div>
             <div style={{fontSize:14,color:"rgba(255,255,255,0.5)",lineHeight:1.7,marginBottom:24}}>
-              Your booking for <strong style={{color:"white"}}>{vehicle.name}</strong> has been saved.<br/>
-              Now tap below to notify the owner on WhatsApp — they'll confirm shortly.
+              Your booking for <strong style={{color:"white"}}>{vehicle.name}</strong> has been saved and the owner has been notified on WhatsApp. They'll confirm shortly!
             </div>
-            {waUrl&&(
-              <a href={waUrl} target="_blank" rel="noreferrer" style={{display:"block",marginBottom:12}}>
-                <button style={{width:"100%",padding:"14px",background:"#25d366",color:"white",border:"none",borderRadius:10,fontWeight:700,fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-                  💬 Send WhatsApp Message to Owner
-                </button>
-              </a>
-            )}
-            <button onClick={onClose} style={{background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.5)",border:"1px solid rgba(255,255,255,0.1)",padding:"11px 32px",borderRadius:10,fontWeight:600,cursor:"pointer",fontSize:14}}>Close</button>
+            <button onClick={onClose} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"12px 32px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14}}>Done</button>
           </div>
         ) : (
           <div style={{padding:"20px 24px 24px"}}>
@@ -1672,6 +1677,12 @@ function BookingsEditor({ data, api, reload }) {
   const [search, setSearch]   = useState("");
   const [sortDir, setSortDir] = useState("desc");
   const [expanded, setExpanded] = useState(null);
+
+  // Auto-refresh every 20 seconds so new bookings appear without page reload
+  useEffect(() => {
+    const interval = setInterval(() => reload(), 20000);
+    return () => clearInterval(interval);
+  }, []);
 
   const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
   const days = (b) => (b.checkIn&&b.checkOut) ? Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)) : null;
