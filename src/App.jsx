@@ -5,7 +5,7 @@ const API = "/api";
 
 
 const api = {
-  get: (path) => fetch(`${API}${path}`).then(r => r.text()).then(t => { try { return JSON.parse(t); } catch { return {}; } }),
+  get: (path) => fetch(`${API}${path}`).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
   post: (path, body) => fetch(`${API}${path}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
   put: (path, body) => fetch(`${API}${path}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
   delete: (path) => fetch(`${API}${path}`, { method:"DELETE" }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
@@ -68,6 +68,8 @@ export default function App() {
     try {
       const result = await api.get(path);
       if (result === null || result === undefined) return fallback;
+      if (Array.isArray(fallback) && !Array.isArray(result)) return fallback;
+      if (!Array.isArray(fallback) && typeof fallback === "object" && Array.isArray(result)) return fallback;
       if (result && result.error) return fallback;
       return result;
     } catch { return fallback; }
