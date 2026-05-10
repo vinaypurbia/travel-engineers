@@ -527,6 +527,13 @@ function AgencyEditor({ data, api, reload, showSaved }) {
   const [form, setForm] = useState(data.agency);
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  // Always load fresh data from MongoDB when editor opens
+  useEffect(() => {
+    api.get("/agency").then(fresh => {
+      if (fresh && fresh._id) setForm(fresh);
+    }).catch(() => {});
+  }, []);
   const save = async () => {
     setSaving(true);
     try {
@@ -646,6 +653,13 @@ function VillaEditor({ data, api, reload, showSaved }) {
   const [form, setForm] = useState({...data.villa});
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  // Always load fresh data from MongoDB when editor opens
+  useEffect(() => {
+    api.get("/villa").then(fresh => {
+      if (fresh && fresh._id) setForm(fresh);
+    }).catch(() => {});
+  }, []);
   const save = async () => {
     setSaving(true);
     try {
