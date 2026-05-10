@@ -67,10 +67,9 @@ export default function App() {
   const safeGet = async (path, fallback) => {
     try {
       const result = await api.get(path);
-      // If result looks like HTML or is not the expected type, return fallback
-      if (typeof result === "string" || (fallback !== null && Array.isArray(fallback) && !Array.isArray(result))) return fallback;
+      if (result === null || result === undefined) return fallback;
       if (result && result.error) return fallback;
-      return result || fallback;
+      return result;
     } catch { return fallback; }
   };
 
