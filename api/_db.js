@@ -17,13 +17,13 @@ async function connectDB() {
 // ── Agency Model ─────────────────────────────────────────────────────────────
 // strict: false so extra fields (like stats) are never silently dropped
 const agencySchema = new mongoose.Schema({
-  name:        { type: String, default: "IslandDrift" },
-  tagline:     { type: String, default: "Ride Free. Stay Wild. Explore More." },
-  heroSubtitle:{ type: String, default: "Scooters · Cars · Bikes · Villa" },
-  phone:       { type: String, default: "+91 98765 43210" },
-  email:       { type: String, default: "hello@islanddrift.com" },
-  address:     { type: String, default: "Beach Road, Goa" },
-  whatsapp:    { type: String, default: "919876543210" },
+  name:        { type: String, default: "" },
+  tagline:     { type: String, default: "" },
+  heroSubtitle:{ type: String, default: "" },
+  phone:       { type: String, default: "" },
+  email:       { type: String, default: "" },
+  address:     { type: String, default: "" },
+  whatsapp:    { type: String, default: "" },
   heroImage:   { type: String, default: "" },
   stats: [{ value: String, label: String }],
 }, { strict: false });
@@ -46,7 +46,7 @@ const rentalSchema = new mongoose.Schema({
 // ── Villa Model ──────────────────────────────────────────────────────────────
 // strict: false so rooms/amenities arrays are never dropped
 const villaSchema = new mongoose.Schema({
-  name:       { type: String, default: "IslandDrift Villa" },
+  name:       { type: String, default: "" },
   tagline:    String,
   description:String,
   price:      String,
