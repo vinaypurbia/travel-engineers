@@ -64,28 +64,32 @@ export default function App() {
   const [saved, setSaved] = useState(false);
   const [bookingVehicle, setBookingVehicle] = useState(null); // vehicle being booked
 
+  const safeGet = async (path, fallback) => {
+    try {
+      const result = await api.get(path);
+      // If result looks like HTML or is not the expected type, return fallback
+      if (typeof result === "string" || (fallback !== null && Array.isArray(fallback) && !Array.isArray(result))) return fallback;
+      if (result && result.error) return fallback;
+      return result || fallback;
+    } catch { return fallback; }
+  };
+
   const loadAllData = async () => {
     try {
-      const [agency, rentals, villa, testimonials, inventory, accounting] = await Promise.all([
-        api.get("/agency"),
-        api.get("/rentals"),
-        api.get("/villa"),
-        api.get("/testimonials"),
-        api.get("/inventory"),
-        api.get("/accounting"),
+      const [agency, rentals, villa, testimonials, inventory, accounting, bookings] = await Promise.all([
+        safeGet("/agency", {name:"",tagline:"",heroSubtitle:"",phone:"",email:"",address:"",whatsapp:"",heroImage:""}),
+        safeGet("/rentals", []),
+        safeGet("/villa", {name:"",tagline:"",description:"",price:"",period:"/night",checkIn:"",checkOut:"",minStay:"",maxGuests:"",image:"",amenities:[],rooms:[]}),
+        safeGet("/testimonials", []),
+        safeGet("/inventory", []),
+        safeGet("/accounting", {transactions:[],summary:{}}),
+        safeGet("/bookings", []),
       ]);
-
-      // Fetch bookings separately so a failure here never breaks everything else
-      let bookings = [];
-      try { bookings = await api.get("/bookings"); } catch {}
-
       setData({ agency, rentals, villa, testimonials, inventory, accounting, bookings });
-      setLoading(false);
     } catch (err) {
       console.error("API failed:", err);
-      setData({ agency:{name:"",tagline:"",heroSubtitle:"",phone:"",email:"",address:"",whatsapp:"",heroImage:""}, rentals:[], villa:{name:"",tagline:"",description:"",price:"",period:"/night",checkIn:"",checkOut:"",minStay:"",maxGuests:"",image:"",amenities:[],rooms:[]}, testimonials:[], inventory:[], accounting:[], bookings:[] });
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   useEffect(() => {
