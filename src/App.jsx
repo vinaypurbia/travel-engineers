@@ -329,6 +329,13 @@ export default function App() {
               </div>
             </>
           )}
+          {villa.googleMapUrl&&(
+            <div style={{textAlign:"center",marginBottom:32}}>
+              <a href={villa.googleMapUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:10,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(240,192,96,0.2)",borderRadius:12,padding:"12px 24px",color:"#f0c060",textDecoration:"none",fontFamily:"'DM Sans'",fontSize:14,fontWeight:600}}>
+                <span style={{fontSize:20}}>📍</span> View Location on Google Maps
+              </a>
+            </div>
+          )}
           <div style={{textAlign:"center"}}>
             <div style={{fontFamily:"'Playfair Display'",fontSize:36,fontWeight:900,color:"#f0c060",marginBottom:8}}>{villa.price}<span style={{fontSize:16,color:"rgba(255,255,255,0.4)",fontFamily:"'DM Sans'"}}>{villa.period}</span></div>
             <a href={`https://wa.me/${agency.whatsapp}?text=Hi! I'd like to book the ${villa.name}`} target="_blank" rel="noreferrer">
