@@ -719,6 +719,7 @@ function VillaEditor({ data, api, reload, showSaved }) {
         ))}
         <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Description</label><textarea className="adm-input" value={form.description||""} onChange={e=>set("description",e.target.value)}/></div>
         <div style={{gridColumn:"1 / -1"}}><ImageUpload label="Villa Image" value={form.image} onChange={v=>set("image",v)}/></div>
+        <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Google Maps URL</label><input className="adm-input" value={form.googleMapUrl||""} onChange={e=>set("googleMapUrl",e.target.value)} placeholder="https://maps.google.com/..."/><div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:4}}>Paste the Google Maps share link for your villa location</div></div>
       </div>
       <div style={{marginBottom:20}}>
         <label className="adm-label">Amenities</label>
