@@ -1145,9 +1145,9 @@ function InventoryEditor({ data, api, reload, showSaved }) {
             const ss = STATUS_STYLES[dateStatus]||STATUS_STYLES.available;
             const icon = typeIcon(item);
             return (
-              <div key={item._id} style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${filterDate&&dateStatus==="booked"?"rgba(255,100,100,0.3)":filterDate&&dateStatus==="available"?"rgba(74,222,128,0.2)":"rgba(255,255,255,0.07)"}`,borderRadius:14,padding:"14px 18px",display:"flex",gap:14,alignItems:"center",transition:"border-color 0.2s"}}
-                onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(212,133,10,0.3)"}
-                onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.07)"}>
+              <div key={item._id} style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${filterDate&&dateStatus==="booked"?"rgba(255,100,100,0.4)":filterDate&&dateStatus==="available"?"rgba(74,222,128,0.3)":"rgba(255,255,255,0.07)"}`,borderRadius:14,padding:"14px 18px",display:"flex",gap:14,alignItems:"center",transition:"border-color 0.2s"}}
+                onMouseEnter={e=>e.currentTarget.style.borderColor=filterDate&&dateStatus==="booked"?"rgba(255,100,100,0.6)":filterDate&&dateStatus==="available"?"rgba(74,222,128,0.5)":"rgba(212,133,10,0.3)"}
+                onMouseLeave={e=>e.currentTarget.style.borderColor=filterDate&&dateStatus==="booked"?"rgba(255,100,100,0.4)":filterDate&&dateStatus==="available"?"rgba(74,222,128,0.3)":"rgba(255,255,255,0.07)"}>
                 {item.image
                   ? <img src={item.image} alt="" style={{width:56,height:56,objectFit:"cover",borderRadius:10,flexShrink:0}}/>
                   : <div style={{width:56,height:56,borderRadius:10,background:"rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>{icon}</div>
@@ -1180,12 +1180,18 @@ function InventoryEditor({ data, api, reload, showSaved }) {
                   )}
                 </div>
                 <div style={{display:"flex",gap:6,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end",alignItems:"center"}}>
-                  <select value={item.status} onChange={e=>updateStatus(item,e.target.value)}
-                    style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${ss.border}`,background:ss.bg,color:ss.color,fontSize:11,cursor:"pointer",fontWeight:600}}>
-                    <option value="available">✅ Available</option>
-                    <option value="booked">📅 Booked</option>
-                    <option value="maintenance">🔧 Maintenance</option>
-                  </select>
+                  {filterDate ? (
+                    <span style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${ss.border}`,background:ss.bg,color:ss.color,fontSize:11,fontWeight:600}}>
+                      {dateStatus==="booked"?"📅 Booked on date":"✅ Free on date"}
+                    </span>
+                  ) : (
+                    <select value={item.status} onChange={e=>updateStatus(item,e.target.value)}
+                      style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${ss.border}`,background:ss.bg,color:ss.color,fontSize:11,cursor:"pointer",fontWeight:600}}>
+                      <option value="available">✅ Available</option>
+                      <option value="booked">📅 Booked</option>
+                      <option value="maintenance">🔧 Maintenance</option>
+                    </select>
+                  )}
                   <button onClick={()=>startEdit(item)} style={{background:"rgba(212,133,10,0.12)",border:"1px solid rgba(212,133,10,0.25)",color:"#f0c060",padding:"6px 12px",borderRadius:7,cursor:"pointer",fontSize:12}}>Edit</button>
                   <button onClick={()=>del(item._id)} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.15)",color:"#ff6b6b",padding:"6px 10px",borderRadius:7,cursor:"pointer"}}><Icon name="trash" size={13}/></button>
                 </div>
@@ -2134,22 +2140,21 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                           <span style={{fontSize:13,padding:"4px 12px",borderRadius:20,background:"rgba(99,102,241,0.15)",border:"1px solid rgba(99,102,241,0.35)",color:"#a5b4fc",fontWeight:600}}>🤝 Pay on Arrival</span>
                           <span style={{fontSize:12,color:"rgba(255,255,255,0.35)"}}>Full amount due at pickup / delivery</span>
                         </div>
-                      ) : (
+                      ) : (()=>{
+                        const bDays = (b.checkIn&&b.checkOut)?Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)):1;
+                        const bPPD = getPricePerDay(b);
+                        const bTotal = bPPD>0 ? bPPD*bDays : (b.tokenAmount>0 ? b.tokenAmount*2 : 0);
+                        const received = b.receivedAmount||0;
+                        const remaining = bTotal>0 ? Math.max(0, bTotal - received) : Math.max(0, (b.tokenAmount*2||0) - received);
+                        return (
                         <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+                          {bTotal>0&&<div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Order Total</div><div style={{fontSize:16,fontWeight:700,color:"#60a5fa"}}>₹{bTotal.toLocaleString("en-IN")}</div></div>}
                           {b.tokenAmount>0&&<div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Requested</div><div style={{fontSize:16,fontWeight:700,color:"#fb923c"}}>₹{b.tokenAmount.toLocaleString("en-IN")}</div></div>}
                           {b.receivedAmount>0&&<div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Received</div><div style={{fontSize:16,fontWeight:700,color:"#4ade80"}}>₹{b.receivedAmount.toLocaleString("en-IN")}</div></div>}
-                          {b.tokenAmount>0&&(()=>{
-                            const bDays = (b.checkIn&&b.checkOut)?Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)):1;
-                            const bTotal = (b.pricePerDay||0)*bDays;
-                            // If we have pricePerDay, remaining = total - received; else total - tokenAmount (advance) - received
-                            const received = b.receivedAmount||0;
-                            const remaining = bTotal>0
-                              ? Math.max(0, bTotal - received)
-                              : Math.max(0, (b.tokenAmount*2) - received); // tokenAmount is 50%, so total = tokenAmount*2
-                            return <div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Remaining</div><div style={{fontSize:16,fontWeight:700,color:remaining>0?"#f0c060":"#4ade80"}}>₹{remaining.toLocaleString("en-IN")}</div></div>;
-                          })()}
+                          <div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Remaining</div><div style={{fontSize:16,fontWeight:700,color:remaining>0?"#f0c060":"#4ade80"}}>₹{remaining.toLocaleString("en-IN")}</div></div>
                         </div>
-                      )}
+                        );
+                      })()}
                     </div>
                   )}
                   {/* Record Payment button */}
@@ -2224,7 +2229,9 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
             await api.put(`/bookings?id=${bid}`, { receivedAmount: newReceived, status: newStatus });
             if (newStatus === "confirmed"||newStatus==="completed") await syncInventory(recordPaymentModal, newStatus);
             // 2. Auto-create accounting transaction for this payment
+            const balanceRemaining = Math.max(0, orderTotal - newReceived);
             try {
+              // Record the received payment
               await api.post("/accounting", {
                 type: "income",
                 category: "vehicle_rental",
@@ -2232,11 +2239,26 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                 description: `${alreadyReceived>0?"Balance payment":"Advance payment"} — ${recordPaymentModal.vehicleName||"vehicle"} booking for ${recordPaymentModal.customerName}`,
                 clientName: recordPaymentModal.customerName,
                 linkedBookingId: bid,
-                paymentStatus: newReceived >= orderTotal && orderTotal>0 ? "paid" : "partial",
+                paymentStatus: balanceRemaining > 0 ? "partial" : "paid",
                 paymentMethod: "upi",
                 date: new Date().toISOString(),
-                notes: `Order total: ₹${orderTotal} | Paid so far: ₹${newReceived} | Remaining: ₹${Math.max(0,orderTotal-newReceived)}`,
+                notes: `Order total: ₹${orderTotal} | Paid so far: ₹${newReceived} | Remaining: ₹${balanceRemaining}`,
               });
+              // If balance still due, create a pending entry so accounting shows the outstanding amount
+              if (balanceRemaining > 0) {
+                await api.post("/accounting", {
+                  type: "income",
+                  category: "vehicle_rental",
+                  amount: balanceRemaining,
+                  description: `Balance due at pickup — ${recordPaymentModal.vehicleName||"vehicle"} booking for ${recordPaymentModal.customerName}`,
+                  clientName: recordPaymentModal.customerName,
+                  linkedBookingId: bid,
+                  paymentStatus: "pending",
+                  paymentMethod: "upi",
+                  date: new Date().toISOString(),
+                  notes: `Order total: ₹${orderTotal} | Already received: ₹${newReceived} | Balance pending: ₹${balanceRemaining}`,
+                });
+              }
             } catch(e) { console.error("Accounting sync failed:", e); }
             await reload();
             setRecordPaymentModal(null);
