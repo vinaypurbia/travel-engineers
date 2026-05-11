@@ -150,9 +150,10 @@ const bookingSchema = new mongoose.Schema({
   notes:        { type: String, default: "" },
   status: {
     type: String,
-    enum: ["pending", "confirmed", "cancelled", "completed"],
+    enum: ["pending", "payment_requested", "confirmed", "cancelled", "completed"],
     default: "pending",
   },
+  tokenAmount: { type: Number, default: 0 }, // advance amount requested
   createdAt: { type: Date, default: Date.now },
 });
 
