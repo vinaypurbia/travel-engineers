@@ -1623,7 +1623,7 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
         waWin.location.href = result.whatsappUrl;
       }
       setBookingId(result?.booking?._id || "");
-      setStep("qr"); // Show QR code before final success
+      setStep("success"); // Show thank you message — payment request comes from admin
     } catch (err) {
       setError("Something went wrong. Please try again.");
     }
@@ -1650,15 +1650,19 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
 
         {step==="success" ? (
           <div style={{padding:"40px 24px",textAlign:"center"}}>
-            <div style={{fontSize:56,marginBottom:16}}>🙏</div>
-            <div style={{fontFamily:"'Playfair Display'",fontSize:22,color:"#f0c060",marginBottom:12}}>Thank You for Booking!</div>
-            <div style={{fontSize:14,color:"rgba(255,255,255,0.5)",lineHeight:1.8,marginBottom:8}}>
-              Your booking request for <strong style={{color:"white"}}>{vehicle.name}</strong> has been received.
+            <div style={{fontSize:56,marginBottom:16}}>🎉</div>
+            <div style={{fontFamily:"'Playfair Display'",fontSize:24,color:"#f0c060",marginBottom:12}}>Thank You for Your Booking!</div>
+            <div style={{fontSize:14,color:"rgba(255,255,255,0.6)",lineHeight:1.8,marginBottom:12}}>
+              Your booking request for <strong style={{color:"white"}}>{vehicle.name}</strong> has been successfully received.
             </div>
-            <div style={{fontSize:13,color:"rgba(255,255,255,0.35)",lineHeight:1.7,marginBottom:24}}>
-              We will review your request and send you a confirmation with payment details on WhatsApp shortly. 
+            <div style={{background:"rgba(240,192,96,0.08)",border:"1px solid rgba(240,192,96,0.2)",borderRadius:12,padding:"16px 20px",marginBottom:20,textAlign:"left"}}>
+              <div style={{fontSize:13,color:"rgba(255,255,255,0.7)",lineHeight:1.9}}>
+                📋 <strong style={{color:"#f0c060"}}>What happens next?</strong><br/>
+                Our team will review your request and get back to you shortly on WhatsApp with confirmation and further details.<br/><br/>
+                📞 For any queries, feel free to contact us directly.
+              </div>
             </div>
-            <button onClick={onClose} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"12px 32px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14}}>Done</button>
+            <button onClick={onClose} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"13px 36px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14}}>Close</button>
           </div>
         ) : step==="qr" ? (() => {
           const advance = total>0 ? Math.ceil(total * 0.5) : 0;
