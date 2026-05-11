@@ -1733,9 +1733,9 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
               </div>
               <div>
                 <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Phone number (WhatsApp) *</label>
-                <input value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="+91 98765 43210" type="tel"
+                <input value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="+965 XXXX XXXX or +91 XXXXX XXXXX" type="tel"
                   style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none"}}/>
-                <div style={{fontSize:11,color:"rgba(255,255,255,0.25)",marginTop:4}}>Include country code e.g. +91 for India</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.25)",marginTop:4}}>Always include your country code e.g. +965 for Kuwait, +91 for India</div>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 <div>
@@ -1811,6 +1811,9 @@ function BookingsEditor({ data, api, reload }) {
 
   const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
   const days = (b) => (b.checkIn&&b.checkOut) ? Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)) : null;
+
+  // Strip everything except digits — customer must type their full number with country code
+  const formatPhoneForWA = (raw) => (raw || "").replace(/[^0-9]/g, "");
 
   // Counts
   const counts = { all:bookings.length, pending:0, payment_requested:0, confirmed:0, completed:0, cancelled:0 };
@@ -1894,16 +1897,16 @@ function BookingsEditor({ data, api, reload }) {
       `Thank you! See you soon 🙏`,
       `— Travel Engineers`,
     ].filter(Boolean).join("\n");
-    const num = b.phone.replace(/[^0-9]/g,"");
-    window.open(`https://wa.me/${num.startsWith("91")?num:"91"+num}?text=${encodeURIComponent(msg)}`,"_blank");
+    const num = formatPhoneForWA(b.phone);
+    window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,"_blank");
   };
 
   const openWhatsApp = (b) => {
     // Simple message to customer (not payment request — just chat)
     const fmt2 = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
     const msg = [`Hi ${b.customerName}! This is Travel Engineers regarding your booking for *${b.vehicleName||"vehicle"}* (${fmt2(b.checkIn)} → ${fmt2(b.checkOut)}). How can I help you?`].join("");
-    const num = b.phone.replace(/[^0-9]/g,"");
-    window.open(`https://wa.me/${num.startsWith("91")?num:"91"+num}?text=${encodeURIComponent(msg)}`,"_blank");
+    const num = formatPhoneForWA(b.phone);
+    window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,"_blank");
   };
 
   return (
