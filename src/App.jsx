@@ -1624,6 +1624,29 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
       }
       setBookingId(result?.booking?._id || "");
       setStep("success"); // Show thank you message — payment request comes from admin
+
+      // Auto-reply to customer — open second WhatsApp window with thank you message
+      const customerNum = form.phone.replace(/[^0-9]/g, "");
+      const replyMsg = [
+        `✅ *Booking Request Received!*`,
+        ``,
+        `Hi ${form.customerName}! 👋 Thank you for choosing *Travel Engineers*.`,
+        ``,
+        `Your booking request for *${vehicle.name}* has been received successfully.`,
+        ``,
+        `📋 *What happens next?*`,
+        `Our team will review your request and get back to you shortly with confirmation and further details.`,
+        ``,
+        `📞 For any queries, feel free to contact us directly.`,
+        ``,
+        `— Travel Engineers 🛵`,
+      ].join("
+");
+      const replyNum = customerNum.startsWith("91") ? customerNum : "91" + customerNum;
+      setTimeout(() => {
+        window.open(`https://wa.me/${replyNum}?text=${encodeURIComponent(replyMsg)}`, "_blank");
+      }, 1500);
+
     } catch (err) {
       setError("Something went wrong. Please try again.");
     }
