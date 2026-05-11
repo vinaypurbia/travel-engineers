@@ -1837,6 +1837,34 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
     return sortDir==="desc"?new Date(db)-new Date(da):new Date(da)-new Date(db);
   });
 
+  // Sync inventory status when booking status changes
+  const syncInventory = async (booking, newStatus) => {
+    if (!booking.vehicleId) return;
+    try {
+      // Find the inventory item linked to this rental
+      const invItems = data.inventory?.items || data.inventory || [];
+      const invItem = invItems.find(i => i.linkedRentalId === booking.vehicleId || String(i.linkedRentalId) === String(booking.vehicleId));
+      if (!invItem) return;
+      if (newStatus === "confirmed") {
+        // Mark inventory as booked, add booking dates
+        await api.put(`/inventory/${invItem._id}`, {
+          ...invItem,
+          status: "booked",
+          bookedDates: [...(invItem.bookedDates||[]), {
+            from: booking.checkIn,
+            to: booking.checkOut,
+            clientName: booking.customerName,
+            bookingRef: String(booking._id),
+          }],
+        });
+      } else if (newStatus === "completed" || newStatus === "cancelled") {
+        // Mark inventory as available again, remove this booking's dates
+        const remaining = (invItem.bookedDates||[]).filter(d => d.bookingRef !== String(booking._id));
+        await api.put(`/inventory/${invItem._id}`, { ...invItem, status: "available", bookedDates: remaining });
+      }
+    } catch(e) { console.error("Inventory sync failed:", e); }
+  };
+
   const updateStatus = async (id, status, booking=null) => {
     // For payment_requested: show modal BEFORE saving, so amount is set first
     if (status === "payment_requested" && booking) {
@@ -1851,6 +1879,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
       return; // Don't save status yet — modal will handle it
     }
     await api.put(`/bookings?id=${id}`, { status });
+    if (booking) await syncInventory(booking, status);
     await reload();
   };
 
@@ -2100,6 +2129,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           onApproveArrival={async ()=>{
             // Approve pay-on-arrival — confirm booking and send WhatsApp
             await api.put(`/bookings?id=${paymentModal.booking._id}`, { status:"confirmed", payOnArrival: true, tokenAmount: 0, receivedAmount: 0 });
+            await syncInventory(paymentModal.booking, "confirmed");
             await reload();
             const b = paymentModal.booking;
             const fmt2 = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
@@ -2129,8 +2159,26 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
       {recordPaymentModal&&(
         <RecordPaymentModal
           booking={recordPaymentModal}
-          onSave={async(received)=>{
-            await api.put(`/bookings?id=${recordPaymentModal._id}`, { receivedAmount: Number(received), status: Number(received) >= (recordPaymentModal.tokenAmount||0) ? "confirmed" : recordPaymentModal.status });
+          totalAmount={getPricePerDay(recordPaymentModal) * ((recordPaymentModal.checkIn && recordPaymentModal.checkOut) ? Math.max(1, Math.round((new Date(recordPaymentModal.checkOut) - new Date(recordPaymentModal.checkIn)) / 864e5)) : 1)}
+          onSave={async(received, totalAmt)=>{
+            // 1. Update booking receivedAmount
+            const newStatus = Number(received) >= (recordPaymentModal.tokenAmount||0) ? "confirmed" : recordPaymentModal.status;
+            await api.put(`/bookings?id=${recordPaymentModal._id}`, { receivedAmount: Number(received), status: newStatus });
+            if (newStatus === "confirmed") await syncInventory(recordPaymentModal, "confirmed");
+            // 2. Auto-create accounting transaction
+            try {
+              await api.post("/accounting", {
+                type: "income",
+                category: "vehicle_rental",
+                amount: Number(received),
+                description: `Advance payment — ${recordPaymentModal.vehicleName||"vehicle"} booking for ${recordPaymentModal.customerName}`,
+                clientName: recordPaymentModal.customerName,
+                linkedBookingId: recordPaymentModal._id,
+                paymentStatus: Number(received) >= (totalAmt||0) ? "paid" : "partial",
+                paymentMethod: "upi",
+                date: new Date().toISOString(),
+              });
+            } catch(e) { console.error("Accounting sync failed:", e); }
             await reload();
             setRecordPaymentModal(null);
           }}
@@ -2273,16 +2321,19 @@ function PaymentTokenModal({ booking, suggestedAmount, total, days, onSend, onAp
 }
 
 // ─── Record Payment Modal ────────────────────────────────────────────────────
-function RecordPaymentModal({ booking, onSave, onClose }) {
+function RecordPaymentModal({ booking, totalAmount=0, onSave, onClose }) {
   const [received, setReceived] = useState(String(booking.receivedAmount || booking.tokenAmount || ""));
   const [error, setError] = useState("");
   const requested = booking.tokenAmount || 0;
-  const remaining = Math.max(0, requested - (Number(received) || 0));
+  // Remaining = total order value minus what's already been received
+  const alreadyReceived = booking.receivedAmount || 0;
+  const orderTotal = totalAmount > 0 ? totalAmount : requested;
+  const remaining = Math.max(0, orderTotal - alreadyReceived - (Number(received) || 0) + alreadyReceived);
 
   const handleSave = () => {
     const num = Number(received);
     if (!received || isNaN(num) || num < 0) { setError("Please enter a valid amount."); return; }
-    onSave(num);
+    onSave(num, orderTotal);
   };
 
   return (
@@ -2298,8 +2349,8 @@ function RecordPaymentModal({ booking, onSave, onClose }) {
               <div style={{fontSize:18,fontWeight:700,color:"#fb923c"}}>₹{requested.toLocaleString("en-IN")}</div>
             </div>
             <div style={{flex:1,background:"rgba(240,192,96,0.08)",border:"1px solid rgba(240,192,96,0.2)",borderRadius:10,padding:"10px 14px",textAlign:"center"}}>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:4}}>Remaining</div>
-              <div style={{fontSize:18,fontWeight:700,color:"#f0c060"}}>₹{remaining.toLocaleString("en-IN")}</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:4}}>Order Total</div>
+              <div style={{fontSize:18,fontWeight:700,color:"#f0c060"}}>₹{orderTotal.toLocaleString("en-IN")}</div>
             </div>
           </div>
         )}
@@ -2312,6 +2363,12 @@ function RecordPaymentModal({ booking, onSave, onClose }) {
           autoFocus
         />
         {error&&<div style={{color:"#ff6b6b",fontSize:12,marginBottom:8}}>{error}</div>}
+        {Number(received)>0&&orderTotal>0&&(
+          <div style={{background:"rgba(240,192,96,0.06)",border:"1px solid rgba(240,192,96,0.15)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"rgba(255,255,255,0.6)",marginBottom:12,display:"flex",justifyContent:"space-between"}}>
+            <span>Balance due at pickup</span>
+            <span style={{color:"#f0c060",fontWeight:700}}>₹{Math.max(0, orderTotal - Number(received)).toLocaleString("en-IN")}</span>
+          </div>
+        )}
         {Number(received)>0&&requested>0&&Number(received)>=requested&&(
           <div style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#4ade80",marginBottom:12}}>
             ✅ Full advance received — booking will be marked Confirmed
