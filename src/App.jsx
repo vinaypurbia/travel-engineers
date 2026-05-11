@@ -1648,10 +1648,13 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
 
         {step==="success" ? (
           <div style={{padding:"40px 24px",textAlign:"center"}}>
-            <div style={{fontSize:56,marginBottom:16}}>🎉</div>
-            <div style={{fontFamily:"'Playfair Display'",fontSize:22,color:"#4ade80",marginBottom:8}}>Booking Confirmed!</div>
-            <div style={{fontSize:14,color:"rgba(255,255,255,0.5)",lineHeight:1.7,marginBottom:24}}>
-              Your booking for <strong style={{color:"white"}}>{vehicle.name}</strong> is confirmed. See you on pickup day!
+            <div style={{fontSize:56,marginBottom:16}}>🙏</div>
+            <div style={{fontFamily:"'Playfair Display'",fontSize:22,color:"#f0c060",marginBottom:12}}>Thank You for Booking!</div>
+            <div style={{fontSize:14,color:"rgba(255,255,255,0.5)",lineHeight:1.8,marginBottom:8}}>
+              Your booking request for <strong style={{color:"white"}}>{vehicle.name}</strong> has been received.
+            </div>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.35)",lineHeight:1.7,marginBottom:24}}>
+              We will review your request and send you a confirmation with payment details on WhatsApp shortly. 
             </div>
             <button onClick={onClose} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"12px 32px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14}}>Done</button>
           </div>
@@ -1773,10 +1776,11 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
 
 // ─── Bookings Editor (admin tab) ─────────────────────────────────────────────
 const STATUS_CONFIG = {
-  pending:   { color:"#f0c060", bg:"rgba(240,192,96,0.12)",  border:"rgba(240,192,96,0.3)",  label:"⏳ Pending",   dot:"#f0c060" },
-  confirmed: { color:"#4ade80", bg:"rgba(74,222,128,0.12)",  border:"rgba(74,222,128,0.3)",  label:"✅ Confirmed", dot:"#4ade80" },
-  completed: { color:"#60a5fa", bg:"rgba(96,165,250,0.12)",  border:"rgba(96,165,250,0.3)",  label:"🏁 Completed", dot:"#60a5fa" },
-  cancelled: { color:"#ff6b6b", bg:"rgba(255,107,107,0.12)", border:"rgba(255,107,107,0.3)", label:"❌ Cancelled", dot:"#ff6b6b" },
+  pending:           { color:"#f0c060", bg:"rgba(240,192,96,0.12)",  border:"rgba(240,192,96,0.3)",  label:"⏳ Pending",            dot:"#f0c060" },
+  payment_requested: { color:"#fb923c", bg:"rgba(251,146,60,0.12)",  border:"rgba(251,146,60,0.3)",  label:"💳 Payment Requested",  dot:"#fb923c" },
+  confirmed:         { color:"#4ade80", bg:"rgba(74,222,128,0.12)",  border:"rgba(74,222,128,0.3)",  label:"✅ Confirmed",           dot:"#4ade80" },
+  completed:         { color:"#60a5fa", bg:"rgba(96,165,250,0.12)",  border:"rgba(96,165,250,0.3)",  label:"🏁 Completed",          dot:"#60a5fa" },
+  cancelled:         { color:"#ff6b6b", bg:"rgba(255,107,107,0.12)", border:"rgba(255,107,107,0.3)", label:"❌ Cancelled",           dot:"#ff6b6b" },
 };
 
 function BookingsEditor({ data, api, reload }) {
@@ -1797,7 +1801,7 @@ function BookingsEditor({ data, api, reload }) {
   const days = (b) => (b.checkIn&&b.checkOut) ? Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)) : null;
 
   // Counts
-  const counts = { all:bookings.length, pending:0, confirmed:0, completed:0, cancelled:0 };
+  const counts = { all:bookings.length, pending:0, payment_requested:0, confirmed:0, completed:0, cancelled:0 };
   bookings.forEach(b=>{ if(counts[b.status]!==undefined) counts[b.status]++; });
 
   // Filter + search + sort
@@ -1813,18 +1817,19 @@ function BookingsEditor({ data, api, reload }) {
   });
 
   const updateStatus = async (id, status, booking=null) => {
-    await api.put(`/bookings?id=${id}`, { status });
-    await reload();
-    // When confirming — show payment amount modal first
-    if (status === "confirmed" && booking) {
+    // For payment_requested: show modal BEFORE saving, so amount is set first
+    if (status === "payment_requested" && booking) {
       const d = (booking.checkIn && booking.checkOut)
         ? Math.max(1, Math.round((new Date(booking.checkOut) - new Date(booking.checkIn)) / 864e5))
         : 1;
-      const priceNum = booking.pricePerDay || 0;
-      const total = priceNum * d;
+      const pricePerDay = booking.pricePerDay || 0;
+      const total = pricePerDay * d;
       const suggested = total > 0 ? Math.round(total * 0.5) : "";
       setPaymentModal({ booking, suggestedAmount: suggested, total, days: d });
+      return; // Don't save status yet — modal will handle it
     }
+    await api.put(`/bookings?id=${id}`, { status });
+    await reload();
   };
 
   const del = async (id) => {
@@ -1879,11 +1884,11 @@ function BookingsEditor({ data, api, reload }) {
   };
 
   const openWhatsApp = (b) => {
-    const d = (b.checkIn && b.checkOut) ? Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)) : 1;
-    const priceNum = b.pricePerDay || 0;
-    const total = priceNum * d;
-    const suggested = total > 0 ? Math.round(total * 0.5) : "";
-    setPaymentModal({ booking: b, suggestedAmount: suggested, total, days: d });
+    // Simple message to customer (not payment request — just chat)
+    const fmt2 = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
+    const msg = [`Hi ${b.customerName}! This is Travel Engineers regarding your booking for *${b.vehicleName||"vehicle"}* (${fmt2(b.checkIn)} → ${fmt2(b.checkOut)}). How can I help you?`].join("");
+    const num = b.phone.replace(/[^0-9]/g,"");
+    window.open(`https://wa.me/${num.startsWith("91")?num:"91"+num}?text=${encodeURIComponent(msg)}`,"_blank");
   };
 
   return (
@@ -1899,11 +1904,12 @@ function BookingsEditor({ data, api, reload }) {
       {/* KPI Cards */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10,marginBottom:20}}>
         {[
-          {label:"Total",     value:counts.all,       color:"#f0c060"},
-          {label:"Pending",   value:counts.pending,   color:"#f0c060"},
-          {label:"Confirmed", value:counts.confirmed, color:"#4ade80"},
-          {label:"Completed", value:counts.completed, color:"#60a5fa"},
-          {label:"Cancelled", value:counts.cancelled, color:"#ff6b6b"},
+          {label:"Total",      value:counts.all,               color:"#f0c060"},
+          {label:"Pending",    value:counts.pending,           color:"#f0c060"},
+          {label:"💳 Payment", value:counts.payment_requested, color:"#fb923c"},
+          {label:"Confirmed",  value:counts.confirmed,         color:"#4ade80"},
+          {label:"Completed",  value:counts.completed,         color:"#60a5fa"},
+          {label:"Cancelled",  value:counts.cancelled,         color:"#ff6b6b"},
         ].map(s=>(
           <div key={s.label} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 16px"}}>
             <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>{s.label}</div>
@@ -1920,9 +1926,9 @@ function BookingsEditor({ data, api, reload }) {
             style={{width:"100%",paddingLeft:34,padding:"9px 14px 9px 34px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:13,outline:"none"}}/>
         </div>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {["all","pending","confirmed","completed","cancelled"].map(s=>(
-            <button key={s} onClick={()=>setFilter(s)} style={{padding:"7px 14px",borderRadius:16,border:`1px solid ${filter===s?"#d4850a":"rgba(255,255,255,0.1)"}`,background:filter===s?"rgba(212,133,10,0.15)":"transparent",color:filter===s?"#f0c060":"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:12,fontWeight:filter===s?600:400,textTransform:"capitalize"}}>
-              {s} ({counts[s]??counts.all})
+          {["all","pending","payment_requested","confirmed","completed","cancelled"].map(s=>(
+            <button key={s} onClick={()=>setFilter(s)} style={{padding:"7px 14px",borderRadius:16,border:`1px solid ${filter===s?"#d4850a":"rgba(255,255,255,0.1)"}`,background:filter===s?"rgba(212,133,10,0.15)":"transparent",color:filter===s?"#f0c060":"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:12,fontWeight:filter===s?600:400}}>
+              {s==="payment_requested"?"💳 Payment Req":s.charAt(0).toUpperCase()+s.slice(1)} ({counts[s]??counts.all})
             </button>
           ))}
         </div>
@@ -1972,6 +1978,7 @@ function BookingsEditor({ data, api, reload }) {
                     onClick={e=>e.stopPropagation()}
                     style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${sc.border}`,background:sc.bg,color:sc.color,fontSize:11,cursor:"pointer",fontWeight:600}}>
                     <option value="pending">⏳ Pending</option>
+                    <option value="payment_requested">💳 Request Payment</option>
                     <option value="confirmed">✅ Confirmed</option>
                     <option value="completed">🏁 Completed</option>
                     <option value="cancelled">❌ Cancelled</option>
@@ -2018,7 +2025,13 @@ function BookingsEditor({ data, api, reload }) {
           suggestedAmount={paymentModal.suggestedAmount}
           total={paymentModal.total}
           days={paymentModal.days}
-          onSend={(amount)=>{ openPaymentWhatsApp(paymentModal.booking, amount); setPaymentModal(null); }}
+          onSend={async (amount)=>{
+            // Save status + token amount to DB
+            await api.put(`/bookings?id=${paymentModal.booking._id}`, { status:"payment_requested", tokenAmount: Number(amount) });
+            await reload();
+            openPaymentWhatsApp(paymentModal.booking, amount);
+            setPaymentModal(null);
+          }}
           onClose={()=>setPaymentModal(null)}
         />
       )}
