@@ -565,7 +565,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
           {adminTab==="testimonials" && <TestimonialsEditor data={data} api={api} reload={reload} showSaved={showSaved}/>}
           {adminTab==="inventory"    && <InventoryEditor    data={data} api={api} reload={reload} showSaved={showSaved}/>}
           {adminTab==="accounting"   && <AccountingEditor   data={data} api={api} reload={reload} showSaved={showSaved}/>}
-          {adminTab==="bookings"     && <BookingsEditor     data={data} api={api} reload={reload} showSaved={showSaved}/>}
+          {adminTab==="bookings"     && <BookingsEditor     data={data} api={api} reload={reload} showSaved={showSaved} rentals={data.rentals||[]}/>}
         </div>
       </div>
     </div>
@@ -1794,8 +1794,14 @@ const STATUS_CONFIG = {
   cancelled:         { color:"#ff6b6b", bg:"rgba(255,107,107,0.12)", border:"rgba(255,107,107,0.3)", label:"❌ Cancelled",           dot:"#ff6b6b" },
 };
 
-function BookingsEditor({ data, api, reload }) {
+function BookingsEditor({ data, api, reload, rentals=[] }) {
   const bookings = data.bookings || [];
+  // Look up pricePerDay from the rentals list using vehicleId
+  const getPricePerDay = (b) => {
+    if (b.pricePerDay > 0) return b.pricePerDay;
+    const rental = rentals.find(r => r._id === b.vehicleId);
+    return rental ? (Number(rental.price) || 0) : 0;
+  };
   const [filter, setFilter]   = useState("all");
   const [search, setSearch]   = useState("");
   const [sortDir, setSortDir] = useState("desc");
@@ -1837,7 +1843,7 @@ function BookingsEditor({ data, api, reload }) {
       const d = (booking.checkIn && booking.checkOut)
         ? Math.max(1, Math.round((new Date(booking.checkOut) - new Date(booking.checkIn)) / 864e5))
         : 1;
-      const pricePerDay = booking.pricePerDay || 0;
+      const pricePerDay = getPricePerDay(booking);
       const total = pricePerDay * d;
       // Pre-fill with 50% of total if price known, otherwise use previously saved tokenAmount
       const suggested = total > 0 ? Math.round(total * 0.5) : (booking.tokenAmount > 0 ? booking.tokenAmount : "");
@@ -1856,7 +1862,7 @@ function BookingsEditor({ data, api, reload }) {
 
   // Builds UPI payment link for exact 50% advance amount
   const buildUpiLink = (b) => {
-    const priceMatch = (b.pricePerDay || b.amount || 0);
+    const priceMatch = getPricePerDay(b) || b.amount || 0;
     const d = (b.checkIn && b.checkOut) ? Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5)) : 1;
     const total = priceMatch * d;
     const advance = Math.round(total * 0.5);
@@ -1998,7 +2004,7 @@ function BookingsEditor({ data, api, reload }) {
                       onClick={e=>{
                         e.stopPropagation();
                         const d = (b.checkIn && b.checkOut) ? Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5)) : 1;
-                        const pricePerDay = b.pricePerDay || 0;
+                        const pricePerDay = getPricePerDay(b);
                         const total = pricePerDay * d;
                         // Pre-fill with previously saved tokenAmount, or 50% of total, or blank
                         const suggested = b.tokenAmount > 0 ? b.tokenAmount : (total > 0 ? Math.round(total * 0.5) : "");
@@ -2106,7 +2112,7 @@ function BookingsEditor({ data, api, reload }) {
 
 // ─── Payment Token Modal ──────────────────────────────────────────────────────
 function PaymentTokenModal({ booking, suggestedAmount, total, days, onSend, onClose }) {
-  const [amount, setAmount] = useState(String(suggestedAmount || ""));
+  const [amount, setAmount] = useState(suggestedAmount > 0 ? String(suggestedAmount) : "");
   const [error, setError] = useState("");
 
   const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
@@ -2173,7 +2179,8 @@ function PaymentTokenModal({ booking, suggestedAmount, total, days, onSend, onCl
                 type="number"
                 value={amount}
                 onChange={e=>{ setAmount(e.target.value); setError(""); }}
-                placeholder="Enter amount"
+                autoFocus
+                placeholder={total > 0 ? `e.g. ₹${Math.round(total*0.5)} (50%)` : "Enter amount"}
                 style={{width:"100%",padding:"12px 14px 12px 32px",background:"rgba(255,255,255,0.07)",border:`1.5px solid ${error?"#ff6b6b":"rgba(255,255,255,0.12)"}`,borderRadius:10,color:"white",fontFamily:"'DM Sans'",fontSize:18,fontWeight:700,outline:"none"}}
               />
             </div>
