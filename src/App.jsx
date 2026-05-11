@@ -1839,7 +1839,8 @@ function BookingsEditor({ data, api, reload }) {
         : 1;
       const pricePerDay = booking.pricePerDay || 0;
       const total = pricePerDay * d;
-      const suggested = total > 0 ? Math.round(total * 0.5) : "";
+      // Pre-fill with 50% of total if price known, otherwise use previously saved tokenAmount
+      const suggested = total > 0 ? Math.round(total * 0.5) : (booking.tokenAmount > 0 ? booking.tokenAmount : "");
       setPaymentModal({ booking, suggestedAmount: suggested, total, days: d });
       return; // Don't save status yet — modal will handle it
     }
@@ -1873,7 +1874,7 @@ function BookingsEditor({ data, api, reload }) {
       ? `upi://pay?pa=vinay.purbia-2@oksbi&pn=Travel+Engineers&am=${advance}&cu=INR&tn=Advance+for+${encodeURIComponent(b.vehicleName||"booking")}`
       : null;
     const payPageUrl = advance > 0
-      ? `https://travel-engineers.vercel.app/pay?amount=${advance}&upi=vinay.purbia-2%40oksbi&name=${encodeURIComponent(b.vehicleName||"booking")}&customer=${encodeURIComponent(b.customerName)}`
+      ? `${window.location.origin}/pay?amount=${advance}&upi=vinay.purbia-2%40oksbi&name=${encodeURIComponent(b.vehicleName||"booking")}&customer=${encodeURIComponent(b.customerName)}`
       : null;
     const msg = [
       `✅ *Booking Confirmed — Travel Engineers*`,
@@ -1994,7 +1995,15 @@ function BookingsEditor({ data, api, reload }) {
                     style={{background:"rgba(37,211,102,0.12)",border:"1px solid rgba(37,211,102,0.3)",color:"#25d366",padding:"6px 10px",borderRadius:7,cursor:"pointer",fontSize:13}}>💬</button>
                   {b.status==="payment_requested"&&(
                     <button
-                      onClick={e=>{e.stopPropagation();openPaymentWhatsApp(b,b.tokenAmount||0);}}
+                      onClick={e=>{
+                        e.stopPropagation();
+                        const d = (b.checkIn && b.checkOut) ? Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5)) : 1;
+                        const pricePerDay = b.pricePerDay || 0;
+                        const total = pricePerDay * d;
+                        // Pre-fill with previously saved tokenAmount, or 50% of total, or blank
+                        const suggested = b.tokenAmount > 0 ? b.tokenAmount : (total > 0 ? Math.round(total * 0.5) : "");
+                        setPaymentModal({ booking: b, suggestedAmount: suggested, total, days: d });
+                      }}
                       title="Resend payment request to customer"
                       style={{background:"rgba(251,146,60,0.12)",border:"1px solid rgba(251,146,60,0.4)",color:"#fb923c",padding:"6px 11px",borderRadius:7,cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
                       🔁 Resend
