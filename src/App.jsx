@@ -1611,11 +1611,14 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
     if (!form.stayAddress.trim()) { setError("Please enter your hotel or stay address."); return; }
     setError("");
     setLoading(true);
+    // Open WhatsApp BEFORE the await — browsers block window.open after async calls
+    const waWin = window.open(buildWaUrl(), "_blank");
     try {
       const result = await api.post("/bookings", { ...form, vehicleName: vehicle.name, vehicleId: vehicle._id });
-      // Open WhatsApp using URL from server (which also triggers email)
-      const url = result?.whatsappUrl || buildWaUrl();
-      window.open(url, "_blank");
+      // Update the already-open window with the server URL if available
+      if (result?.whatsappUrl && waWin && !waWin.closed) {
+        waWin.location.href = result.whatsappUrl;
+      }
       setStep("success");
     } catch (err) {
       setError("Something went wrong. Please try again.");
