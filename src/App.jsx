@@ -95,7 +95,8 @@ function MobileNav({ agency, activeNav, setActiveNav }) {
 export default function App() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState("home");
+  const isPayPage = window.location.pathname === "/pay" || window.location.hash === "#/pay";
+  const [view, setView] = useState(isPayPage ? "pay" : "home");
   const [loginInput, setLoginInput] = useState("");
   const [loginError, setLoginError] = useState("");
   const [activeNav, setActiveNav] = useState("home");
@@ -158,6 +159,7 @@ export default function App() {
       } catch { setLoginError("Error connecting. Try again."); }
     }} onBack={() => setView("home")} />;
 
+  if (view === "pay") return <PayPage />;
   if (view === "admin") return <AdminPanel data={data} api={api} reload={loadAllData} saved={saved} showSaved={showSaved} onExit={() => { setView("home"); loadAllData(); }} adminTab={adminTab} setAdminTab={setAdminTab} />;
 
   const { agency, rentals, villa, testimonials } = data;
@@ -1857,6 +1859,9 @@ function BookingsEditor({ data, api, reload }) {
     const upiUrl = advance > 0
       ? `upi://pay?pa=vinay.purbia-2@oksbi&pn=Travel+Engineers&am=${advance}&cu=INR&tn=Advance+for+${encodeURIComponent(b.vehicleName||"booking")}`
       : null;
+    const payPageUrl = advance > 0
+      ? `https://travel-engineers.vercel.app/pay?amount=${advance}&upi=vinay.purbia-2%40oksbi&name=${encodeURIComponent(b.vehicleName||"booking")}&customer=${encodeURIComponent(b.customerName)}`
+      : null;
     const msg = [
       `✅ *Booking Confirmed — Travel Engineers*`,
       ``,
@@ -1870,10 +1875,10 @@ function BookingsEditor({ data, api, reload }) {
       advance > 0 ? `*Token amount to pay now: ₹${advance}*` : null,
       `Remaining balance to be paid at pickup`,
       ``,
-      `👇 *Pay via UPI (tap to open GPay/PhonePe):*`,
-      upiUrl || null,
+      payPageUrl ? `👇 *Tap to open payment QR code:*` : null,
+      payPageUrl ? payPageUrl : null,
       ``,
-      `Or pay manually to UPI ID: *vinay.purbia-2@oksbi*`,
+      `Or pay directly via UPI ID: *vinay.purbia-2@oksbi*`,
       advance > 0 ? `Amount: ₹${advance}` : null,
       ``,
       `Thank you! See you soon 🙏`,
@@ -2148,6 +2153,55 @@ function PaymentTokenModal({ booking, suggestedAmount, total, days, onSend, onCl
             WhatsApp will open — just tap Send to deliver to customer
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Pay Page ─────────────────────────────────────────────────────────────────
+function PayPage() {
+  const params = new URLSearchParams(window.location.search);
+  const amount   = params.get("amount")  || "";
+  const upi      = params.get("upi")     || "vinay.purbia-2@oksbi";
+  const name     = params.get("name")    || "booking";
+  const customer = params.get("customer")|| "";
+
+  const upiLink = amount
+    ? `upi://pay?pa=${upi}&pn=Travel+Engineers&am=${amount}&cu=INR&tn=Advance+for+${encodeURIComponent(name)}`
+    : `upi://pay?pa=${upi}&pn=Travel+Engineers&cu=INR`;
+
+  const qrUrl = `https://chart.googleapis.com/chart?chs=260x260&cht=qr&chl=${encodeURIComponent(upiLink)}&choe=UTF-8`;
+
+  return (
+    <div style={{minHeight:"100vh",background:"#0f1117",display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'DM Sans',sans-serif"}}>
+      <div style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(240,192,96,0.2)",borderRadius:20,padding:36,maxWidth:380,width:"100%",textAlign:"center"}}>
+        <div style={{fontSize:36,marginBottom:8}}>🛵</div>
+        <h2 style={{color:"#f0c060",fontFamily:"'Playfair Display'",fontSize:24,margin:"0 0 4px"}}>Travel Engineers</h2>
+        <p style={{color:"rgba(255,255,255,0.5)",fontSize:13,margin:"0 0 24px"}}>Payment Request</p>
+
+        {customer && <p style={{color:"rgba(255,255,255,0.7)",fontSize:14,marginBottom:4}}>Hi <strong style={{color:"#fff"}}>{customer}</strong>!</p>}
+        <p style={{color:"rgba(255,255,255,0.6)",fontSize:13,marginBottom:4}}>For: <strong style={{color:"#f0c060"}}>{name}</strong></p>
+
+        {amount && (
+          <div style={{background:"rgba(240,192,96,0.1)",border:"1px solid rgba(240,192,96,0.3)",borderRadius:12,padding:"12px 20px",margin:"16px 0 24px"}}>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",marginBottom:4}}>Token Advance Amount</div>
+            <div style={{fontSize:32,fontWeight:700,color:"#f0c060"}}>₹{Number(amount).toLocaleString("en-IN")}</div>
+          </div>
+        )}
+
+        <div style={{background:"white",borderRadius:12,padding:12,display:"inline-block",marginBottom:20}}>
+          <img src={qrUrl} alt="UPI QR Code" width={220} height={220} style={{display:"block"}}/>
+        </div>
+
+        <p style={{color:"rgba(255,255,255,0.4)",fontSize:12,marginBottom:4}}>UPI ID: <span style={{color:"#f0c060",fontWeight:600}}>{upi}</span></p>
+        <p style={{color:"rgba(255,255,255,0.3)",fontSize:11,marginBottom:24}}>Scan with GPay, PhonePe, Paytm or any UPI app</p>
+
+        <a href={upiLink} style={{display:"block",background:"#d4850a",color:"white",padding:"14px 24px",borderRadius:12,textDecoration:"none",fontWeight:600,fontSize:15,marginBottom:12}}>
+          Open UPI App to Pay
+        </a>
+        <a href="https://travel-engineers.vercel.app" style={{display:"block",color:"rgba(255,255,255,0.3)",fontSize:12,textDecoration:"none"}}>
+          ← Back to Travel Engineers
+        </a>
       </div>
     </div>
   );
