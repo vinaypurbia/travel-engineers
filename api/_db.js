@@ -155,6 +155,7 @@ const bookingSchema = new mongoose.Schema({
   },
   tokenAmount:    { type: Number, default: 0 }, // advance amount requested
   receivedAmount: { type: Number, default: 0 }, // amount actually received from customer
+  payOnArrival:   { type: Boolean, default: false }, // customer approved to pay full amount at pickup/delivery
   createdAt: { type: Date, default: Date.now },
 });
 
