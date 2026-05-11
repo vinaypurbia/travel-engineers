@@ -1992,6 +1992,14 @@ function BookingsEditor({ data, api, reload }) {
                 <div style={{display:"flex",gap:6,flexShrink:0,alignItems:"center"}}>
                   <button onClick={e=>{e.stopPropagation();openWhatsApp(b);}} title="Message customer on WhatsApp"
                     style={{background:"rgba(37,211,102,0.12)",border:"1px solid rgba(37,211,102,0.3)",color:"#25d366",padding:"6px 10px",borderRadius:7,cursor:"pointer",fontSize:13}}>💬</button>
+                  {b.status==="payment_requested"&&(
+                    <button
+                      onClick={e=>{e.stopPropagation();openPaymentWhatsApp(b,b.tokenAmount||0);}}
+                      title="Resend payment request to customer"
+                      style={{background:"rgba(251,146,60,0.12)",border:"1px solid rgba(251,146,60,0.4)",color:"#fb923c",padding:"6px 11px",borderRadius:7,cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
+                      🔁 Resend
+                    </button>
+                  )}
                   <select value={b.status} onChange={e=>{e.stopPropagation();updateStatus(b._id,e.target.value,b);}}
                     onClick={e=>e.stopPropagation()}
                     style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${sc.border}`,background:sc.bg,color:sc.color,fontSize:11,cursor:"pointer",fontWeight:600}}>
