@@ -1675,7 +1675,7 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
           // UPI deep link with amount pre-filled
           const upiLink = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${advance}&cu=INR&tn=${encodeURIComponent(`Advance for ${vehicle.name} booking`)}`;
           // QR code via Google Charts API
-          const qrUrl = `https://chart.googleapis.com/chart?chs=220x220&cht=qr&chl=${encodeURIComponent(upiLink)}&choe=UTF-8`;
+          const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiLink)}&bgcolor=1a1a2e&color=f0c060&margin=10`;
           return (
             <div style={{padding:"28px 24px",textAlign:"center"}}>
               <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:4}}>Step 2 — Pay Advance</div>
@@ -2291,7 +2291,7 @@ function PayPage() {
     ? `upi://pay?pa=${upi}&pn=Travel+Engineers&am=${amount}&cu=INR&tn=Advance+for+${encodeURIComponent(name)}`
     : `upi://pay?pa=${upi}&pn=Travel+Engineers&cu=INR`;
 
-  const qrUrl = `https://chart.googleapis.com/chart?chs=260x260&cht=qr&chl=${encodeURIComponent(upiLink)}&choe=UTF-8`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(upiLink)}&bgcolor=1a1a2e&color=f0c060&margin=10`;
 
   return (
     <div style={{minHeight:"100vh",background:"#0f1117",display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'DM Sans',sans-serif"}}>
