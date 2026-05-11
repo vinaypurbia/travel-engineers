@@ -1663,7 +1663,7 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
               <div style={{fontSize:13,color:"rgba(255,255,255,0.7)",lineHeight:1.9}}>
                 📋 <strong style={{color:"#f0c060"}}>What happens next?</strong><br/>
                 Our team will review your request and get back to you shortly on WhatsApp with confirmation and further details.<br/><br/>
-                📞 For any queries, feel free to contact us directly.
+                📞 For any queries, feel free to contact us directly on <strong style={{color:"white"}}>{whatsapp||"our registered number"}</strong>.
               </div>
             </div>
             <button onClick={onClose} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"13px 36px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14}}>Close</button>
