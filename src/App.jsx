@@ -2053,14 +2053,21 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                     </div>
                   )}
                   {/* Payment summary */}
-                  {(b.tokenAmount > 0 || b.receivedAmount > 0) && (
+                  {(b.payOnArrival || b.tokenAmount > 0 || b.receivedAmount > 0) && (
                     <div style={{gridColumn:"1/-1",background:"rgba(240,192,96,0.06)",border:"1px solid rgba(240,192,96,0.15)",borderRadius:10,padding:"12px 16px"}}>
                       <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>Payment Summary</div>
-                      <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-                        {b.tokenAmount>0&&<div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Requested</div><div style={{fontSize:16,fontWeight:700,color:"#fb923c"}}>₹{b.tokenAmount.toLocaleString("en-IN")}</div></div>}
-                        {b.receivedAmount>0&&<div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Received</div><div style={{fontSize:16,fontWeight:700,color:"#4ade80"}}>₹{b.receivedAmount.toLocaleString("en-IN")}</div></div>}
-                        {b.tokenAmount>0&&b.receivedAmount>=0&&<div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Remaining</div><div style={{fontSize:16,fontWeight:700,color:"#f0c060"}}>₹{Math.max(0,b.tokenAmount-(b.receivedAmount||0)).toLocaleString("en-IN")}</div></div>}
-                      </div>
+                      {b.payOnArrival ? (
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                          <span style={{fontSize:13,padding:"4px 12px",borderRadius:20,background:"rgba(99,102,241,0.15)",border:"1px solid rgba(99,102,241,0.35)",color:"#a5b4fc",fontWeight:600}}>🤝 Pay on Arrival</span>
+                          <span style={{fontSize:12,color:"rgba(255,255,255,0.35)"}}>Full amount due at pickup / delivery</span>
+                        </div>
+                      ) : (
+                        <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+                          {b.tokenAmount>0&&<div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Requested</div><div style={{fontSize:16,fontWeight:700,color:"#fb923c"}}>₹{b.tokenAmount.toLocaleString("en-IN")}</div></div>}
+                          {b.receivedAmount>0&&<div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Received</div><div style={{fontSize:16,fontWeight:700,color:"#4ade80"}}>₹{b.receivedAmount.toLocaleString("en-IN")}</div></div>}
+                          {b.tokenAmount>0&&b.receivedAmount>=0&&<div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Remaining</div><div style={{fontSize:16,fontWeight:700,color:"#f0c060"}}>₹{Math.max(0,b.tokenAmount-(b.receivedAmount||0)).toLocaleString("en-IN")}</div></div>}
+                        </div>
+                      )}
                     </div>
                   )}
                   {/* Record Payment button */}
@@ -2092,7 +2099,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           }}
           onApproveArrival={async ()=>{
             // Approve pay-on-arrival — confirm booking and send WhatsApp
-            await api.put(`/bookings?id=${paymentModal.booking._id}`, { status:"confirmed", payOnArrival: true });
+            await api.put(`/bookings?id=${paymentModal.booking._id}`, { status:"confirmed", payOnArrival: true, tokenAmount: 0, receivedAmount: 0 });
             await reload();
             const b = paymentModal.booking;
             const fmt2 = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
