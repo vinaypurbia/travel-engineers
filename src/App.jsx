@@ -1602,7 +1602,7 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
     return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.customerName.trim()) { setError("Please enter your name."); return; }
     if (!form.phone.trim() || form.phone.length < 7) { setError("Please enter a valid phone number."); return; }
     if (!form.checkIn) { setError("Please select a check-in date."); return; }
@@ -1610,9 +1610,17 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
     if (new Date(form.checkOut) <= new Date(form.checkIn)) { setError("Check-out must be after check-in."); return; }
     if (!form.stayAddress.trim()) { setError("Please enter your hotel or stay address."); return; }
     setError("");
-    api.post("/bookings", { ...form, vehicleName: vehicle.name, vehicleId: vehicle._id }).catch(console.error);
-    window.open(buildWaUrl(), "_blank");
-    setStep("success");
+    setLoading(true);
+    try {
+      const result = await api.post("/bookings", { ...form, vehicleName: vehicle.name, vehicleId: vehicle._id });
+      // Open WhatsApp using URL from server (which also triggers email)
+      const url = result?.whatsappUrl || buildWaUrl();
+      window.open(url, "_blank");
+      setStep("success");
+    } catch (err) {
+      setError("Something went wrong. Please try again.");
+    }
+    setLoading(false);
   };
 
   return (
