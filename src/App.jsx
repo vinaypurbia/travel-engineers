@@ -1785,6 +1785,7 @@ function BookingsEditor({ data, api, reload }) {
   const [search, setSearch]   = useState("");
   const [sortDir, setSortDir] = useState("desc");
   const [expanded, setExpanded] = useState(null);
+  const [paymentModal, setPaymentModal] = useState(null); // { booking, suggestedAmount }
 
   // Auto-refresh every 20 seconds so new bookings appear without page reload
   useEffect(() => {
@@ -1811,29 +1812,78 @@ function BookingsEditor({ data, api, reload }) {
     return sortDir==="desc"?new Date(db)-new Date(da):new Date(da)-new Date(db);
   });
 
-  const updateStatus = async (id, status) => {
-    await api.put(`/bookings/${id}`, { status });
+  const updateStatus = async (id, status, booking=null) => {
+    await api.put(`/bookings?id=${id}`, { status });
     await reload();
+    // When confirming — show payment amount modal first
+    if (status === "confirmed" && booking) {
+      const d = (booking.checkIn && booking.checkOut)
+        ? Math.max(1, Math.round((new Date(booking.checkOut) - new Date(booking.checkIn)) / 864e5))
+        : 1;
+      const priceNum = booking.pricePerDay || 0;
+      const total = priceNum * d;
+      const suggested = total > 0 ? Math.round(total * 0.5) : "";
+      setPaymentModal({ booking, suggestedAmount: suggested, total, days: d });
+    }
   };
 
   const del = async (id) => {
     if (!window.confirm("Delete this booking?")) return;
-    await api.delete(`/bookings/${id}`);
+    await api.delete(`/bookings?id=${id}`);
     await reload();
   };
 
-  const openWhatsApp = (b) => {
+  // Builds UPI payment link for exact 50% advance amount
+  const buildUpiLink = (b) => {
+    const priceMatch = (b.pricePerDay || b.amount || 0);
+    const d = (b.checkIn && b.checkOut) ? Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5)) : 1;
+    const total = priceMatch * d;
+    const advance = Math.round(total * 0.5);
+    if (advance <= 0) return null;
+    // UPI deep link — works with all UPI apps
+    const upiUrl = `upi://pay?pa=vinay.purbia-2@oksbi&pn=Travel+Engineers&am=${advance}&cu=INR&tn=Advance+for+${encodeURIComponent(b.vehicleName||"booking")}`;
+    return { upiUrl, advance, total, remaining: total - advance, days: d };
+  };
+
+  const openPaymentWhatsApp = (b, tokenAmount) => {
+    const fmt2 = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
+    const d = (b.checkIn && b.checkOut) ? Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)) : 1;
+    const advance = Number(tokenAmount) || 0;
+    const upiUrl = advance > 0
+      ? `upi://pay?pa=vinay.purbia-2@oksbi&pn=Travel+Engineers&am=${advance}&cu=INR&tn=Advance+for+${encodeURIComponent(b.vehicleName||"booking")}`
+      : null;
     const msg = [
-      `✅ *Booking Confirmed!*`,
+      `✅ *Booking Confirmed — Travel Engineers*`,
       ``,
-      `Hi ${b.customerName}, your booking for *${b.vehicleName||"vehicle"}* is confirmed.`,
-      `📅 ${fmt(b.checkIn)} → ${fmt(b.checkOut)}`,
-      `📍 Delivery to: ${b.stayAddress||"—"}`,
+      `Hi ${b.customerName}! Your booking is confirmed 🎉`,
       ``,
-      `See you soon! — Travel Engineers`,
-    ].join("\n");
+      `🛵 *Vehicle:* ${b.vehicleName||"—"}`,
+      `📅 *Dates:* ${fmt2(b.checkIn)} → ${fmt2(b.checkOut)} (${d} day${d!==1?"s":""})`,
+      `📍 *Delivery to:* ${b.stayAddress||"—"}`,
+      ``,
+      `💰 *Payment Request:*`,
+      advance > 0 ? `*Token amount to pay now: ₹${advance}*` : null,
+      `Remaining balance to be paid at pickup`,
+      ``,
+      `👇 *Pay via UPI (tap to open GPay/PhonePe):*`,
+      upiUrl || null,
+      ``,
+      `Or pay manually to UPI ID: *vinay.purbia-2@oksbi*`,
+      advance > 0 ? `Amount: ₹${advance}` : null,
+      ``,
+      `Thank you! See you soon 🙏`,
+      `— Travel Engineers`,
+    ].filter(Boolean).join("\n");
     const num = b.phone.replace(/[^0-9]/g,"");
     window.open(`https://wa.me/${num.startsWith("91")?num:"91"+num}?text=${encodeURIComponent(msg)}`,"_blank");
+  };
+
+  const openWhatsApp = (b) => {
+    const d = (b.checkIn && b.checkOut) ? Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)) : 1;
+    const priceNum = b.pricePerDay || 0;
+    const total = priceNum * d;
+    const suggested = total > 0 ? Math.round(total * 0.5) : "";
+    setPaymentModal({ booking: b, suggestedAmount: suggested, total, days: d });
   };
 
   return (
@@ -1918,7 +1968,7 @@ function BookingsEditor({ data, api, reload }) {
                 <div style={{display:"flex",gap:6,flexShrink:0,alignItems:"center"}}>
                   <button onClick={e=>{e.stopPropagation();openWhatsApp(b);}} title="Message customer on WhatsApp"
                     style={{background:"rgba(37,211,102,0.12)",border:"1px solid rgba(37,211,102,0.3)",color:"#25d366",padding:"6px 10px",borderRadius:7,cursor:"pointer",fontSize:13}}>💬</button>
-                  <select value={b.status} onChange={e=>{e.stopPropagation();updateStatus(b._id,e.target.value);}}
+                  <select value={b.status} onChange={e=>{e.stopPropagation();updateStatus(b._id,e.target.value,b);}}
                     onClick={e=>e.stopPropagation()}
                     style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${sc.border}`,background:sc.bg,color:sc.color,fontSize:11,cursor:"pointer",fontWeight:600}}>
                     <option value="pending">⏳ Pending</option>
@@ -1959,6 +2009,132 @@ function BookingsEditor({ data, api, reload }) {
             </div>
           );
         })}
+      </div>
+
+      {/* ── Payment Token Modal ── */}
+      {paymentModal&&(
+        <PaymentTokenModal
+          booking={paymentModal.booking}
+          suggestedAmount={paymentModal.suggestedAmount}
+          total={paymentModal.total}
+          days={paymentModal.days}
+          onSend={(amount)=>{ openPaymentWhatsApp(paymentModal.booking, amount); setPaymentModal(null); }}
+          onClose={()=>setPaymentModal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Payment Token Modal ──────────────────────────────────────────────────────
+function PaymentTokenModal({ booking, suggestedAmount, total, days, onSend, onClose }) {
+  const [amount, setAmount] = useState(String(suggestedAmount || ""));
+  const [error, setError] = useState("");
+
+  const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
+
+  const handleSend = () => {
+    const num = Number(amount);
+    if (!amount || isNaN(num) || num <= 0) { setError("Please enter a valid amount."); return; }
+    onSend(num);
+  };
+
+  const presets = total > 0
+    ? [
+        { label:"25%", value: Math.round(total*0.25) },
+        { label:"50%", value: Math.round(total*0.50) },
+        { label:"75%", value: Math.round(total*0.75) },
+        { label:"Full", value: total },
+      ]
+    : [];
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)"}} onClick={onClose}/>
+      <div style={{position:"relative",background:"#0d1b2e",border:"1px solid rgba(212,133,10,0.35)",borderRadius:20,width:"100%",maxWidth:420,boxShadow:"0 24px 80px rgba(0,0,0,0.6)",overflow:"hidden"}}>
+        {/* Header */}
+        <div style={{padding:"20px 24px 16px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontFamily:"'Playfair Display'",fontSize:20,fontWeight:700,color:"#f0c060"}}>💰 Payment Request</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginTop:3}}>Set token amount to send to customer</div>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.06)",border:"none",color:"rgba(255,255,255,0.4)",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15}}>✕</button>
+        </div>
+
+        <div style={{padding:"20px 24px 24px"}}>
+          {/* Booking summary */}
+          <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 16px",marginBottom:20}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+              <span style={{fontSize:13,color:"rgba(255,255,255,0.5)"}}>Customer</span>
+              <span style={{fontSize:13,fontWeight:600}}>{booking.customerName}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+              <span style={{fontSize:13,color:"rgba(255,255,255,0.5)"}}>Vehicle</span>
+              <span style={{fontSize:13,fontWeight:600}}>{booking.vehicleName||"—"}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+              <span style={{fontSize:13,color:"rgba(255,255,255,0.5)"}}>Dates</span>
+              <span style={{fontSize:13}}>{fmt(booking.checkIn)} → {fmt(booking.checkOut)} ({days}d)</span>
+            </div>
+            {total>0&&(
+              <div style={{display:"flex",justifyContent:"space-between",paddingTop:8,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
+                <span style={{fontSize:13,color:"rgba(255,255,255,0.5)"}}>Total amount</span>
+                <span style={{fontSize:15,fontWeight:700,color:"#f0c060"}}>₹{total.toLocaleString("en-IN")}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Amount input */}
+          <div style={{marginBottom:16}}>
+            <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:8}}>
+              Token amount to request (₹)
+            </label>
+            <div style={{position:"relative"}}>
+              <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:16,color:"#f0c060",fontWeight:700}}>₹</span>
+              <input
+                type="number"
+                value={amount}
+                onChange={e=>{ setAmount(e.target.value); setError(""); }}
+                placeholder="Enter amount"
+                style={{width:"100%",padding:"12px 14px 12px 32px",background:"rgba(255,255,255,0.07)",border:`1.5px solid ${error?"#ff6b6b":"rgba(255,255,255,0.12)"}`,borderRadius:10,color:"white",fontFamily:"'DM Sans'",fontSize:18,fontWeight:700,outline:"none"}}
+              />
+            </div>
+            {error&&<div style={{fontSize:12,color:"#ff6b6b",marginTop:6}}>{error}</div>}
+          </div>
+
+          {/* Quick presets */}
+          {presets.length>0&&(
+            <div style={{marginBottom:20}}>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>Quick select</div>
+              <div style={{display:"flex",gap:8}}>
+                {presets.map(p=>(
+                  <button key={p.label} onClick={()=>{ setAmount(String(p.value)); setError(""); }}
+                    style={{flex:1,padding:"8px 4px",borderRadius:8,border:`1px solid ${amount===String(p.value)?"#d4850a":"rgba(255,255,255,0.1)"}`,background:amount===String(p.value)?"rgba(212,133,10,0.2)":"rgba(255,255,255,0.04)",color:amount===String(p.value)?"#f0c060":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:12,fontWeight:600,textAlign:"center"}}>
+                    <div>{p.label}</div>
+                    <div style={{fontSize:11,marginTop:2}}>₹{p.value.toLocaleString("en-IN")}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Remaining info */}
+          {amount&&!isNaN(Number(amount))&&Number(amount)>0&&total>0&&(
+            <div style={{background:"rgba(74,222,128,0.06)",border:"1px solid rgba(74,222,128,0.15)",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:12,color:"rgba(255,255,255,0.5)",display:"flex",justifyContent:"space-between"}}>
+              <span>Remaining at pickup</span>
+              <span style={{color:"#4ade80",fontWeight:600}}>₹{Math.max(0,total-Number(amount)).toLocaleString("en-IN")}</span>
+            </div>
+          )}
+
+          {/* Send button */}
+          <button onClick={handleSend}
+            style={{width:"100%",padding:"13px",background:"linear-gradient(135deg,#25d366,#128c7e)",color:"white",border:"none",borderRadius:10,fontWeight:700,fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            💬 Send Payment Request on WhatsApp
+          </button>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.2)",textAlign:"center",marginTop:8}}>
+            WhatsApp will open — just tap Send to deliver to customer
+          </div>
+        </div>
       </div>
     </div>
   );
