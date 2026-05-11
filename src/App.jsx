@@ -899,7 +899,6 @@ function InventoryEditor({ data, api, reload, showSaved }) {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("name");
   const [viewMode, setViewMode] = useState("list"); // list | grid
-  const [filterDate, setFilterDate] = useState(""); // date string YYYY-MM-DD
 
   useEffect(()=>setItems(data.inventory||[]),[data.inventory]);
 
@@ -946,18 +945,6 @@ function InventoryEditor({ data, api, reload, showSaved }) {
   if (sortBy==="name")     filtered = [...filtered].sort((a,b)=>(a.name||"").localeCompare(b.name||""));
   if (sortBy==="price")    filtered = [...filtered].sort((a,b)=>(b.pricePerDay||0)-(a.pricePerDay||0));
   if (sortBy==="status")   filtered = [...filtered].sort((a,b)=>(a.status||"").localeCompare(b.status||""));
-
-  // Date availability filter — check if item is booked on the selected date
-  const getStatusForDate = (item) => {
-    if (!filterDate || !item.activeBookings) return item.status;
-    const d = new Date(filterDate); d.setHours(12,0,0,0);
-    const isBooked = item.activeBookings.some(b => {
-      const from = b.from ? new Date(b.from) : null;
-      const to   = b.to   ? new Date(b.to)   : null;
-      return from && to && d >= from && d <= to;
-    });
-    return isBooked ? "booked" : "available";
-  };
 
   const exportCSV = () => {
     const rows = [["Name","Type","Vehicle Type","Status","Price/Day","Capacity","Location","Notes"]];
@@ -1122,11 +1109,10 @@ function InventoryEditor({ data, api, reload, showSaved }) {
             </div>
           )}
           {filtered.map(item=>{
-            const dateStatus = getStatusForDate(item);
-            const ss = STATUS_STYLES[dateStatus]||STATUS_STYLES.available;
+            const ss = STATUS_STYLES[item.status]||STATUS_STYLES.available;
             const icon = typeIcon(item);
             return (
-              <div key={item._id} style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${filterDate&&dateStatus==="booked"?"rgba(255,100,100,0.3)":filterDate&&dateStatus==="available"?"rgba(74,222,128,0.2)":"rgba(255,255,255,0.07)"}`,borderRadius:14,padding:"14px 18px",display:"flex",gap:14,alignItems:"center",transition:"border-color 0.2s"}}
+              <div key={item._id} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"14px 18px",display:"flex",gap:14,alignItems:"center",transition:"border-color 0.2s"}}
                 onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(212,133,10,0.3)"}
                 onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.07)"}>
                 {item.image
@@ -1148,17 +1134,6 @@ function InventoryEditor({ data, api, reload, showSaved }) {
                     {item.location&&<span>📍 {item.location}</span>}
                     {item.description&&<span style={{maxWidth:300,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.description}</span>}
                   </div>
-                  {/* Show active booking dates */}
-                  {(item.activeBookings||[]).length>0&&(
-                    <div style={{marginTop:6,display:"flex",gap:6,flexWrap:"wrap"}}>
-                      {item.activeBookings.map((b,i)=>{
-                        const fmt=(d)=>d?new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short"}):"?";
-                        return <span key={i} style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"rgba(240,192,96,0.1)",border:"1px solid rgba(240,192,96,0.25)",color:"#f0c060"}}>
-                          📅 {fmt(b.from)} → {fmt(b.to)} · {b.customerName||""}
-                        </span>;
-                      })}
-                    </div>
-                  )}
                 </div>
                 <div style={{display:"flex",gap:6,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end",alignItems:"center"}}>
                   <select value={item.status} onChange={e=>updateStatus(item,e.target.value)}
@@ -1643,7 +1618,7 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
     // Open WhatsApp BEFORE the await — browsers block window.open after async calls
     const waWin = window.open(buildWaUrl(), "_blank");
     try {
-      const result = await api.post("/bookings", { ...form, vehicleName: vehicle.name, vehicleId: vehicle._id, pricePerDay: vehicle.priceNum || 0 });
+      const result = await api.post("/bookings", { ...form, vehicleName: vehicle.name, vehicleId: vehicle._id });
       // Update the already-open window with the server URL if available
       if (result?.whatsappUrl && waWin && !waWin.closed) {
         waWin.location.href = result.whatsappUrl;
@@ -2119,16 +2094,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                         <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
                           {b.tokenAmount>0&&<div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Requested</div><div style={{fontSize:16,fontWeight:700,color:"#fb923c"}}>₹{b.tokenAmount.toLocaleString("en-IN")}</div></div>}
                           {b.receivedAmount>0&&<div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Received</div><div style={{fontSize:16,fontWeight:700,color:"#4ade80"}}>₹{b.receivedAmount.toLocaleString("en-IN")}</div></div>}
-                          {b.tokenAmount>0&&(()=>{
-                            const bDays = (b.checkIn&&b.checkOut)?Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)):1;
-                            const bTotal = (b.pricePerDay||0)*bDays;
-                            // If we have pricePerDay, remaining = total - received; else total - tokenAmount (advance) - received
-                            const received = b.receivedAmount||0;
-                            const remaining = bTotal>0
-                              ? Math.max(0, bTotal - received)
-                              : Math.max(0, (b.tokenAmount*2) - received); // tokenAmount is 50%, so total = tokenAmount*2
-                            return <div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Remaining</div><div style={{fontSize:16,fontWeight:700,color:remaining>0?"#f0c060":"#4ade80"}}>₹{remaining.toLocaleString("en-IN")}</div></div>;
-                          })()}
+                          {b.tokenAmount>0&&(()=>{ const orderTotal=getPricePerDay(b)*d||b.tokenAmount; const balanceDue=Math.max(0,orderTotal-(b.receivedAmount||0)); return <div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Balance Due</div><div style={{fontSize:16,fontWeight:700,color:balanceDue===0?"#4ade80":"#f0c060"}}>₹{balanceDue.toLocaleString("en-IN")}</div></div>; })()}
                         </div>
                       )}
                     </div>
