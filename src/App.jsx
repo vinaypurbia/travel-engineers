@@ -2090,6 +2090,30 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
             openPaymentWhatsApp(paymentModal.booking, amount);
             setPaymentModal(null);
           }}
+          onApproveArrival={async ()=>{
+            // Approve pay-on-arrival — confirm booking and send WhatsApp
+            await api.put(`/bookings?id=${paymentModal.booking._id}`, { status:"confirmed", payOnArrival: true });
+            await reload();
+            const b = paymentModal.booking;
+            const fmt2 = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
+            const msg = [
+              `✅ *Booking Confirmed — Travel Engineers*`,
+              ``,
+              `Hi ${b.customerName}! Your booking is confirmed 🎉`,
+              ``,
+              `🛵 *Vehicle:* ${b.vehicleName||"—"}`,
+              `📅 *Dates:* ${fmt2(b.checkIn)} → ${fmt2(b.checkOut)}`,
+              `📍 *Delivery to:* ${b.stayAddress||"—"}`,
+              ``,
+              `💰 *Payment:* Full amount to be paid at the time of vehicle pickup/delivery.`,
+              ``,
+              `Thank you! See you soon 🙏`,
+              `— Travel Engineers`,
+            ].filter(Boolean).join("\n");
+            const num = (b.phone||"").replace(/[^0-9]/g,"");
+            window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,"_blank");
+            setPaymentModal(null);
+          }}
           onClose={()=>setPaymentModal(null)}
         />
       )}
@@ -2111,7 +2135,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
 }
 
 // ─── Payment Token Modal ──────────────────────────────────────────────────────
-function PaymentTokenModal({ booking, suggestedAmount, total, days, onSend, onClose }) {
+function PaymentTokenModal({ booking, suggestedAmount, total, days, onSend, onApproveArrival, onClose }) {
   const [amount, setAmount] = useState(suggestedAmount > 0 ? String(suggestedAmount) : "");
   const [error, setError] = useState("");
 
@@ -2218,6 +2242,22 @@ function PaymentTokenModal({ booking, suggestedAmount, total, days, onSend, onCl
           </button>
           <div style={{fontSize:11,color:"rgba(255,255,255,0.2)",textAlign:"center",marginTop:8}}>
             WhatsApp will open — just tap Send to deliver to customer
+          </div>
+
+          {/* Divider */}
+          <div style={{display:"flex",alignItems:"center",gap:10,margin:"16px 0"}}>
+            <div style={{flex:1,height:1,background:"rgba(255,255,255,0.07)"}}/>
+            <span style={{fontSize:11,color:"rgba(255,255,255,0.25)",letterSpacing:1}}>OR</span>
+            <div style={{flex:1,height:1,background:"rgba(255,255,255,0.07)"}}/>
+          </div>
+
+          {/* Pay on Arrival */}
+          <button onClick={onApproveArrival}
+            style={{width:"100%",padding:"13px",background:"rgba(99,102,241,0.12)",border:"1px solid rgba(99,102,241,0.35)",color:"#a5b4fc",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            🤝 Approve Pay on Arrival
+          </button>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.2)",textAlign:"center",marginTop:6}}>
+            Confirms booking — customer pays full amount at pickup/delivery
           </div>
         </div>
       </div>
