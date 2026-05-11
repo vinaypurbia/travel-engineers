@@ -1641,7 +1641,10 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
         ``,
         `— Travel Engineers 🛵`,
       ].join("\n");
-      const replyNum = customerNum.startsWith("91") ? customerNum : "91" + customerNum;
+      // Smart country code — if number is 10 digits assume India (+91), otherwise use as-is
+      let replyNum = customerNum;
+      if (customerNum.length === 10) replyNum = "91" + customerNum;
+      else if (customerNum.length === 11 && customerNum.startsWith("0")) replyNum = "91" + customerNum.slice(1);
       setTimeout(() => {
         window.open(`https://wa.me/${replyNum}?text=${encodeURIComponent(replyMsg)}`, "_blank");
       }, 1500);
@@ -1750,9 +1753,10 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
                   style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none"}}/>
               </div>
               <div>
-                <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Phone number *</label>
+                <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Phone number (WhatsApp) *</label>
                 <input value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="+91 98765 43210" type="tel"
                   style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none"}}/>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.25)",marginTop:4}}>Include country code e.g. +91 for India</div>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 <div>
