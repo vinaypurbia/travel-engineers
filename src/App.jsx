@@ -1640,8 +1640,7 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
         `📞 For any queries, feel free to contact us directly.`,
         ``,
         `— Travel Engineers 🛵`,
-      ].join("
-");
+      ].join("\n");
       const replyNum = customerNum.startsWith("91") ? customerNum : "91" + customerNum;
       setTimeout(() => {
         window.open(`https://wa.me/${replyNum}?text=${encodeURIComponent(replyMsg)}`, "_blank");
