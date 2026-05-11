@@ -1571,10 +1571,11 @@ function AccountingEditor({ data, api, reload, showSaved }) {
 function BookingModal({ vehicle, whatsapp, api, onClose }) {
   const today = new Date().toISOString().slice(0,10);
   const [form, setForm] = useState({ customerName:"", phone:"", checkIn:today, checkOut:"", stayAddress:"", notes:"" });
-  const [step, setStep] = useState("form"); // form | success
+  const [step, setStep] = useState("form"); // form | qr | success
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [waUrl, setWaUrl] = useState("");
+  const [bookingId, setBookingId] = useState("");
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
   const days = form.checkIn && form.checkOut
@@ -1619,7 +1620,8 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
       if (result?.whatsappUrl && waWin && !waWin.closed) {
         waWin.location.href = result.whatsappUrl;
       }
-      setStep("success");
+      setBookingId(result?.booking?._id || "");
+      setStep("qr"); // Show QR code before final success
     } catch (err) {
       setError("Something went wrong. Please try again.");
     }
@@ -1647,13 +1649,66 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
         {step==="success" ? (
           <div style={{padding:"40px 24px",textAlign:"center"}}>
             <div style={{fontSize:56,marginBottom:16}}>🎉</div>
-            <div style={{fontFamily:"'Playfair Display'",fontSize:22,color:"#4ade80",marginBottom:8}}>Booking Sent!</div>
+            <div style={{fontFamily:"'Playfair Display'",fontSize:22,color:"#4ade80",marginBottom:8}}>Booking Confirmed!</div>
             <div style={{fontSize:14,color:"rgba(255,255,255,0.5)",lineHeight:1.7,marginBottom:24}}>
-              Your booking for <strong style={{color:"white"}}>{vehicle.name}</strong> has been saved and the owner has been notified on WhatsApp. They'll confirm shortly!
+              Your booking for <strong style={{color:"white"}}>{vehicle.name}</strong> is confirmed. See you on pickup day!
             </div>
             <button onClick={onClose} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"12px 32px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14}}>Done</button>
           </div>
-        ) : (
+        ) : step==="qr" ? (() => {
+          const advance = total>0 ? Math.ceil(total * 0.5) : 0;
+          const upiId = "vinay.purbia-2@oksbi";
+          const upiName = "Travel Engineers";
+          // UPI deep link with amount pre-filled
+          const upiLink = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${advance}&cu=INR&tn=${encodeURIComponent(`Advance for ${vehicle.name} booking`)}`;
+          // QR code via Google Charts API
+          const qrUrl = `https://chart.googleapis.com/chart?chs=220x220&cht=qr&chl=${encodeURIComponent(upiLink)}&choe=UTF-8`;
+          return (
+            <div style={{padding:"28px 24px",textAlign:"center"}}>
+              <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:4}}>Step 2 — Pay Advance</div>
+              <div style={{fontFamily:"'Playfair Display'",fontSize:22,color:"white",marginBottom:4}}>Scan & Pay 50% Now</div>
+              <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginBottom:20}}>Remaining 50% paid at vehicle pickup</div>
+
+              {/* Price breakdown */}
+              <div style={{background:"rgba(212,133,10,0.08)",border:"1px solid rgba(212,133,10,0.2)",borderRadius:12,padding:"14px 18px",marginBottom:20,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,textAlign:"center"}}>
+                <div>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:4}}>TOTAL</div>
+                  <div style={{fontSize:16,fontWeight:700,color:"white"}}>₹{total.toLocaleString("en-IN")}</div>
+                </div>
+                <div style={{borderLeft:"1px solid rgba(255,255,255,0.08)",borderRight:"1px solid rgba(255,255,255,0.08)"}}>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:4}}>PAY NOW</div>
+                  <div style={{fontSize:16,fontWeight:700,color:"#f0c060"}}>₹{advance.toLocaleString("en-IN")}</div>
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:4}}>AT PICKUP</div>
+                  <div style={{fontSize:16,fontWeight:700,color:"#4ade80"}}>₹{(total-advance).toLocaleString("en-IN")}</div>
+                </div>
+              </div>
+
+              {/* QR Code */}
+              <div style={{display:"inline-block",background:"white",borderRadius:16,padding:12,marginBottom:16,boxShadow:"0 8px 32px rgba(0,0,0,0.4)"}}>
+                <img src={qrUrl} alt="UPI QR Code" width={200} height={200} style={{display:"block",borderRadius:8}}/>
+              </div>
+
+              <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginBottom:6}}>UPI ID: <span style={{color:"#f0c060",fontWeight:600}}>{upiId}</span></div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.25)",marginBottom:20}}>Works with GPay, PhonePe, Paytm & all UPI apps</div>
+
+              {/* UPI app button */}
+              <a href={upiLink} style={{display:"block",marginBottom:12}}>
+                <button style={{width:"100%",padding:"12px",background:"linear-gradient(135deg,#1a8f3c,#25d366)",color:"white",border:"none",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>
+                  📱 Open UPI App to Pay ₹{advance.toLocaleString("en-IN")}
+                </button>
+              </a>
+
+              <button onClick={()=>setStep("success")} style={{width:"100%",padding:"11px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.5)",borderRadius:10,fontWeight:600,fontSize:13,cursor:"pointer"}}>
+                I've paid — Continue ✓
+              </button>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.2)",marginTop:10}}>
+                Screenshot your payment as confirmation
+              </div>
+            </div>
+          );
+        })() : (
           <div style={{padding:"20px 24px 24px"}}>
             <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:16}}>Booking details</div>
 
