@@ -82,12 +82,17 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === "POST") {
-      const { customerName, phone, vehicleName, vehicleId, checkIn, checkOut, stayAddress, notes } = req.body;
+      const { customerName, phone, vehicleName, vehicleId, checkIn, checkOut, stayAddress, notes, pricePerDay } = req.body;
+      const days_ = (checkIn && checkOut) ? Math.max(1, Math.round((new Date(checkOut) - new Date(checkIn)) / 864e5)) : 1;
+      const totalAmt  = (pricePerDay || 0) * days_;
+      const advanceAmt = totalAmt > 0 ? Math.ceil(totalAmt * 0.5) : 0;
       const booking = await Booking.create({
         customerName, phone, vehicleName, vehicleId: vehicleId || null,
         checkIn: checkIn ? new Date(checkIn) : null,
         checkOut: checkOut ? new Date(checkOut) : null,
         stayAddress, notes, status: "pending",
+        pricePerDay: pricePerDay || 0,
+        tokenAmount: advanceAmt,
       });
       const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" }) : "—";
       const days = (checkIn && checkOut) ? Math.max(1, Math.round((new Date(checkOut) - new Date(checkIn)) / 864e5)) : 1;
