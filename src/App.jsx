@@ -1618,7 +1618,7 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
     // Open WhatsApp BEFORE the await — browsers block window.open after async calls
     const waWin = window.open(buildWaUrl(), "_blank");
     try {
-      const result = await api.post("/bookings", { ...form, vehicleName: vehicle.name, vehicleId: vehicle._id });
+      const result = await api.post("/bookings", { ...form, vehicleName: vehicle.name, vehicleId: vehicle._id, pricePerDay: vehicle.priceNum || 0 });
       // Update the already-open window with the server URL if available
       if (result?.whatsappUrl && waWin && !waWin.closed) {
         waWin.location.href = result.whatsappUrl;
@@ -2094,7 +2094,12 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                         <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
                           {b.tokenAmount>0&&<div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Requested</div><div style={{fontSize:16,fontWeight:700,color:"#fb923c"}}>₹{b.tokenAmount.toLocaleString("en-IN")}</div></div>}
                           {b.receivedAmount>0&&<div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Received</div><div style={{fontSize:16,fontWeight:700,color:"#4ade80"}}>₹{b.receivedAmount.toLocaleString("en-IN")}</div></div>}
-                          {b.tokenAmount>0&&b.receivedAmount>=0&&<div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Remaining</div><div style={{fontSize:16,fontWeight:700,color:"#f0c060"}}>₹{Math.max(0,b.tokenAmount-(b.receivedAmount||0)).toLocaleString("en-IN")}</div></div>}
+                          {b.tokenAmount>0&&b.receivedAmount>=0&&(()=>{
+                            const bDays = (b.checkIn&&b.checkOut)?Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)):1;
+                            const bTotal = (b.pricePerDay||0)*bDays;
+                            const remaining = bTotal>0 ? Math.max(0,bTotal-(b.receivedAmount||0)) : Math.max(0,b.tokenAmount-(b.receivedAmount||0));
+                            return <div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Remaining</div><div style={{fontSize:16,fontWeight:700,color:"#f0c060"}}>₹{remaining.toLocaleString("en-IN")}</div></div>;
+                          })()}
                         </div>
                       )}
                     </div>
