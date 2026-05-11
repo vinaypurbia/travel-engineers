@@ -1578,6 +1578,7 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
   const [error, setError] = useState("");
   const [waUrl, setWaUrl] = useState("");
   const [bookingId, setBookingId] = useState("");
+  const [replyUrl, setReplyUrl] = useState("");
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
   const days = form.checkIn && form.checkOut
@@ -1625,8 +1626,11 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
       setBookingId(result?.booking?._id || "");
       setStep("success"); // Show thank you message — payment request comes from admin
 
-      // Auto-reply to customer — open second WhatsApp window with thank you message
+      // Store customer details for reply button on success screen
       const customerNum = form.phone.replace(/[^0-9]/g, "");
+      let replyNum = customerNum;
+      if (customerNum.length === 10) replyNum = "91" + customerNum;
+      else if (customerNum.length === 11 && customerNum.startsWith("0")) replyNum = "91" + customerNum.slice(1);
       const replyMsg = [
         `✅ *Booking Request Received!*`,
         ``,
@@ -1641,13 +1645,7 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
         ``,
         `— Travel Engineers 🛵`,
       ].join("\n");
-      // Smart country code — if number is 10 digits assume India (+91), otherwise use as-is
-      let replyNum = customerNum;
-      if (customerNum.length === 10) replyNum = "91" + customerNum;
-      else if (customerNum.length === 11 && customerNum.startsWith("0")) replyNum = "91" + customerNum.slice(1);
-      setTimeout(() => {
-        window.open(`https://wa.me/${replyNum}?text=${encodeURIComponent(replyMsg)}`, "_blank");
-      }, 1500);
+      setReplyUrl(`https://wa.me/${replyNum}?text=${encodeURIComponent(replyMsg)}`);
 
     } catch (err) {
       setError("Something went wrong. Please try again.");
@@ -1687,6 +1685,12 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
                 📞 For any queries, feel free to contact us directly.
               </div>
             </div>
+            {replyUrl && (
+              <a href={replyUrl} target="_blank" rel="noreferrer"
+                style={{display:"block",marginBottom:12,background:"rgba(37,211,102,0.15)",border:"1px solid rgba(37,211,102,0.3)",color:"#25d366",padding:"13px 24px",borderRadius:10,fontWeight:700,fontSize:14,textDecoration:"none"}}>
+                💬 Send Thank You Message to Customer
+              </a>
+            )}
             <button onClick={onClose} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"13px 36px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14}}>Close</button>
           </div>
         ) : step==="qr" ? (() => {
