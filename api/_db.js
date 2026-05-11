@@ -153,7 +153,8 @@ const bookingSchema = new mongoose.Schema({
     enum: ["pending", "payment_requested", "confirmed", "cancelled", "completed"],
     default: "pending",
   },
-  tokenAmount: { type: Number, default: 0 }, // advance amount requested
+  tokenAmount:    { type: Number, default: 0 }, // advance amount requested
+  receivedAmount: { type: Number, default: 0 }, // amount actually received from customer
   createdAt: { type: Date, default: Date.now },
 });
 
