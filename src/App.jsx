@@ -164,7 +164,7 @@ export default function App() {
   if (view === "pay") return <PayPage />;
   if (view === "admin") return <AdminPanel data={data} api={api} reload={loadAllData} saved={saved} showSaved={showSaved} onExit={() => { setView("home"); loadAllData(); }} adminTab={adminTab} setAdminTab={setAdminTab} />;
 
-  const { agency, rentals, villa, testimonials } = data;
+  const { agency, rentals, villa, testimonials, tours: publicTours, tourBookings: publicTourBookings } = data;
   const filtered = filterType === "all" ? rentals : rentals.filter(r => r.type === filterType);
 
   return (
@@ -357,10 +357,10 @@ export default function App() {
           <p style={{fontFamily:"'Lora'",fontStyle:"italic",color:"#666",marginTop:16,fontSize:18}}>Day trips, multi-day adventures, taxi rides & airport pickups</p>
         </div>
         {/* Type filter */}
-        {(data.tours||[]).filter(t=>t.available).length > 0 && (
-          <TourSection tours={(data.tours||[]).filter(t=>t.available)} agency={agency} api={api} />
+        {(publicTours||[]).filter(t=>t.available).length > 0 && (
+          <TourSection tours={(publicTours||[]).filter(t=>t.available)} agency={agency} api={api} />
         )}
-        {(data.tours||[]).filter(t=>t.available).length === 0 && (
+        {(publicTours||[]).filter(t=>t.available).length === 0 && (
           <div style={{textAlign:"center",color:"#999",fontFamily:"'DM Sans'",padding:60}}>
             <div style={{fontSize:48,marginBottom:16}}>🗺️</div>
             Tours & taxi packages coming soon!
@@ -1128,7 +1128,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
     {id:"inventory",   label:"📦 Inventory"},
     {id:"accounting",  label:"💰 Accounting"},
     {id:"bookings",    label:"📋 Bookings", badge: (data.bookings||[]).filter(b=>b.status==="pending").length},
-    {id:"tours",       label:"🗺️ Tours & Taxi", badge: (data.tourBookings||[]).filter(b=>b.status==="pending").length},
+    {id:"tours",       label:"Tours & Taxi 🗺", badge: (data.tourBookings||[]).filter(b=>b.status==="pending").length},
   ];
   return (
     <div style={{minHeight:"100vh",background:"#0d1b2e",fontFamily:"'DM Sans',sans-serif",color:"white"}}>
@@ -1349,4 +1349,4 @@ function VillaEditor({ data, api, reload, showSaved }) {
         {(form.rooms||[]).map((r,i)=>(
           <div key={i} className="adm-card" style={{marginBottom:12}}>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:10}}>
-              <div><label className="adm-label">Room Name</label><input className="adm-input" value={r.name||""} on
+              <div><label className="adm-label">Room Name</
