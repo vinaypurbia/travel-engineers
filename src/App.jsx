@@ -1837,14 +1837,14 @@ function AccountingEditor({ data, api, reload, showSaved }) {
   });
 
   // Summary for filtered range
-  const filteredIncome  = filtered.filter(t=>t.type==="income").reduce((s,t)=>s+t.amount,0);
+  const filteredIncome  = filtered.filter(t=>t.type==="income" && t.paymentStatus!=="pending").reduce((s,t)=>s+t.amount,0);
   const filteredExpense = filtered.filter(t=>t.type==="expense").reduce((s,t)=>s+t.amount,0);
   const filteredProfit  = filteredIncome - filteredExpense;
   const pendingAmt      = filtered.filter(t=>t.paymentStatus==="pending").reduce((s,t)=>s+t.amount,0);
 
   // Revenue breakdown for donut
   const breakdown = {};
-  filtered.filter(t=>t.type==="income").forEach(t=>{ breakdown[t.category]=(breakdown[t.category]||0)+t.amount; });
+  filtered.filter(t=>t.type==="income" && t.paymentStatus!=="pending").forEach(t=>{ breakdown[t.category]=(breakdown[t.category]||0)+t.amount; });
   const donutColors = ["#f0c060","#4ade80","#60a5fa","#a78bfa","#fb923c","#f472b6"];
   const donutSegments = Object.entries(breakdown).map(([cat,val],i)=>({ label:categoryLabel(cat), value:val, color:donutColors[i%donutColors.length] }));
 
@@ -1855,7 +1855,7 @@ function AccountingEditor({ data, api, reload, showSaved }) {
       const d=new Date(); d.setMonth(d.getMonth()-i);
       const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
       const label=d.toLocaleString("en-IN",{month:"short"});
-      const inc=allTx.filter(t=>t.type==="income"&&(t.date||"").startsWith(ym)).reduce((s,t)=>s+t.amount,0);
+      const inc=allTx.filter(t=>t.type==="income"&&t.paymentStatus!=="pending"&&(t.date||"").startsWith(ym)).reduce((s,t)=>s+t.amount,0);
       const exp=allTx.filter(t=>t.type==="expense"&&(t.date||"").startsWith(ym)).reduce((s,t)=>s+t.amount,0);
       months.push({label,inc,exp});
     }
