@@ -67,7 +67,7 @@ function MobileNav({ agency, activeNav, setActiveNav }) {
           {agency.name}
         </div>
         <div className="nav-desktop" style={{display:"flex",gap:28,alignItems:"center"}}>
-          {["home","rentals","villa","contact"].map(n=>(
+          {["home","rentals","villa","tours","contact"].map(n=>(
             <span key={n} className="nav-link" style={{color:activeNav===n?"#f0c060":"rgba(255,255,255,0.7)"}}
               onClick={()=>scrollTo(n)}>{n}</span>
           ))}
@@ -118,7 +118,7 @@ export default function App() {
 
   const loadAllData = async () => {
     try {
-      const [agency, rentals, villa, testimonials, inventory, accounting, bookings] = await Promise.all([
+      const [agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings] = await Promise.all([
         safeGet("/agency", {name:"",tagline:"",heroSubtitle:"",phone:"",email:"",address:"",whatsapp:"",heroImage:""}),
         safeGet("/rentals", []),
         safeGet("/villa", {name:"",tagline:"",description:"",price:"",period:"/night",checkIn:"",checkOut:"",minStay:"",maxGuests:"",image:"",amenities:[],rooms:[]}),
@@ -126,8 +126,10 @@ export default function App() {
         safeGet("/inventory", []),
         safeGet("/accounting", {transactions:[],summary:{}}),
         safeGet("/bookings", []),
+        safeGet("/tours", []),
+        safeGet("/tour-bookings", []),
       ]);
-      setData({ agency, rentals, villa, testimonials, inventory, accounting, bookings });
+      setData({ agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings });
     } catch (err) {
       console.error("API failed:", err);
     }
@@ -347,6 +349,25 @@ export default function App() {
         </div>
       </section>
 
+      {/* TOURS & TAXI */}
+      <section id="sec-tours" style={{padding:"100px 5%",background:"#f8f4ed"}}>
+        <div style={{textAlign:"center",marginBottom:60}}>
+          <div style={{fontFamily:"'DM Sans'",fontSize:12,letterSpacing:4,color:"#d4850a",textTransform:"uppercase",marginBottom:12}}>Explore More</div>
+          <h2 className="section-title">Tours & Transfers</h2>
+          <p style={{fontFamily:"'Lora'",fontStyle:"italic",color:"#666",marginTop:16,fontSize:18}}>Day trips, multi-day adventures, taxi rides & airport pickups</p>
+        </div>
+        {/* Type filter */}
+        {(data.tours||[]).filter(t=>t.available).length > 0 && (
+          <TourSection tours={(data.tours||[]).filter(t=>t.available)} agency={agency} api={api} />
+        )}
+        {(data.tours||[]).filter(t=>t.available).length === 0 && (
+          <div style={{textAlign:"center",color:"#999",fontFamily:"'DM Sans'",padding:60}}>
+            <div style={{fontSize:48,marginBottom:16}}>🗺️</div>
+            Tours & taxi packages coming soon!
+          </div>
+        )}
+      </section>
+
       {/* TESTIMONIALS */}
       <section style={{padding:"100px 5%"}}>
         <div style={{textAlign:"center",marginBottom:60}}>
@@ -501,6 +522,585 @@ function ReviewForm({ api, reload, rentals, villa }) {
   );
 }
 
+
+// ─── Public Tour Section ──────────────────────────────────────────────────────
+function TourSection({ tours, agency, api }) {
+  const [filter, setFilter]     = useState("all");
+  const [selected, setSelected] = useState(null);
+  const [booking, setBooking]   = useState(null);
+
+  const TYPE_META = {
+    "all":       { label:"All",            emoji:"🗺️" },
+    "day-trip":  { label:"Day Trips",      emoji:"🌅" },
+    "multi-day": { label:"Multi-Day",      emoji:"🏕️" },
+    "taxi":      { label:"Taxi Rides",     emoji:"🚗" },
+    "airport":   { label:"Airport Pickup", emoji:"✈️" },
+  };
+  const types = ["all", ...["day-trip","multi-day","taxi","airport"].filter(t=>tours.some(r=>r.type===t))];
+  const visible = filter==="all" ? tours : tours.filter(t=>t.type===filter);
+
+  return (
+    <div>
+      {/* Type filter pills */}
+      <div style={{display:"flex",gap:10,justifyContent:"center",marginBottom:44,flexWrap:"wrap"}}>
+        {types.map(t=>(
+          <button key={t} onClick={()=>setFilter(t)} style={{padding:"10px 22px",borderRadius:30,border:"2px solid",fontFamily:"'DM Sans'",fontWeight:600,fontSize:13,cursor:"pointer",transition:"all 0.2s",borderColor:filter===t?"#d4850a":"#ddd",background:filter===t?"#d4850a":"transparent",color:filter===t?"white":"#555"}}>
+            {TYPE_META[t]?.emoji} {TYPE_META[t]?.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tour cards */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(310px,1fr))",gap:28}}>
+        {visible.map(tour=>(
+          <div key={tour._id} className="card-hover" style={{background:"white",borderRadius:20,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.08)",cursor:"pointer"}} onClick={()=>setSelected(tour)}>
+            <div style={{height:210,backgroundImage:`url(${tour.image||"https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?w=600&q=80"})`,backgroundSize:"cover",backgroundPosition:"center",position:"relative"}}>
+              <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,0.55),transparent)"}}/>
+              <div style={{position:"absolute",top:14,left:14,display:"flex",gap:8}}>
+                <span style={{background:"rgba(0,0,0,0.55)",color:"white",fontSize:11,padding:"4px 10px",borderRadius:20,fontFamily:"'DM Sans'",fontWeight:600}}>
+                  {TYPE_META[tour.type]?.emoji} {TYPE_META[tour.type]?.label}
+                </span>
+                {tour.tag && <span style={{background:"#d4850a",color:"white",fontSize:11,padding:"4px 10px",borderRadius:20,fontFamily:"'DM Sans'",fontWeight:700}}>{tour.tag}</span>}
+              </div>
+              {tour.duration && <div style={{position:"absolute",bottom:14,right:14,background:"rgba(0,0,0,0.6)",color:"white",fontSize:12,padding:"4px 10px",borderRadius:12,fontFamily:"'DM Sans'"}}>{tour.duration}</div>}
+            </div>
+            <div style={{padding:"22px 24px 24px"}}>
+              <h3 style={{fontFamily:"'Playfair Display'",fontSize:21,fontWeight:700,marginBottom:8}}>{tour.title}</h3>
+              {tour.destinations?.length>0 && <div style={{fontSize:12,color:"#d4850a",fontFamily:"'DM Sans'",marginBottom:10,fontWeight:600}}>📍 {tour.destinations.join(" · ")}</div>}
+              {tour.description && <p style={{fontFamily:"'Lora'",fontSize:14,color:"#666",marginBottom:16,lineHeight:1.6,fontStyle:"italic"}}>{tour.description.slice(0,120)}{tour.description.length>120?"…":""}</p>}
+              {tour.highlights?.slice(0,3).map((h,i)=>(
+                <div key={i} style={{fontSize:12,color:"#555",fontFamily:"'DM Sans'",marginBottom:4}}>✓ {h}</div>
+              ))}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:18}}>
+                <div>
+                  <span style={{fontFamily:"'Playfair Display'",fontSize:22,fontWeight:700,color:"#d4850a"}}>₹{(tour.basePrice||0).toLocaleString("en-IN")}</span>
+                  <span style={{fontFamily:"'DM Sans'",fontSize:12,color:"#999",marginLeft:4}}>{tour.priceLabel||"per package"}</span>
+                </div>
+                <button className="btn-primary" style={{padding:"10px 20px",fontSize:13}} onClick={e=>{e.stopPropagation();setBooking(tour);}}>Book Now →</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tour Detail Modal */}
+      {selected && <TourDetailModal tour={selected} onBook={()=>{setBooking(selected);setSelected(null);}} onClose={()=>setSelected(null)} />}
+
+      {/* Tour Booking Modal */}
+      {booking && <TourBookingModal tour={booking} agency={agency} api={api} onClose={()=>setBooking(null)} />}
+    </div>
+  );
+}
+
+// ─── Tour Detail Modal (public) ───────────────────────────────────────────────
+function TourDetailModal({ tour, onBook, onClose }) {
+  const TYPE_META = {"day-trip":{label:"Day Trip",emoji:"🌅"},"multi-day":{label:"Multi-Day",emoji:"🏕️"},"taxi":{label:"Taxi",emoji:"🚗"},"airport":{label:"Airport Pickup",emoji:"✈️"}};
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
+      <div style={{background:"white",borderRadius:20,maxWidth:680,width:"100%",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+        {tour.image && <div style={{height:260,backgroundImage:`url(${tour.image})`,backgroundSize:"cover",backgroundPosition:"center",borderRadius:"20px 20px 0 0",position:"relative"}}>
+          <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,0.5),transparent)",borderRadius:"20px 20px 0 0"}}/>
+          <button onClick={onClose} style={{position:"absolute",top:16,right:16,background:"rgba(0,0,0,0.5)",border:"none",color:"white",width:36,height:36,borderRadius:"50%",cursor:"pointer",fontSize:18}}>×</button>
+        </div>}
+        <div style={{padding:"28px 32px"}}>
+          <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+            <span style={{background:"#fff3e0",color:"#d4850a",fontSize:12,padding:"4px 12px",borderRadius:20,fontWeight:600}}>{TYPE_META[tour.type]?.emoji} {TYPE_META[tour.type]?.label}</span>
+            {tour.tag && <span style={{background:"#d4850a",color:"white",fontSize:12,padding:"4px 12px",borderRadius:20,fontWeight:600}}>{tour.tag}</span>}
+            {tour.duration && <span style={{background:"#f5f5f5",color:"#555",fontSize:12,padding:"4px 12px",borderRadius:20}}>⏱ {tour.duration}</span>}
+          </div>
+          <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,fontWeight:700,color:"#1a1a2e",marginBottom:8}}>{tour.title}</h2>
+          {tour.destinations?.length>0 && <div style={{color:"#d4850a",fontFamily:"'DM Sans'",fontWeight:600,marginBottom:16}}>📍 {tour.destinations.join(" · ")}</div>}
+          {tour.description && <p style={{fontFamily:"'Lora'",fontSize:15,color:"#555",lineHeight:1.8,marginBottom:24,fontStyle:"italic"}}>{tour.description}</p>}
+
+          {tour.highlights?.length>0 && <div style={{marginBottom:24}}>
+            <h4 style={{fontFamily:"'DM Sans'",fontWeight:700,color:"#1a1a2e",marginBottom:12,textTransform:"uppercase",fontSize:12,letterSpacing:2}}>Highlights</h4>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              {tour.highlights.map((h,i)=><div key={i} style={{fontSize:14,color:"#444",fontFamily:"'DM Sans'"}}>✓ {h}</div>)}
+            </div>
+          </div>}
+
+          {tour.itinerary?.length>0 && <div style={{marginBottom:24}}>
+            <h4 style={{fontFamily:"'DM Sans'",fontWeight:700,color:"#1a1a2e",marginBottom:12,textTransform:"uppercase",fontSize:12,letterSpacing:2}}>Itinerary</h4>
+            {tour.itinerary.map((day,i)=>(
+              <div key={i} style={{borderLeft:"3px solid #d4850a",paddingLeft:16,marginBottom:16}}>
+                <div style={{fontFamily:"'DM Sans'",fontWeight:700,color:"#d4850a",marginBottom:4}}>Day {day.day}: {day.title}</div>
+                <div style={{fontFamily:"'Lora'",fontSize:14,color:"#666",lineHeight:1.6}}>{day.description}</div>
+                {day.meals && <div style={{fontSize:12,color:"#888",marginTop:4}}>🍽 {day.meals}</div>}
+                {day.accommodation && <div style={{fontSize:12,color:"#888",marginTop:2}}>🏨 {day.accommodation}</div>}
+              </div>
+            ))}
+          </div>}
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:24}}>
+            {tour.inclusions?.length>0 && <div>
+              <h4 style={{fontFamily:"'DM Sans'",fontWeight:700,color:"#22a355",marginBottom:8,fontSize:12,textTransform:"uppercase",letterSpacing:1}}>✅ Inclusions</h4>
+              {tour.inclusions.map((i,idx)=><div key={idx} style={{fontSize:13,color:"#444",marginBottom:4,fontFamily:"'DM Sans'"}}>• {i}</div>)}
+            </div>}
+            {tour.exclusions?.length>0 && <div>
+              <h4 style={{fontFamily:"'DM Sans'",fontWeight:700,color:"#e53e3e",marginBottom:8,fontSize:12,textTransform:"uppercase",letterSpacing:1}}>❌ Exclusions</h4>
+              {tour.exclusions.map((i,idx)=><div key={idx} style={{fontSize:13,color:"#666",marginBottom:4,fontFamily:"'DM Sans'"}}>• {i}</div>)}
+            </div>}
+          </div>
+
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:20,borderTop:"1px solid #eee"}}>
+            <div>
+              <span style={{fontFamily:"'Playfair Display'",fontSize:28,fontWeight:700,color:"#d4850a"}}>₹{(tour.basePrice||0).toLocaleString("en-IN")}</span>
+              <span style={{fontFamily:"'DM Sans'",fontSize:13,color:"#999",marginLeft:6}}>{tour.priceLabel||"per package"}</span>
+            </div>
+            <button className="btn-primary" style={{padding:"14px 32px",fontSize:15}} onClick={onBook}>Book This Tour →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Tour Booking Modal (public) ──────────────────────────────────────────────
+function TourBookingModal({ tour, agency, api, onClose }) {
+  const isAirport = tour.type === "airport";
+  const isTaxi    = tour.type === "taxi";
+  const emptyForm = { customerName:"", phone:"", email:"", travelDate:"", pax:"1", pickupPoint:"", flightNumber:"", notes:"" };
+  const [form, setForm]     = useState(emptyForm);
+  const [status, setStatus] = useState(null);
+  const [result, setResult] = useState(null);
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const submit = async () => {
+    if (!form.customerName.trim() || !form.phone.trim()) { alert("Please fill name and phone."); return; }
+    if (!form.travelDate) { alert("Please select a travel date."); return; }
+    setStatus("sending");
+    try {
+      const res = await api.post("/tour-bookings", {
+        tourId: tour._id, tourTitle: tour.title, tourType: tour.type,
+        ...form, basePrice: tour.basePrice || 0,
+      });
+      if (res.success) {
+        setResult(res);
+        setStatus("done");
+        if (res.whatsappUrl) window.open(res.whatsappUrl, "_blank");
+      } else {
+        setStatus("error");
+      }
+    } catch { setStatus("error"); }
+  };
+
+  const inp = {width:"100%",padding:"12px 14px",border:"1.5px solid #e8e8e8",borderRadius:10,fontFamily:"'DM Sans'",fontSize:14,outline:"none",color:"#1a1a2e",background:"white"};
+  const lbl = {display:"block",fontFamily:"'DM Sans'",fontSize:11,fontWeight:600,color:"#999",textTransform:"uppercase",letterSpacing:2,marginBottom:6};
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:1001,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"white",borderRadius:20,maxWidth:540,width:"100%",maxHeight:"90vh",overflowY:"auto",padding:"32px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}}>
+          <div>
+            <h3 style={{fontFamily:"'Playfair Display'",fontSize:24,color:"#1a1a2e",marginBottom:4}}>Book Tour</h3>
+            <div style={{fontFamily:"'DM Sans'",color:"#d4850a",fontWeight:600}}>{tour.title}</div>
+          </div>
+          <button onClick={onClose} style={{background:"transparent",border:"none",fontSize:22,cursor:"pointer",color:"#999"}}>×</button>
+        </div>
+
+        {status==="done" ? (
+          <div style={{textAlign:"center",padding:"24px 0"}}>
+            <div style={{fontSize:52,marginBottom:16}}>🎉</div>
+            <h4 style={{fontFamily:"'Playfair Display'",fontSize:22,color:"#1a1a2e",marginBottom:8}}>Booking Received!</h4>
+            <p style={{fontFamily:"'Lora'",color:"#666",fontSize:15,lineHeight:1.7,marginBottom:8,fontStyle:"italic"}}>
+              Our team will confirm your booking shortly.
+            </p>
+            {result?.booking?.tokenAmount > 0 && (
+              <div style={{background:"#fff8ec",border:"1px solid #f0c060",borderRadius:12,padding:"14px 20px",margin:"16px 0",fontFamily:"'DM Sans'"}}>
+                <div style={{fontSize:12,color:"#888",marginBottom:4}}>Advance to confirm booking</div>
+                <div style={{fontSize:26,fontWeight:700,color:"#d4850a"}}>₹{result.booking.tokenAmount.toLocaleString("en-IN")}</div>
+              </div>
+            )}
+            <p style={{fontFamily:"'DM Sans'",color:"#888",fontSize:13}}>WhatsApp notification sent to our team!</p>
+            <button onClick={onClose} style={{marginTop:20,background:"#d4850a",color:"white",border:"none",padding:"12px 28px",borderRadius:12,fontFamily:"'DM Sans'",fontWeight:700,cursor:"pointer"}}>Close</button>
+          </div>
+        ) : (
+          <div>
+            <div style={{background:"#fff8ec",border:"1px solid #f0c060",borderRadius:12,padding:"12px 18px",marginBottom:24,fontFamily:"'DM Sans'",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:13,color:"#888"}}>Package Price</span>
+              <span style={{fontSize:20,fontWeight:700,color:"#d4850a"}}>₹{(tour.basePrice||0).toLocaleString("en-IN")} <span style={{fontSize:12,color:"#999",fontWeight:400}}>{tour.priceLabel||"per package"}</span></span>
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+              <div><label style={lbl}>Your Name *</label><input value={form.customerName} onChange={e=>set("customerName",e.target.value)} placeholder="Full name" style={inp}/></div>
+              <div><label style={lbl}>Phone *</label><input value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="+91 XXXXX XXXXX" style={inp}/></div>
+              <div><label style={lbl}>Travel Date *</label><input type="date" value={form.travelDate} onChange={e=>set("travelDate",e.target.value)} style={inp}/></div>
+              <div><label style={lbl}>No. of Persons</label><input type="number" min="1" max={tour.maxPax||20} value={form.pax} onChange={e=>set("pax",e.target.value)} style={inp}/></div>
+              <div><label style={lbl}>Email</label><input value={form.email} onChange={e=>set("email",e.target.value)} placeholder="Optional" style={inp}/></div>
+              {(tour.pickupPoints?.length>0) && (
+                <div><label style={lbl}>Pickup Point</label>
+                  <select value={form.pickupPoint} onChange={e=>set("pickupPoint",e.target.value)} style={inp}>
+                    <option value="">Select pickup…</option>
+                    {tour.pickupPoints.map((p,i)=><option key={i} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              )}
+              {(isAirport||isTaxi) && <div><label style={lbl}>{isAirport?"Flight Number":"Drop Location"}</label><input value={form.flightNumber} onChange={e=>set("flightNumber",e.target.value)} placeholder={isAirport?"e.g. 6E 123":""} style={inp}/></div>}
+            </div>
+            <div style={{marginBottom:20}}>
+              <label style={lbl}>Special Requests</label>
+              <textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} placeholder="Any special requirements…" style={{...inp,resize:"vertical",lineHeight:1.6}}/>
+            </div>
+
+            {status==="error" && <p style={{color:"#e53e3e",fontSize:13,marginBottom:12}}>Something went wrong. Please try again.</p>}
+            <button onClick={submit} disabled={status==="sending"} style={{width:"100%",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"14px",borderRadius:12,fontFamily:"'DM Sans'",fontWeight:700,fontSize:15,cursor:status==="sending"?"not-allowed":"pointer",opacity:status==="sending"?0.7:1}}>
+              {status==="sending" ? "Submitting…" : "Send Booking Request →"}
+            </button>
+            <p style={{textAlign:"center",fontFamily:"'DM Sans'",fontSize:12,color:"#bbb",marginTop:10}}>No payment now · We'll confirm & send payment link</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Tours Admin Editor ───────────────────────────────────────────────────────
+function ToursEditor({ data, api, reload, showSaved }) {
+  const [subTab, setSubTab]   = useState("packages"); // "packages" | "bookings"
+  const [editId, setEditId]   = useState(null);
+  const [form, setForm]       = useState(null);
+  const [adding, setAdding]   = useState(false);
+  const [adjModal, setAdjModal] = useState(null); // tour booking for price adjustment
+  const [recordModal, setRecordModal] = useState(null);
+
+  const tours        = data.tours        || [];
+  const tourBookings = data.tourBookings || [];
+  const pending      = tourBookings.filter(b=>b.status==="pending");
+
+  const TYPE_META = {"day-trip":{label:"Day Trip",emoji:"🌅"},"multi-day":{label:"Multi-Day",emoji:"🏕️"},"taxi":{label:"Taxi",emoji:"🚗"},"airport":{label:"Airport Pickup",emoji:"✈️"}};
+
+  const blank = { title:"", type:"day-trip", destinations:[], description:"", highlights:[], image:"", duration:"", basePrice:0, priceLabel:"per package", maxPax:6, inclusions:[], exclusions:[], itinerary:[], pickupPoints:[], available:true, tag:"" };
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const startEdit = (t) => { setForm({...t}); setEditId(t._id); setAdding(false); };
+  const startAdd  = () => { setForm({...blank}); setEditId(null); setAdding(true); };
+
+  const saveTour = async () => {
+    if (!form.title) { alert("Tour title required"); return; }
+    if (adding) await api.post("/tours", form);
+    else await api.put(`/tours/${editId}`, form);
+    await reload(); showSaved(); setEditId(null); setForm(null); setAdding(false);
+  };
+
+  const deleteTour = async (id) => {
+    if (!window.confirm("Delete this tour?")) return;
+    await api.delete(`/tours/${id}`);
+    await reload();
+  };
+
+  const updateBookingStatus = async (b, status) => {
+    await api.put(`/tour-bookings/${b._id}`, { ...b, status });
+    await reload(); showSaved();
+  };
+
+  const arrField = (key, placeholder) => (
+    <div style={{marginBottom:16}}>
+      <label className="adm-label">{placeholder}</label>
+      {(form[key]||[]).map((v,i)=>(
+        <div key={i} style={{display:"flex",gap:8,marginBottom:8}}>
+          <input className="adm-input" value={v} onChange={e=>{const a=[...(form[key]||[])];a[i]=e.target.value;set(key,a);}} placeholder={placeholder}/>
+          <button onClick={()=>set(key,(form[key]||[]).filter((_,j)=>j!==i))} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"8px 12px",borderRadius:8,cursor:"pointer"}}><Icon name="trash" size={14}/></button>
+        </div>
+      ))}
+      <button onClick={()=>set(key,[...(form[key]||[]),""])} style={{fontSize:13,color:"rgba(255,255,255,0.4)",background:"transparent",border:"1px dashed rgba(255,255,255,0.15)",padding:"8px 16px",borderRadius:8,cursor:"pointer"}}>+ Add</button>
+    </div>
+  );
+
+  const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
+  const statusColor = {pending:"#f0c060",confirmed:"#4ade80",completed:"#60a5fa",cancelled:"#ff6b6b"};
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+        <h2 style={{fontFamily:"'Playfair Display'",fontSize:28}}>Tours & Taxi</h2>
+        {subTab==="packages" && <button onClick={startAdd} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 22px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Add Tour / Taxi</button>}
+      </div>
+
+      {/* Sub tabs */}
+      <div style={{display:"flex",gap:8,marginBottom:28}}>
+        {[["packages","📦 Packages",tours.length],["bookings","📋 Requests",tourBookings.length]].map(([id,label,cnt])=>(
+          <button key={id} onClick={()=>{setSubTab(id);setEditId(null);setForm(null);setAdding(false);}} style={{padding:"9px 20px",borderRadius:20,border:`2px solid ${subTab===id?"#d4850a":"rgba(255,255,255,0.1)"}`,background:subTab===id?"rgba(212,133,10,0.12)":"transparent",color:subTab===id?"#f0c060":"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>
+            {label}
+            {pending.length>0&&id==="bookings"&&<span style={{background:"#ef4444",color:"white",fontSize:10,fontWeight:700,padding:"2px 6px",borderRadius:10}}>{pending.length}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* ── PACKAGES TAB ── */}
+      {subTab==="packages" && (
+        <div>
+          {(adding||editId) && form && (
+            <div className="adm-card" style={{marginBottom:28,border:"1px solid rgba(212,133,10,0.3)"}}>
+              <h3 style={{marginBottom:20,color:"#f0c060"}}>{adding?"Add New Tour / Taxi":"Edit Tour"}</h3>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+                <div style={{gridColumn:"1/-1"}}><label className="adm-label">Tour Title</label><input className="adm-input" value={form.title||""} onChange={e=>set("title",e.target.value)} placeholder="e.g. Coorg Day Trip"/></div>
+                <div><label className="adm-label">Type</label>
+                  <select className="adm-input" value={form.type} onChange={e=>set("type",e.target.value)}>
+                    <option value="day-trip">🌅 Day Trip</option>
+                    <option value="multi-day">🏕️ Multi-Day Package</option>
+                    <option value="taxi">🚗 Taxi / Transfer</option>
+                    <option value="airport">✈️ Airport Pickup</option>
+                  </select>
+                </div>
+                <div><label className="adm-label">Duration</label><input className="adm-input" value={form.duration||""} onChange={e=>set("duration",e.target.value)} placeholder="e.g. 1 Day / 3D 2N"/></div>
+                <div><label className="adm-label">Base Price (₹)</label><input className="adm-input" type="number" value={form.basePrice||0} onChange={e=>set("basePrice",Number(e.target.value))}/></div>
+                <div><label className="adm-label">Price Label</label><input className="adm-input" value={form.priceLabel||""} onChange={e=>set("priceLabel",e.target.value)} placeholder="per package / per person"/></div>
+                <div><label className="adm-label">Max Pax</label><input className="adm-input" type="number" value={form.maxPax||6} onChange={e=>set("maxPax",Number(e.target.value))}/></div>
+                <div><label className="adm-label">Tag (optional)</label><input className="adm-input" value={form.tag||""} onChange={e=>set("tag",e.target.value)} placeholder="Popular / Best Value"/></div>
+                <div style={{display:"flex",alignItems:"center",gap:10,paddingTop:22}}>
+                  <label className="adm-label" style={{marginBottom:0}}>Available</label>
+                  <input type="checkbox" checked={!!form.available} onChange={e=>set("available",e.target.checked)} style={{width:18,height:18,cursor:"pointer",accentColor:"#d4850a"}}/>
+                </div>
+                <div style={{gridColumn:"1/-1"}}><label className="adm-label">Description</label><textarea className="adm-input" value={form.description||""} onChange={e=>set("description",e.target.value)} rows={3}/></div>
+                <div style={{gridColumn:"1/-1"}}><ImageUpload label="Cover Image" value={form.image} onChange={v=>set("image",v)}/></div>
+              </div>
+
+              {arrField("destinations","Destinations (add each separately)")}
+              {arrField("highlights","Highlights")}
+              {arrField("inclusions","Inclusions")}
+              {arrField("exclusions","Exclusions")}
+              {arrField("pickupPoints","Pickup Points")}
+
+              {/* Itinerary — only for multi-day */}
+              {form.type==="multi-day" && (
+                <div style={{marginBottom:16}}>
+                  <label className="adm-label">Itinerary (Day by Day)</label>
+                  {(form.itinerary||[]).map((day,i)=>(
+                    <div key={i} className="adm-card" style={{marginBottom:12}}>
+                      <div style={{display:"grid",gridTemplateColumns:"80px 1fr",gap:10,marginBottom:10}}>
+                        <div><label className="adm-label">Day</label><input className="adm-input" type="number" value={day.day||i+1} onChange={e=>{const a=[...(form.itinerary||[])];a[i]={...a[i],day:Number(e.target.value)};set("itinerary",a);}}/></div>
+                        <div><label className="adm-label">Title</label><input className="adm-input" value={day.title||""} onChange={e=>{const a=[...(form.itinerary||[])];a[i]={...a[i],title:e.target.value};set("itinerary",a);}} placeholder="e.g. Arrival & Sightseeing"/></div>
+                      </div>
+                      <div style={{marginBottom:8}}><label className="adm-label">Description</label><textarea className="adm-input" value={day.description||""} rows={2} onChange={e=>{const a=[...(form.itinerary||[])];a[i]={...a[i],description:e.target.value};set("itinerary",a);}}/></div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
+                        <div><label className="adm-label">Meals</label><input className="adm-input" value={day.meals||""} onChange={e=>{const a=[...(form.itinerary||[])];a[i]={...a[i],meals:e.target.value};set("itinerary",a);}} placeholder="Breakfast & Dinner"/></div>
+                        <div><label className="adm-label">Accommodation</label><input className="adm-input" value={day.accommodation||""} onChange={e=>{const a=[...(form.itinerary||[])];a[i]={...a[i],accommodation:e.target.value};set("itinerary",a);}} placeholder="Hotel name"/></div>
+                      </div>
+                      <button onClick={()=>set("itinerary",(form.itinerary||[]).filter((_,j)=>j!==i))} style={{fontSize:12,color:"#ff6b6b",background:"transparent",border:"1px solid rgba(255,80,80,0.2)",padding:"6px 14px",borderRadius:8,cursor:"pointer"}}>Remove Day</button>
+                    </div>
+                  ))}
+                  <button onClick={()=>set("itinerary",[...(form.itinerary||[]),{day:(form.itinerary||[]).length+1,title:"",description:"",meals:"",accommodation:""}])} style={{fontSize:13,color:"rgba(255,255,255,0.4)",background:"transparent",border:"1px dashed rgba(255,255,255,0.15)",padding:"8px 16px",borderRadius:8,cursor:"pointer"}}>+ Add Day</button>
+                </div>
+              )}
+
+              <div style={{display:"flex",gap:10,marginTop:8}}>
+                <button onClick={saveTour} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 24px",borderRadius:8,fontWeight:700,cursor:"pointer"}}>Save</button>
+                <button onClick={()=>{setEditId(null);setForm(null);setAdding(false);}} style={{background:"transparent",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.5)",padding:"10px 20px",borderRadius:8,cursor:"pointer"}}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {tours.length===0 && !adding && <div style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:48}}>No tours yet. Add your first package above!</div>}
+          <div style={{display:"grid",gap:12}}>
+            {tours.map(t=>(
+              <div key={t._id} className="adm-card" style={{display:"flex",gap:16,alignItems:"center"}}>
+                {t.image && <img src={t.image} alt="" style={{width:70,height:70,objectFit:"cover",borderRadius:10,flexShrink:0}}/>}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:4,flexWrap:"wrap"}}>
+                    <span style={{fontWeight:600,fontSize:15}}>{t.title}</span>
+                    <span style={{fontSize:11,background:"rgba(255,255,255,0.08)",padding:"2px 8px",borderRadius:10,color:"rgba(255,255,255,0.5)"}}>{TYPE_META[t.type]?.emoji} {TYPE_META[t.type]?.label}</span>
+                    {t.tag && <span style={{fontSize:11,background:"rgba(212,133,10,0.2)",color:"#f0c060",padding:"2px 8px",borderRadius:10}}>{t.tag}</span>}
+                    <span style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:t.available?"rgba(74,222,128,0.1)":"rgba(255,80,80,0.1)",color:t.available?"#4ade80":"#ff6b6b"}}>{t.available?"Active":"Hidden"}</span>
+                  </div>
+                  <div style={{fontSize:13,color:"rgba(255,255,255,0.4)"}}>₹{(t.basePrice||0).toLocaleString("en-IN")} {t.priceLabel} {t.duration && `· ${t.duration}`} {t.destinations?.length>0 && `· ${t.destinations.join(", ")}`}</div>
+                </div>
+                <div style={{display:"flex",gap:8,flexShrink:0}}>
+                  <button onClick={()=>startEdit(t)} style={{background:"rgba(212,133,10,0.15)",border:"1px solid rgba(212,133,10,0.3)",color:"#f0c060",padding:"6px 12px",borderRadius:7,cursor:"pointer",fontSize:12}}>Edit</button>
+                  <button onClick={()=>deleteTour(t._id)} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"6px 12px",borderRadius:7,cursor:"pointer",fontSize:12}}><Icon name="trash" size={13}/></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── BOOKINGS TAB ── */}
+      {subTab==="bookings" && (
+        <div>
+          {tourBookings.length===0 && <div style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:48}}>No tour booking requests yet.</div>}
+          <div style={{display:"grid",gap:16}}>
+            {tourBookings.map(b=>{
+              const sc = statusColor[b.status]||"#f0c060";
+              const finalPrice = b.finalPrice || b.basePrice || 0;
+              const received   = b.receivedAmount || 0;
+              const remaining  = Math.max(0, finalPrice - received);
+              return (
+                <div key={b._id} className="adm-card" style={{border:`1px solid rgba(255,255,255,0.08)`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:10}}>
+                    <div>
+                      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
+                        <span style={{fontWeight:700,fontSize:16}}>{b.customerName}</span>
+                        <span style={{fontSize:11,background:"rgba(255,255,255,0.08)",padding:"2px 8px",borderRadius:10,color:"rgba(255,255,255,0.5)"}}>{TYPE_META[b.tourType]?.emoji} {b.tourTitle}</span>
+                        <span style={{fontSize:11,padding:"3px 10px",borderRadius:10,background:`rgba(${sc==="#4ade80"?"74,222,128":sc==="#f0c060"?"240,192,96":sc==="#60a5fa"?"96,165,250":"255,107,107"},0.1)`,color:sc,fontWeight:600,textTransform:"capitalize"}}>{b.status}</span>
+                      </div>
+                      <div style={{fontSize:13,color:"rgba(255,255,255,0.5)"}}>{b.phone} {b.email && `· ${b.email}`}</div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Travel Date</div>
+                      <div style={{fontWeight:600,color:"#f0c060"}}>{fmt(b.travelDate)}</div>
+                    </div>
+                  </div>
+
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10,marginBottom:16}}>
+                    {[["Pax",b.pax+" person"+(b.pax>1?"s":"")],["Pickup",b.pickupPoint||"—"],[b.tourType==="airport"?"Flight":"Drop",b.flightNumber||"—"]].map(([l,v])=>(
+                      <div key={l}><div style={{fontSize:11,color:"rgba(255,255,255,0.35)"}}>{l}</div><div style={{fontSize:13,color:"rgba(255,255,255,0.7)",fontWeight:500}}>{v}</div></div>
+                    ))}
+                  </div>
+
+                  {b.notes && <div style={{fontSize:13,color:"rgba(255,255,255,0.45)",marginBottom:16,fontStyle:"italic"}}>"{b.notes}"</div>}
+
+                  {/* Payment summary */}
+                  <div style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",gap:16,flexWrap:"wrap"}}>
+                    <div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Package Price</div><div style={{fontSize:16,fontWeight:700,color:"#60a5fa"}}>₹{finalPrice.toLocaleString("en-IN")}</div></div>
+                    <div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Advance (50%)</div><div style={{fontSize:16,fontWeight:700,color:"#fb923c"}}>₹{(b.tokenAmount||0).toLocaleString("en-IN")}</div></div>
+                    <div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Received</div><div style={{fontSize:16,fontWeight:700,color:"#4ade80"}}>₹{received.toLocaleString("en-IN")}</div></div>
+                    <div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Remaining</div><div style={{fontSize:16,fontWeight:700,color:remaining>0?"#f0c060":"#4ade80"}}>₹{remaining.toLocaleString("en-IN")}</div></div>
+                  </div>
+
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    {b.status==="pending" && <>
+                      <button onClick={()=>updateBookingStatus(b,"confirmed")} style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"8px 14px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>✅ Confirm</button>
+                      <button onClick={()=>updateBookingStatus(b,"cancelled")} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"8px 14px",borderRadius:8,cursor:"pointer",fontSize:13}}>✕ Cancel</button>
+                    </>}
+                    {b.status==="confirmed" && (
+                      <button onClick={()=>updateBookingStatus(b,"completed")} style={{background:"rgba(96,165,250,0.15)",border:"1px solid rgba(96,165,250,0.3)",color:"#60a5fa",padding:"8px 14px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>🏁 Mark Completed</button>
+                    )}
+                    {/* Price adjustment */}
+                    <button onClick={()=>setAdjModal(b)} style={{background:"rgba(240,192,96,0.1)",border:"1px solid rgba(240,192,96,0.25)",color:"#f0c060",padding:"8px 14px",borderRadius:8,cursor:"pointer",fontSize:13}}>✏️ Adjust Price</button>
+                    {/* Record payment */}
+                    <button onClick={()=>setRecordModal(b)} style={{background:"rgba(212,133,10,0.15)",border:"1px solid rgba(212,133,10,0.3)",color:"#d4850a",padding:"8px 14px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>💰 Record Payment</button>
+                    <a href={`https://wa.me/${b.phone?.replace(/[^0-9]/g,"")}`} target="_blank" rel="noreferrer" style={{background:"rgba(37,211,102,0.1)",border:"1px solid rgba(37,211,102,0.25)",color:"#25d366",padding:"8px 14px",borderRadius:8,cursor:"pointer",fontSize:13,textDecoration:"none",display:"inline-flex",alignItems:"center",gap:6}}>💬 WhatsApp</a>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Price Adjustment Modal */}
+      {adjModal && (
+        <TourPriceModal booking={adjModal} api={api} reload={reload} showSaved={showSaved} onClose={()=>setAdjModal(null)} />
+      )}
+
+      {/* Record Payment Modal */}
+      {recordModal && (
+        <TourPaymentModal booking={recordModal} api={api} reload={reload} showSaved={showSaved} onClose={()=>setRecordModal(null)} />
+      )}
+    </div>
+  );
+}
+
+// ─── Tour Price Adjustment Modal ──────────────────────────────────────────────
+function TourPriceModal({ booking, api, reload, showSaved, onClose }) {
+  const [price, setPrice]   = useState(booking.finalPrice || booking.basePrice || 0);
+  const [notes, setNotes]   = useState(booking.adminNotes || "");
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    setSaving(true);
+    const token = Math.ceil(Number(price) * 0.5);
+    await api.put(`/tour-bookings/${booking._id}`, { ...booking, finalPrice: Number(price), tokenAmount: token, adminNotes: notes });
+    await reload(); showSaved(); onClose();
+    setSaving(false);
+  };
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"#1a2740",border:"1px solid rgba(240,192,96,0.2)",borderRadius:16,padding:"28px",maxWidth:400,width:"100%"}}>
+        <h3 style={{fontFamily:"'Playfair Display'",fontSize:20,marginBottom:4}}>Adjust Package Price</h3>
+        <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginBottom:20}}>{booking.tourTitle} · {booking.customerName}</div>
+        <div style={{marginBottom:8}}>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Original Base Price</div>
+          <div style={{fontSize:16,color:"rgba(255,255,255,0.5)"}}>₹{(booking.basePrice||0).toLocaleString("en-IN")}</div>
+        </div>
+        <label style={{fontSize:12,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:6}}>Final Price (₹)</label>
+        <input type="number" value={price} onChange={e=>setPrice(e.target.value)} style={{width:"100%",padding:"12px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.06)",color:"white",fontSize:16,boxSizing:"border-box",marginBottom:8}}/>
+        <div style={{background:"rgba(240,192,96,0.06)",border:"1px solid rgba(240,192,96,0.15)",borderRadius:8,padding:"8px 12px",fontSize:13,color:"rgba(255,255,255,0.5)",marginBottom:16}}>
+          50% Advance = <span style={{color:"#f0c060",fontWeight:700}}>₹{Math.ceil(Number(price)*0.5).toLocaleString("en-IN")}</span>
+        </div>
+        <label style={{fontSize:12,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:6}}>Admin Notes</label>
+        <textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={2} placeholder="Reason for price change..." style={{width:"100%",padding:"10px 14px",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"white",fontSize:13,resize:"vertical",marginBottom:16,boxSizing:"border-box"}}/>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={onClose} style={{flex:1,padding:"11px",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"rgba(255,255,255,0.5)",cursor:"pointer"}}>Cancel</button>
+          <button onClick={save} disabled={saving} style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"white",cursor:"pointer",fontWeight:700}}>{saving?"Saving…":"Save Price"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Tour Payment Modal ───────────────────────────────────────────────────────
+function TourPaymentModal({ booking, api, reload, showSaved, onClose }) {
+  const [received, setReceived] = useState("");
+  const [error, setError]       = useState("");
+  const [saving, setSaving]     = useState(false);
+  const finalPrice  = booking.finalPrice || booking.basePrice || 0;
+  const alreadyRec  = booking.receivedAmount || 0;
+  const remaining   = Math.max(0, finalPrice - alreadyRec);
+
+  const save = async () => {
+    const amt = Number(received);
+    if (!amt || amt <= 0) { setError("Enter a valid amount."); return; }
+    if (amt > remaining + 1) { setError(`Max receivable is ₹${remaining}`); return; }
+    setSaving(true);
+    const newReceived = alreadyRec + amt;
+    const newStatus   = newReceived >= finalPrice ? "paid" : "partial";
+    await api.put(`/tour-bookings/${booking._id}`, { ...booking, receivedAmount: newReceived, paymentStatus: newStatus });
+    // Sync to accounting
+    try {
+      const balLeft = Math.max(0, finalPrice - newReceived);
+      await api.post("/accounting", {
+        type:"income", category:"tours",
+        amount: amt,
+        description: `${alreadyRec>0?"Balance":"Advance"} — ${booking.tourTitle} · ${booking.customerName}`,
+        clientName: booking.customerName,
+        paymentStatus: balLeft>0?"partial":"paid",
+        paymentMethod:"cash",
+        date: new Date().toISOString(),
+        notes: `Tour total: ₹${finalPrice} | Received: ₹${newReceived} | Remaining: ₹${balLeft}`,
+      });
+      if (balLeft > 0) {
+        await api.post("/accounting", {
+          type:"income", category:"tours",
+          amount: balLeft,
+          description: `Balance due — ${booking.tourTitle} · ${booking.customerName}`,
+          clientName: booking.customerName,
+          paymentStatus:"pending",
+          paymentMethod:"cash",
+          date: new Date().toISOString(),
+          notes: `Tour total: ₹${finalPrice} | Paid: ₹${newReceived} | Pending: ₹${balLeft}`,
+        });
+      }
+    } catch(e) { console.error("Accounting sync:", e); }
+    await reload(); showSaved(); onClose();
+    setSaving(false);
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"#1a2740",border:"1px solid rgba(240,192,96,0.2)",borderRadius:16,padding:"28px",maxWidth:400,width:"100%"}}>
+        <h3 style={{fontFamily:"'Playfair Display'",fontSize:20,marginBottom:4}}>Record Payment</h3>
+        <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginBottom:20}}>{booking.tourTitle} · {booking.customerName}</div>
+        <div style={{display:"flex",gap:12,marginBottom:20}}>
+          {[["Total",finalPrice,"#60a5fa"],["Received",alreadyRec,"#4ade80"],["Remaining",remaining,"#f0c060"]].map(([l,v,c])=>(
+            <div key={l} style={{flex:1,background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:4}}>{l}</div>
+              <div style={{fontSize:17,fontWeight:700,color:c}}>₹{v.toLocaleString("en-IN")}</div>
+            </div>
+          ))}
+        </div>
+        <label style={{fontSize:12,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:6}}>Amount Received (₹)</label>
+        <input type="number" value={received} onChange={e=>{setReceived(e.target.value);setError("");}} placeholder="Enter amount" autoFocus
+          style={{width:"100%",padding:"12px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.06)",color:"white",fontSize:16,boxSizing:"border-box",marginBottom:8}}/>
+        {error && <div style={{color:"#ff6b6b",fontSize:12,marginBottom:8}}>{error}</div>}
+        <div style={{display:"flex",gap:10,marginTop:8}}>
+          <button onClick={onClose} style={{flex:1,padding:"11px",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"rgba(255,255,255,0.5)",cursor:"pointer"}}>Cancel</button>
+          <button onClick={save} disabled={saving} style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"white",cursor:"pointer",fontWeight:700}}>{saving?"Saving…":"Save Payment"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Login Screen ────────────────────────────────────────────────────────────
 function LoginScreen({ loginInput, setLoginInput, loginError, onLogin, onBack }) {
   return (
@@ -528,6 +1128,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
     {id:"inventory",   label:"📦 Inventory"},
     {id:"accounting",  label:"💰 Accounting"},
     {id:"bookings",    label:"📋 Bookings", badge: (data.bookings||[]).filter(b=>b.status==="pending").length},
+    {id:"tours",       label:"🗺️ Tours & Taxi", badge: (data.tourBookings||[]).filter(b=>b.status==="pending").length},
   ];
   return (
     <div style={{minHeight:"100vh",background:"#0d1b2e",fontFamily:"'DM Sans',sans-serif",color:"white"}}>
@@ -566,6 +1167,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
           {adminTab==="inventory"    && <InventoryEditor    data={data} api={api} reload={reload} showSaved={showSaved}/>}
           {adminTab==="accounting"   && <AccountingEditor   data={data} api={api} reload={reload} showSaved={showSaved}/>}
           {adminTab==="bookings"     && <BookingsEditor     data={data} api={api} reload={reload} showSaved={showSaved} rentals={data.rentals||[]}/>}
+          {adminTab==="tours"        && <ToursEditor        data={data} api={api} reload={reload} showSaved={showSaved}/>}
         </div>
       </div>
     </div>
@@ -747,1768 +1349,4 @@ function VillaEditor({ data, api, reload, showSaved }) {
         {(form.rooms||[]).map((r,i)=>(
           <div key={i} className="adm-card" style={{marginBottom:12}}>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:10}}>
-              <div><label className="adm-label">Room Name</label><input className="adm-input" value={r.name||""} onChange={e=>{const arr=[...(form.rooms||[])];arr[i]={...arr[i],name:e.target.value};set("rooms",arr);}}/></div>
-              <div><label className="adm-label">Beds</label><input className="adm-input" value={r.beds||""} onChange={e=>{const arr=[...(form.rooms||[])];arr[i]={...arr[i],beds:e.target.value};set("rooms",arr);}}/></div>
-              <div><label className="adm-label">Max Guests</label><input className="adm-input" type="number" value={r.guests||""} onChange={e=>{const arr=[...(form.rooms||[])];arr[i]={...arr[i],guests:Number(e.target.value)};set("rooms",arr);}}/></div>
-              <div><ImageUpload label="Room Image" value={r.image} onChange={v=>{const arr=[...(form.rooms||[])];arr[i]={...arr[i],image:v};set("rooms",arr);}}/></div>
-            </div>
-            <button onClick={()=>set("rooms",(form.rooms||[]).filter((_,j)=>j!==i))} style={{fontSize:12,color:"#ff6b6b",background:"transparent",border:"1px solid rgba(255,80,80,0.2)",padding:"6px 14px",borderRadius:8,cursor:"pointer"}}>Remove Room</button>
-          </div>
-        ))}
-        <button onClick={()=>set("rooms",[...(form.rooms||[]),{name:"",beds:"",guests:2,image:""}])} style={{fontSize:13,color:"rgba(255,255,255,0.4)",background:"transparent",border:"1px dashed rgba(255,255,255,0.15)",padding:"8px 16px",borderRadius:8,cursor:"pointer"}}>+ Add Room</button>
-      </div>
-      <button onClick={save} disabled={saving} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"12px 32px",borderRadius:10,fontWeight:700,fontSize:14,cursor:saving?"not-allowed":"pointer",opacity:saving?0.7:1}}>{saving?"Saving...":"Save Changes"}</button>
-    </div>
-  );
-}
-
-// ─── Testimonials Editor (unchanged) ─────────────────────────────────────────
-function TestimonialsEditor({ data, api, reload, showSaved }) {
-  const [tab, setTab] = useState("approved");
-  const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState(null);
-  const [actionId, setActionId] = useState(null);
-  const [localList, setLocalList] = useState(data.testimonials||[]);
-  useEffect(()=>setLocalList(data.testimonials||[]),[data.testimonials]);
-  const approved = localList.filter(t=>t.approved);
-  const pending  = localList.filter(t=>!t.approved);
-  const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const startEdit = (t) => { setForm({...t}); setEditId(t._id); };
-  const startAdd  = () => { setForm({name:"",location:"",text:"",rating:5,approved:true,category:"villa"}); setEditId("new"); };
-  const save = async () => {
-    if (editId==="new") await api.post("/testimonials", form);
-    else await api.put(`/testimonials/${editId}`, form);
-    setEditId(null); setForm(null); showSaved(); await reload();
-  };
-  const del = async (id) => {
-    if (!window.confirm("Delete this review?")) return;
-    setLocalList(l=>l.filter(t=>t._id!==id));
-    await api.delete(`/testimonials/${id}`);
-    await reload();
-  };
-  const approve = async (t) => {
-    setActionId(t._id+"_approve");
-    setLocalList(l=>l.map(r=>r._id===t._id?{...r,approved:true}:r));
-    try { await api.put(`/testimonials/${t._id}`,{...t,approved:true}); showSaved(); await reload(); }
-    catch(err) { setLocalList(l=>l.map(r=>r._id===t._id?{...r,approved:false}:r)); alert("Approve failed: "+err.message); }
-    setActionId(null);
-  };
-  const reject = async (t) => {
-    setActionId(t._id+"_reject");
-    setLocalList(l=>l.map(r=>r._id===t._id?{...r,approved:false}:r));
-    try { await api.put(`/testimonials/${t._id}`,{...t,approved:false}); await reload(); }
-    catch(err) { setLocalList(l=>l.map(r=>r._id===t._id?{...r,approved:true}:r)); alert("Hide failed: "+err.message); }
-    setActionId(null);
-  };
-  const list = tab==="approved" ? approved : pending;
-  return (
-    <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
-        <h2 style={{fontFamily:"'Playfair Display'",fontSize:28}}>Reviews</h2>
-        <button onClick={startAdd} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 22px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Add Review</button>
-      </div>
-      <div style={{display:"flex",gap:8,marginBottom:24}}>
-        {[["approved","✅ Approved","#4ade80"],["pending","⏳ Pending Approval","#f0c060"]].map(([id,label,col])=>(
-          <button key={id} onClick={()=>setTab(id)} style={{padding:"8px 20px",borderRadius:20,border:`2px solid ${tab===id?col:"rgba(255,255,255,0.1)"}`,background:tab===id?`rgba(${id==="approved"?"74,222,128":"240,192,96"},0.1)`:"transparent",color:tab===id?col:"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:13,fontWeight:600}}>
-            {label} ({id==="approved"?approved.length:pending.length})
-          </button>
-        ))}
-      </div>
-      {pending.length>0&&tab==="approved"&&(
-        <div style={{background:"rgba(240,192,96,0.08)",border:"1px solid rgba(240,192,96,0.3)",borderRadius:12,padding:"12px 18px",marginBottom:20,fontSize:13,color:"#f0c060"}}>
-          ⚠️ You have <strong>{pending.length}</strong> review{pending.length>1?"s":""} waiting for approval
-        </div>
-      )}
-      {editId&&form&&(
-        <div className="adm-card" style={{marginBottom:24,border:"1px solid rgba(212,133,10,0.3)"}}>
-          <h3 style={{color:"#f0c060",marginBottom:18}}>{editId==="new"?"New Review":"Edit Review"}</h3>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
-            <div><label className="adm-label">Name</label><input className="adm-input" value={form.name||""} onChange={e=>set("name",e.target.value)}/></div>
-            <div><label className="adm-label">Location</label><input className="adm-input" value={form.location||""} onChange={e=>set("location",e.target.value)}/></div>
-            <div><label className="adm-label">Rating</label>
-              <select className="adm-input" value={form.rating} onChange={e=>set("rating",Number(e.target.value))}>
-                {[1,2,3,4,5].map(n=><option key={n} value={n}>{n} ⭐</option>)}
-              </select>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:10,paddingTop:22}}>
-              <label className="adm-label" style={{marginBottom:0}}>Approved</label>
-              <input type="checkbox" checked={!!form.approved} onChange={e=>set("approved",e.target.checked)} style={{width:18,height:18,cursor:"pointer",accentColor:"#d4850a"}}/>
-            </div>
-            <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Review Text</label><textarea className="adm-input" value={form.text||""} onChange={e=>set("text",e.target.value)}/></div>
-          </div>
-          <div style={{display:"flex",gap:10}}>
-            <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 24px",borderRadius:8,fontWeight:700,cursor:"pointer"}}>Save</button>
-            <button onClick={()=>{setEditId(null);setForm(null);}} style={{background:"transparent",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.5)",padding:"10px 20px",borderRadius:8,cursor:"pointer"}}>Cancel</button>
-          </div>
-        </div>
-      )}
-      <div style={{display:"grid",gap:12}}>
-        {list.length===0&&<div style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:48,fontSize:14}}>{tab==="pending"?"No reviews waiting 🎉":"No approved reviews yet"}</div>}
-        {list.map(t=>(
-          <div key={t._id} className="adm-card" style={{display:"flex",gap:16,alignItems:"flex-start",border:tab==="pending"?"1px solid rgba(240,192,96,0.2)":"1px solid rgba(255,255,255,0.08)"}}>
-            <div style={{flex:1}}>
-              <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
-                <span style={{fontWeight:600}}>{t.name}</span>
-                <span style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>{t.location}</span>
-                <span style={{color:"#f0c060"}}>{"★".repeat(t.rating)}</span>
-                {!t.approved&&<span style={{fontSize:11,background:"rgba(240,192,96,0.15)",color:"#f0c060",padding:"2px 8px",borderRadius:10,fontWeight:600}}>PENDING</span>}
-                {t.category==="villa"&&<span style={{fontSize:11,background:"rgba(99,179,237,0.15)",color:"#63b3ed",padding:"2px 8px",borderRadius:10}}>🏡 Villa</span>}
-                {t.category==="rental"&&<span style={{fontSize:11,background:"rgba(154,230,180,0.15)",color:"#68d391",padding:"2px 8px",borderRadius:10}}>{t.vehicleType==="scooty"?"🛵":t.vehicleType==="bike"?"🏍️":"🚗"} {t.vehicleName||t.vehicleType||"Rental"}</span>}
-              </div>
-              <p style={{fontSize:14,color:"rgba(255,255,255,0.5)",fontStyle:"italic"}}>"{t.text}"</p>
-            </div>
-            <div style={{display:"flex",gap:8,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end"}}>
-              {!t.approved&&<button onClick={()=>approve(t)} disabled={actionId===t._id+"_approve"} style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>{actionId===t._id+"_approve"?"Saving...":"✓ Approve"}</button>}
-              {t.approved&&<button onClick={()=>reject(t)} disabled={actionId===t._id+"_reject"} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:13}}>{actionId===t._id+"_reject"?"Saving...":"Hide"}</button>}
-              <button onClick={()=>startEdit(t)} style={{background:"rgba(212,133,10,0.15)",border:"1px solid rgba(212,133,10,0.3)",color:"#f0c060",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:13}}>Edit</button>
-              <button onClick={()=>del(t._id)} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"7px 10px",borderRadius:8,cursor:"pointer"}}><Icon name="trash" size={14}/></button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── NEW: Inventory Editor ────────────────────────────────────────────────────
-const INVENTORY_TYPES = [
-  { value:"tour",      label:"🗺️ Tour / Package" },
-  { value:"villa",     label:"🏡 Villa" },
-  { value:"vehicle",   label:"🛵 Vehicle" },
-  { value:"equipment", label:"🔧 Equipment" },
-];
-const VEHICLE_SUBTYPES = [
-  { value:"scooty", label:"🛵 Scooty" },
-  { value:"bike",   label:"🏍️ Bike" },
-  { value:"car",    label:"🚗 Car" },
-];
-const STATUS_STYLES = {
-  available:   { bg:"rgba(74,222,128,0.12)",  border:"rgba(74,222,128,0.3)",  color:"#4ade80",  label:"Available",   dot:"#4ade80" },
-  booked:      { bg:"rgba(240,192,96,0.12)",  border:"rgba(240,192,96,0.3)",  color:"#f0c060",  label:"Booked",      dot:"#f0c060" },
-  maintenance: { bg:"rgba(255,100,100,0.12)", border:"rgba(255,100,100,0.3)", color:"#ff6b6b",  label:"Maintenance", dot:"#ff6b6b" },
-};
-
-function InventoryEditor({ data, api, reload, showSaved }) {
-  const blankItem = { type:"vehicle", vehicleType:"scooty", name:"", description:"", status:"available", pricePerDay:0, capacity:1, location:"", image:"", notes:"" };
-  const [items, setItems] = useState(data.inventory||[]);
-  const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState(null);
-  const [adding, setAdding] = useState(false);
-  const [filterType, setFilterType] = useState("all");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState("name");
-  const [viewMode, setViewMode] = useState("list"); // list | grid
-  const [filterDate, setFilterDate] = useState(""); // date string YYYY-MM-DD
-
-  useEffect(()=>setItems(data.inventory||[]),[data.inventory]);
-
-  const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const startAdd  = () => { setForm({...blankItem}); setEditId(null); setAdding(true); window.scrollTo({top:0,behavior:"smooth"}); };
-  const startEdit = (item) => { setForm({...item}); setEditId(item._id); setAdding(false); window.scrollTo({top:0,behavior:"smooth"}); };
-  const cancel    = () => { setEditId(null); setForm(null); setAdding(false); };
-
-  const save = async () => {
-    if (!form.name.trim()) { alert("Please enter a name."); return; }
-    if (adding) await api.post("/inventory", form);
-    else        await api.put(`/inventory/${editId}`, form);
-    cancel(); showSaved(); await reload();
-  };
-
-  const del = async (id) => {
-    if (!window.confirm("Delete this inventory item?")) return;
-    setItems(l=>l.filter(i=>i._id!==id));
-    await api.delete(`/inventory/${id}`);
-    await reload();
-  };
-
-  const updateStatus = async (item, status) => {
-    setItems(l=>l.map(i=>i._id===item._id?{...i,status}:i));
-    await api.put(`/inventory/${item._id}`, {...item, status});
-    await reload();
-  };
-
-  // Counts
-  const counts = { all:items.length, tour:0, villa:0, vehicle:0, equipment:0 };
-  items.forEach(i=>{ if(counts[i.type]!==undefined) counts[i.type]++; });
-  const statusCounts = { available:0, booked:0, maintenance:0 };
-  items.forEach(i=>{ if(statusCounts[i.status]!==undefined) statusCounts[i.status]++; });
-  const totalFleetValue = items.filter(i=>i.pricePerDay>0).reduce((s,i)=>s+i.pricePerDay,0);
-
-  // Filter + search + sort
-  let filtered = items;
-  if (filterType!=="all") filtered = filtered.filter(i=>i.type===filterType);
-  if (filterStatus!=="all") filtered = filtered.filter(i=>i.status===filterStatus);
-  if (search.trim()) {
-    const q = search.toLowerCase();
-    filtered = filtered.filter(i=>(i.name||"").toLowerCase().includes(q)||(i.location||"").toLowerCase().includes(q)||(i.description||"").toLowerCase().includes(q));
-  }
-  if (sortBy==="name")     filtered = [...filtered].sort((a,b)=>(a.name||"").localeCompare(b.name||""));
-  if (sortBy==="price")    filtered = [...filtered].sort((a,b)=>(b.pricePerDay||0)-(a.pricePerDay||0));
-  if (sortBy==="status")   filtered = [...filtered].sort((a,b)=>(a.status||"").localeCompare(b.status||""));
-
-  // Date availability filter — check if item is booked on the selected date
-  const getStatusForDate = (item) => {
-    if (!filterDate || !item.activeBookings) return item.status;
-    const d = new Date(filterDate); d.setHours(12,0,0,0);
-    const isBooked = item.activeBookings.some(b => {
-      const from = b.from ? new Date(b.from) : null;
-      const to   = b.to   ? new Date(b.to)   : null;
-      return from && to && d >= from && d <= to;
-    });
-    return isBooked ? "booked" : "available";
-  };
-
-  const exportCSV = () => {
-    const rows = [["Name","Type","Vehicle Type","Status","Price/Day","Capacity","Location","Notes"]];
-    filtered.forEach(i=>rows.push([i.name,i.type,i.vehicleType||"",i.status,i.pricePerDay,i.capacity,i.location,i.notes]));
-    const csv = rows.map(r=>r.map(v=>`"${String(v||"").replace(/"/g,'""')}"`).join(",")).join("\n");
-    const a = document.createElement("a"); a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv); a.download="inventory.csv"; a.click();
-  };
-
-  const typeIcon = (item) => item.type==="vehicle"?(item.vehicleType==="scooty"?"🛵":item.vehicleType==="bike"?"🏍️":"🚗"):item.type==="tour"?"🗺️":item.type==="villa"?"🏡":"🔧";
-
-  return (
-    <div>
-      {/* ── Header ── */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
-        <div>
-          <h2 style={{fontFamily:"'Playfair Display'",fontSize:30,marginBottom:4}}>Inventory</h2>
-          <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>{items.length} total assets · ₹{totalFleetValue.toLocaleString("en-IN")}/day fleet value</p>
-        </div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <button onClick={exportCSV} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",color:"rgba(255,255,255,0.6)",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>↓ Export CSV</button>
-          <button onClick={startAdd} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 22px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Add Item</button>
-        </div>
-      </div>
-
-      {/* ── KPI Cards ── */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10,marginBottom:20}}>
-        {[
-          {label:"Total Items",  value:counts.all,            color:"#f0c060", icon:"📦"},
-          {label:"Vehicles",     value:counts.vehicle,        color:"#60a5fa", icon:"🛵"},
-          {label:"Tours",        value:counts.tour,           color:"#a78bfa", icon:"🗺️"},
-          {label:"Equipment",    value:counts.equipment,      color:"#fb923c", icon:"🔧"},
-          {label:"Available",    value:statusCounts.available,    color:"#4ade80", icon:"✅"},
-          {label:"Booked",       value:statusCounts.booked,       color:"#f0c060", icon:"📅"},
-          {label:"Maintenance",  value:statusCounts.maintenance,  color:"#ff6b6b", icon:"🔧"},
-        ].map(s=>(
-          <div key={s.label} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 16px",position:"relative",overflow:"hidden"}}>
-            <div style={{position:"absolute",top:10,right:12,fontSize:18,opacity:0.18}}>{s.icon}</div>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>{s.label}</div>
-            <div style={{fontSize:28,fontWeight:800,color:s.color,fontFamily:"'Playfair Display'"}}>{s.value}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* ── Availability Bar ── */}
-      {items.length>0&&(
-        <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 20px",marginBottom:20}}>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-            <span style={{fontSize:11,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1}}>Fleet availability</span>
-            <span style={{fontSize:11,color:"#4ade80",fontWeight:600}}>{Math.round((statusCounts.available/items.length)*100)}% available</span>
-          </div>
-          <div style={{display:"flex",height:8,borderRadius:6,overflow:"hidden",gap:2}}>
-            {statusCounts.available>0&&<div style={{flex:statusCounts.available,background:"#4ade80",borderRadius:6}}/>}
-            {statusCounts.booked>0&&<div style={{flex:statusCounts.booked,background:"#f0c060",borderRadius:6}}/>}
-            {statusCounts.maintenance>0&&<div style={{flex:statusCounts.maintenance,background:"#ff6b6b",borderRadius:6}}/>}
-          </div>
-          <div style={{display:"flex",gap:16,marginTop:8}}>
-            {[["#4ade80","Available",statusCounts.available],["#f0c060","Booked",statusCounts.booked],["#ff6b6b","Maintenance",statusCounts.maintenance]].map(([c,l,v])=>(
-              <div key={l} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"rgba(255,255,255,0.4)"}}>
-                <div style={{width:8,height:8,borderRadius:"50%",background:c}}/>{l}: <strong style={{color:"rgba(255,255,255,0.7)"}}>{v}</strong>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Date Availability Filter ── */}
-      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 18px",marginBottom:12,display:"flex",gap:16,alignItems:"center",flexWrap:"wrap"}}>
-        <span style={{fontSize:12,color:"rgba(255,255,255,0.5)",fontWeight:600,textTransform:"uppercase",letterSpacing:1,whiteSpace:"nowrap"}}>📅 Check date:</span>
-        <input type="date" value={filterDate} onChange={e=>setFilterDate(e.target.value)}
-          style={{padding:"8px 12px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:8,color:"white",fontSize:13,outline:"none",cursor:"pointer"}}/>
-        {filterDate&&(
-          <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
-            <span style={{fontSize:12,padding:"4px 12px",borderRadius:20,background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.2)",color:"#4ade80"}}>
-              ✅ {items.filter(i=>getStatusForDate(i)==="available").length} available
-            </span>
-            <span style={{fontSize:12,padding:"4px 12px",borderRadius:20,background:"rgba(255,100,100,0.1)",border:"1px solid rgba(255,100,100,0.2)",color:"#ff6b6b"}}>
-              📅 {items.filter(i=>getStatusForDate(i)==="booked").length} booked
-            </span>
-            <button onClick={()=>setFilterDate("")} style={{fontSize:11,background:"transparent",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.4)",padding:"4px 10px",borderRadius:6,cursor:"pointer"}}>Clear ✕</button>
-          </div>
-        )}
-        {!filterDate&&<span style={{fontSize:11,color:"rgba(255,255,255,0.2)"}}>Pick a date to see what's available or booked</span>}
-      </div>
-
-      {/* ── Search + Filters ── */}
-      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 20px",marginBottom:20}}>
-        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-          {/* Search */}
-          <div style={{flex:1,minWidth:180,position:"relative"}}>
-            <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:14,opacity:0.4}}>🔍</span>
-            <input className="adm-input" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by name, location…" style={{paddingLeft:34}}/>
-          </div>
-          {/* Type filter */}
-          <select className="adm-input" value={filterType} onChange={e=>setFilterType(e.target.value)} style={{width:"auto",minWidth:130}}>
-            <option value="all">All Types ({counts.all})</option>
-            <option value="vehicle">🛵 Vehicles ({counts.vehicle})</option>
-            <option value="tour">🗺️ Tours ({counts.tour})</option>
-            <option value="villa">🏡 Villa ({counts.villa})</option>
-            <option value="equipment">🔧 Equipment ({counts.equipment})</option>
-          </select>
-          {/* Status filter */}
-          <select className="adm-input" value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{width:"auto",minWidth:140}}>
-            <option value="all">All Statuses</option>
-            <option value="available">✅ Available ({statusCounts.available})</option>
-            <option value="booked">📅 Booked ({statusCounts.booked})</option>
-            <option value="maintenance">🔧 Maintenance ({statusCounts.maintenance})</option>
-          </select>
-          {/* Sort */}
-          <select className="adm-input" value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{width:"auto",minWidth:120}}>
-            <option value="name">Sort: Name</option>
-            <option value="price">Sort: Price ↓</option>
-            <option value="status">Sort: Status</option>
-          </select>
-          {/* View toggle */}
-          <div style={{display:"flex",gap:4,background:"rgba(255,255,255,0.05)",borderRadius:8,padding:4}}>
-            {[["list","☰"],["grid","⊞"]].map(([m,icon])=>(
-              <button key={m} onClick={()=>setViewMode(m)} style={{padding:"5px 10px",borderRadius:6,border:"none",background:viewMode===m?"rgba(212,133,10,0.25)":"transparent",color:viewMode===m?"#f0c060":"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:14}}>{icon}</button>
-            ))}
-          </div>
-        </div>
-        {(search||filterType!=="all"||filterStatus!=="all")&&(
-          <div style={{marginTop:10,display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-            <span style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>Showing {filtered.length} of {items.length}</span>
-            <button onClick={()=>{setSearch("");setFilterType("all");setFilterStatus("all");}} style={{fontSize:11,color:"#f0c060",background:"transparent",border:"none",cursor:"pointer",textDecoration:"underline"}}>Clear filters</button>
-          </div>
-        )}
-      </div>
-
-      {/* ── Add / Edit Form ── */}
-      {(adding||editId)&&form&&(
-        <div className="adm-card" style={{marginBottom:24,border:"1px solid rgba(212,133,10,0.35)",background:"rgba(212,133,10,0.04)"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-            <h3 style={{color:"#f0c060",fontSize:18}}>{adding?"➕ Add New Item":"✏️ Edit Item"}</h3>
-            <button onClick={cancel} style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.3)",fontSize:20,cursor:"pointer",lineHeight:1}}>✕</button>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
-            <div>
-              <label className="adm-label">Type</label>
-              <select className="adm-input" value={form.type} onChange={e=>set("type",e.target.value)}>
-                {INVENTORY_TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </div>
-            {form.type==="vehicle"&&(
-              <div>
-                <label className="adm-label">Vehicle type</label>
-                <select className="adm-input" value={form.vehicleType} onChange={e=>set("vehicleType",e.target.value)}>
-                  {VEHICLE_SUBTYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
-              </div>
-            )}
-            <div><label className="adm-label">Name *</label><input className="adm-input" value={form.name||""} onChange={e=>set("name",e.target.value)} placeholder="e.g. Honda Activa #3"/></div>
-            <div>
-              <label className="adm-label">Status</label>
-              <select className="adm-input" value={form.status} onChange={e=>set("status",e.target.value)}>
-                <option value="available">✅ Available</option>
-                <option value="booked">📅 Booked</option>
-                <option value="maintenance">🔧 Maintenance</option>
-              </select>
-            </div>
-            <div><label className="adm-label">Price per day (₹)</label><input className="adm-input" type="number" value={form.pricePerDay||0} onChange={e=>set("pricePerDay",Number(e.target.value))}/></div>
-            <div><label className="adm-label">Capacity (guests/units)</label><input className="adm-input" type="number" value={form.capacity||1} onChange={e=>set("capacity",Number(e.target.value))}/></div>
-            <div><label className="adm-label">Location</label><input className="adm-input" value={form.location||""} onChange={e=>set("location",e.target.value)} placeholder="e.g. Main Garage, Udaipur"/></div>
-            <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Description</label><textarea className="adm-input" value={form.description||""} onChange={e=>set("description",e.target.value)} rows={2}/></div>
-            <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Notes (internal)</label><textarea className="adm-input" value={form.notes||""} onChange={e=>set("notes",e.target.value)} rows={2} placeholder="Service history, quirks, etc."/></div>
-            <div style={{gridColumn:"1 / -1"}}><ImageUpload label="Image" value={form.image} onChange={v=>set("image",v)}/></div>
-          </div>
-          <div style={{display:"flex",gap:10}}>
-            <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 28px",borderRadius:8,fontWeight:700,cursor:"pointer"}}>Save Item</button>
-            <button onClick={cancel} style={{background:"transparent",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.5)",padding:"10px 20px",borderRadius:8,cursor:"pointer"}}>Cancel</button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Items — List View ── */}
-      {viewMode==="list"&&(
-        <div style={{display:"grid",gap:8}}>
-          {filtered.length===0&&(
-            <div style={{textAlign:"center",padding:"60px 0",color:"rgba(255,255,255,0.2)"}}>
-              <div style={{fontSize:40,marginBottom:12}}>📦</div>
-              <div style={{fontSize:14}}>{search?"No results found":"No items yet — click + Add Item above"}</div>
-            </div>
-          )}
-          {filtered.map(item=>{
-            const dateStatus = getStatusForDate(item);
-            const ss = STATUS_STYLES[dateStatus]||STATUS_STYLES.available;
-            const icon = typeIcon(item);
-            return (
-              <div key={item._id} style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${filterDate&&dateStatus==="booked"?"rgba(255,100,100,0.4)":filterDate&&dateStatus==="available"?"rgba(74,222,128,0.3)":"rgba(255,255,255,0.07)"}`,borderRadius:14,padding:"14px 18px",display:"flex",gap:14,alignItems:"center",transition:"border-color 0.2s"}}
-                onMouseEnter={e=>e.currentTarget.style.borderColor=filterDate&&dateStatus==="booked"?"rgba(255,100,100,0.6)":filterDate&&dateStatus==="available"?"rgba(74,222,128,0.5)":"rgba(212,133,10,0.3)"}
-                onMouseLeave={e=>e.currentTarget.style.borderColor=filterDate&&dateStatus==="booked"?"rgba(255,100,100,0.4)":filterDate&&dateStatus==="available"?"rgba(74,222,128,0.3)":"rgba(255,255,255,0.07)"}>
-                {item.image
-                  ? <img src={item.image} alt="" style={{width:56,height:56,objectFit:"cover",borderRadius:10,flexShrink:0}}/>
-                  : <div style={{width:56,height:56,borderRadius:10,background:"rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>{icon}</div>
-                }
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:4}}>
-                    <span style={{fontWeight:600,fontSize:15}}>{item.name}</span>
-                    <span style={{fontSize:10,background:"rgba(255,255,255,0.06)",padding:"2px 8px",borderRadius:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1}}>{icon} {item.type}</span>
-                    <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:ss.bg,border:`1px solid ${ss.border}`,color:ss.color,display:"flex",alignItems:"center",gap:4}}>
-                      <span style={{width:5,height:5,borderRadius:"50%",background:ss.dot,display:"inline-block"}}/>
-                      {ss.label}
-                    </span>
-                  </div>
-                  <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",display:"flex",gap:14,flexWrap:"wrap"}}>
-                    {item.pricePerDay>0&&<span style={{color:"#f0c060",fontWeight:600}}>₹{item.pricePerDay.toLocaleString("en-IN")}/day</span>}
-                    {item.capacity>0&&<span>👥 {item.capacity} capacity</span>}
-                    {item.location&&<span>📍 {item.location}</span>}
-                    {item.description&&<span style={{maxWidth:300,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.description}</span>}
-                  </div>
-                  {/* Show active booking dates */}
-                  {(item.activeBookings||[]).length>0&&(
-                    <div style={{marginTop:6,display:"flex",gap:6,flexWrap:"wrap"}}>
-                      {item.activeBookings.map((b,i)=>{
-                        const fmt=(d)=>d?new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short"}):"?";
-                        return <span key={i} style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"rgba(240,192,96,0.1)",border:"1px solid rgba(240,192,96,0.25)",color:"#f0c060"}}>
-                          📅 {fmt(b.from)} → {fmt(b.to)} · {b.customerName||""}
-                        </span>;
-                      })}
-                    </div>
-                  )}
-                </div>
-                <div style={{display:"flex",gap:6,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end",alignItems:"center"}}>
-                  {filterDate ? (
-                    <span style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${ss.border}`,background:ss.bg,color:ss.color,fontSize:11,fontWeight:600}}>
-                      {dateStatus==="booked"?"📅 Booked on date":"✅ Free on date"}
-                    </span>
-                  ) : (
-                    <select value={item.status} onChange={e=>updateStatus(item,e.target.value)}
-                      style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${ss.border}`,background:ss.bg,color:ss.color,fontSize:11,cursor:"pointer",fontWeight:600}}>
-                      <option value="available">✅ Available</option>
-                      <option value="booked">📅 Booked</option>
-                      <option value="maintenance">🔧 Maintenance</option>
-                    </select>
-                  )}
-                  <button onClick={()=>startEdit(item)} style={{background:"rgba(212,133,10,0.12)",border:"1px solid rgba(212,133,10,0.25)",color:"#f0c060",padding:"6px 12px",borderRadius:7,cursor:"pointer",fontSize:12}}>Edit</button>
-                  <button onClick={()=>del(item._id)} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.15)",color:"#ff6b6b",padding:"6px 10px",borderRadius:7,cursor:"pointer"}}><Icon name="trash" size={13}/></button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ── Items — Grid View ── */}
-      {viewMode==="grid"&&(
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:14}}>
-          {filtered.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",padding:"60px 0",color:"rgba(255,255,255,0.2)"}}>No items found</div>}
-          {filtered.map(item=>{
-            const ss = STATUS_STYLES[item.status]||STATUS_STYLES.available;
-            const icon = typeIcon(item);
-            return (
-              <div key={item._id} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,overflow:"hidden",transition:"transform 0.2s,border-color 0.2s"}}
-                onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.borderColor="rgba(212,133,10,0.3)"}}
-                onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.borderColor="rgba(255,255,255,0.07)"}}>
-                {item.image
-                  ? <img src={item.image} alt="" style={{width:"100%",height:120,objectFit:"cover"}}/>
-                  : <div style={{width:"100%",height:120,background:"rgba(255,255,255,0.04)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36}}>{icon}</div>
-                }
-                <div style={{padding:"14px 14px 10px"}}>
-                  <div style={{fontWeight:600,fontSize:13,marginBottom:6,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}</div>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                    <span style={{fontSize:13,color:"#f0c060",fontWeight:700}}>{item.pricePerDay>0?`₹${item.pricePerDay.toLocaleString()}/d`:"—"}</span>
-                    <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:ss.bg,border:`1px solid ${ss.border}`,color:ss.color}}>{ss.label}</span>
-                  </div>
-                  <div style={{display:"flex",gap:6}}>
-                    <button onClick={()=>startEdit(item)} style={{flex:1,background:"rgba(212,133,10,0.12)",border:"1px solid rgba(212,133,10,0.25)",color:"#f0c060",padding:"5px 0",borderRadius:7,cursor:"pointer",fontSize:11}}>Edit</button>
-                    <button onClick={()=>del(item._id)} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.15)",color:"#ff6b6b",padding:"5px 8px",borderRadius:7,cursor:"pointer"}}><Icon name="trash" size={12}/></button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-// ─── NEW: Accounting Editor ───────────────────────────────────────────────────
-const INCOME_CATEGORIES = [
-  { value:"villa_rental",     label:"🏡 Villa rental" },
-  { value:"tour_booking",     label:"🗺️ Tour booking" },
-  { value:"vehicle_rental",   label:"🛵 Vehicle rental" },
-  { value:"agency_commission",label:"🤝 Agency commission" },
-  { value:"other_income",     label:"➕ Other income" },
-];
-const EXPENSE_CATEGORIES = [
-  { value:"maintenance",  label:"🔧 Maintenance" },
-  { value:"utilities",    label:"💡 Utilities" },
-  { value:"staff",        label:"👷 Staff / wages" },
-  { value:"supplies",     label:"📦 Supplies" },
-  { value:"marketing",    label:"📢 Marketing" },
-  { value:"other_expense",label:"➖ Other expense" },
-];
-const PAYMENT_METHODS = ["cash","upi","bank_transfer","card","other"];
-
-// Tiny SVG donut chart
-function DonutChart({ segments, size=90 }) {
-  const total = segments.reduce((s,d)=>s+d.value,0)||1;
-  let offset=0;
-  const r=36, cx=50, cy=50, circ=2*Math.PI*r;
-  return (
-    <svg width={size} height={size} viewBox="0 0 100 100">
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="14"/>
-      {segments.filter(s=>s.value>0).map((seg,i)=>{
-        const pct=seg.value/total;
-        const el=<circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={seg.color} strokeWidth="14"
-          strokeDasharray={`${pct*circ} ${circ}`} strokeDashoffset={-offset*circ}
-          transform="rotate(-90 50 50)"/>;
-        offset+=pct; return el;
-      })}
-    </svg>
-  );
-}
-
-function AccountingEditor({ data, api, reload, showSaved }) {
-  const accData = data.accounting || { transactions:[], summary:{ totalIncome:0, totalExpense:0, netProfit:0, breakdown:{} } };
-  const allTx   = accData.transactions || [];
-
-  // Date filter state
-  const now = new Date();
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
-  const today = now.toISOString().slice(0,10);
-
-  const [datePreset, setDatePreset] = useState("month");
-  const [dateFrom, setDateFrom]   = useState(firstOfMonth);
-  const [dateTo, setDateTo]       = useState(today);
-  const [filterCat, setFilterCat] = useState("all");
-  const [search, setSearch]       = useState("");
-  const [showForm, setShowForm]   = useState(false);
-  const [editId, setEditId]       = useState(null);
-  const [sortDir, setSortDir]     = useState("desc");
-
-  const blankForm = { type:"income", category:"vehicle_rental", amount:"", date:today, description:"", clientName:"", agencyName:"", paymentStatus:"paid", paymentMethod:"cash", notes:"" };
-  const [form, setForm] = useState({...blankForm});
-  const set = (k,v) => setForm(f=>({...f,[k]:v}));
-
-  const allCats = [...INCOME_CATEGORIES,...EXPENSE_CATEGORIES];
-  const categoryLabel = (cat) => allCats.find(c=>c.value===cat)?.label || cat;
-  const fmt = (n) => `₹${Number(n||0).toLocaleString("en-IN")}`;
-
-  // Preset date ranges
-  const applyPreset = (preset) => {
-    setDatePreset(preset);
-    const n = new Date();
-    if (preset==="today")    { const d=n.toISOString().slice(0,10); setDateFrom(d); setDateTo(d); }
-    if (preset==="week")     { const d=new Date(n-6*864e5).toISOString().slice(0,10); setDateFrom(d); setDateTo(n.toISOString().slice(0,10)); }
-    if (preset==="month")    { setDateFrom(new Date(n.getFullYear(),n.getMonth(),1).toISOString().slice(0,10)); setDateTo(n.toISOString().slice(0,10)); }
-    if (preset==="quarter")  { setDateFrom(new Date(n.getFullYear(),Math.floor(n.getMonth()/3)*3,1).toISOString().slice(0,10)); setDateTo(n.toISOString().slice(0,10)); }
-    if (preset==="year")     { setDateFrom(`${n.getFullYear()}-01-01`); setDateTo(`${n.getFullYear()}-12-31`); }
-    if (preset==="all")      { setDateFrom("2020-01-01"); setDateTo("2099-12-31"); }
-  };
-
-  // Filtered transactions
-  const filtered = allTx.filter(tx => {
-    const d = tx.date ? tx.date.slice(0,10) : "";
-    if (dateFrom && d < dateFrom) return false;
-    if (dateTo   && d > dateTo)   return false;
-    if (filterCat==="income"  && tx.type!=="income")  return false;
-    if (filterCat==="expense" && tx.type!=="expense") return false;
-    if (filterCat==="pending" && tx.paymentStatus!=="pending") return false;
-    if (search) {
-      const q = search.toLowerCase();
-      if (!((tx.description||"").toLowerCase().includes(q)||(tx.clientName||"").toLowerCase().includes(q)||(tx.agencyName||"").toLowerCase().includes(q))) return false;
-    }
-    return true;
-  }).sort((a,b)=>{
-    const da=a.date||"",db=b.date||"";
-    return sortDir==="desc"?db.localeCompare(da):da.localeCompare(db);
-  });
-
-  // Summary for filtered range
-  const filteredIncome  = filtered.filter(t=>t.type==="income").reduce((s,t)=>s+t.amount,0);
-  const filteredExpense = filtered.filter(t=>t.type==="expense").reduce((s,t)=>s+t.amount,0);
-  const filteredProfit  = filteredIncome - filteredExpense;
-  const pendingAmt      = filtered.filter(t=>t.paymentStatus==="pending").reduce((s,t)=>s+t.amount,0);
-
-  // Revenue breakdown for donut
-  const breakdown = {};
-  filtered.filter(t=>t.type==="income").forEach(t=>{ breakdown[t.category]=(breakdown[t.category]||0)+t.amount; });
-  const donutColors = ["#f0c060","#4ade80","#60a5fa","#a78bfa","#fb923c","#f472b6"];
-  const donutSegments = Object.entries(breakdown).map(([cat,val],i)=>({ label:categoryLabel(cat), value:val, color:donutColors[i%donutColors.length] }));
-
-  // Monthly trend for filtered year (last 6 months)
-  const monthlyData = (() => {
-    const months=[];
-    for(let i=5;i>=0;i--){
-      const d=new Date(); d.setMonth(d.getMonth()-i);
-      const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-      const label=d.toLocaleString("en-IN",{month:"short"});
-      const inc=allTx.filter(t=>t.type==="income"&&(t.date||"").startsWith(ym)).reduce((s,t)=>s+t.amount,0);
-      const exp=allTx.filter(t=>t.type==="expense"&&(t.date||"").startsWith(ym)).reduce((s,t)=>s+t.amount,0);
-      months.push({label,inc,exp});
-    }
-    return months;
-  })();
-  const maxBar = Math.max(...monthlyData.map(m=>Math.max(m.inc,m.exp)),1);
-
-  // Form handlers
-  const startAdd = (type="income") => {
-    setForm({...blankForm, type, category: type==="income"?"vehicle_rental":"maintenance", date:today});
-    setEditId(null); setShowForm(true);
-  };
-  const startEdit = (tx) => {
-    setForm({...tx, amount:String(tx.amount), date:tx.date?tx.date.slice(0,10):today});
-    setEditId(tx._id); setShowForm(true);
-  };
-  const cancel = () => { setShowForm(false); setEditId(null); setForm({...blankForm}); };
-  const save = async () => {
-    if (!form.amount||isNaN(Number(form.amount))||Number(form.amount)<=0){alert("Enter a valid amount.");return;}
-    const payload={...form,amount:Number(form.amount)};
-    if(editId) await api.put(`/accounting/${editId}`,payload);
-    else       await api.post("/accounting",payload);
-    cancel(); showSaved(); await reload();
-  };
-  const del = async (id) => {
-    if(!window.confirm("Delete this transaction?"))return;
-    await api.delete(`/accounting/${id}`); await reload();
-  };
-
-  // CSV export
-  const exportCSV = () => {
-    const rows=[["Date","Type","Category","Amount","Client","Agency","Payment Method","Payment Status","Description"]];
-    filtered.forEach(t=>rows.push([t.date,t.type,t.category,t.amount,t.clientName,t.agencyName,t.paymentMethod,t.paymentStatus,t.description]));
-    const csv=rows.map(r=>r.map(v=>`"${String(v||"").replace(/"/g,'""')}"`).join(",")).join("\n");
-    const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv);a.download="accounting.csv";a.click();
-  };
-
-  const profitColor = filteredProfit>=0?"#4ade80":"#ff6b6b";
-  const categories  = form.type==="income"?INCOME_CATEGORIES:EXPENSE_CATEGORIES;
-
-  return (
-    <div>
-      {/* ── Header ── */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
-        <div>
-          <h2 style={{fontFamily:"'Playfair Display'",fontSize:30,marginBottom:4}}>Accounting</h2>
-          <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>{allTx.length} total transactions · All time</p>
-        </div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <button onClick={exportCSV} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",color:"rgba(255,255,255,0.6)",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>↓ Export CSV</button>
-          <button onClick={()=>startAdd("income")} style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Income</button>
-          <button onClick={()=>startAdd("expense")} style={{background:"rgba(255,100,100,0.15)",border:"1px solid rgba(255,100,100,0.3)",color:"#ff6b6b",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Expense</button>
-        </div>
-      </div>
-
-      {/* ── Date Range Filter ── */}
-      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 20px",marginBottom:20}}>
-        <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>Date range</div>
-        {/* Presets */}
-        <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
-          {[["today","Today"],["week","Last 7d"],["month","This Month"],["quarter","This Quarter"],["year","This Year"],["all","All Time"]].map(([p,l])=>(
-            <button key={p} onClick={()=>applyPreset(p)} style={{padding:"6px 14px",borderRadius:20,border:`1px solid ${datePreset===p?"#d4850a":"rgba(255,255,255,0.1)"}`,background:datePreset===p?"rgba(212,133,10,0.2)":"transparent",color:datePreset===p?"#f0c060":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:12,fontWeight:datePreset===p?600:400,transition:"all 0.15s"}}>
-              {l}
-            </button>
-          ))}
-        </div>
-        {/* Custom date pickers */}
-        <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:12,color:"rgba(255,255,255,0.35)"}}>From</span>
-            <input type="date" className="adm-input" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setDatePreset("custom");}} style={{width:"auto"}}/>
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:12,color:"rgba(255,255,255,0.35)"}}>To</span>
-            <input type="date" className="adm-input" value={dateTo} onChange={e=>{setDateTo(e.target.value);setDatePreset("custom");}} style={{width:"auto"}}/>
-          </div>
-          <div style={{flex:1,minWidth:160,position:"relative"}}>
-            <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:13,opacity:0.4}}>🔍</span>
-            <input className="adm-input" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search client, description…" style={{paddingLeft:34}}/>
-          </div>
-        </div>
-      </div>
-
-      {/* ── KPI Cards ── */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10,marginBottom:20}}>
-        {[
-          {label:"Income",    value:fmt(filteredIncome),  color:"#4ade80", sub:`${filtered.filter(t=>t.type==="income").length} entries`},
-          {label:"Expenses",  value:fmt(filteredExpense), color:"#ff6b6b", sub:`${filtered.filter(t=>t.type==="expense").length} entries`},
-          {label:"Net Profit",value:fmt(filteredProfit),  color:profitColor, sub: filteredProfit>=0?"Positive ✅":"Negative ⚠️"},
-          {label:"Pending",   value:fmt(pendingAmt),      color:"#f0c060", sub:`${filtered.filter(t=>t.paymentStatus==="pending").length} unpaid`},
-        ].map(s=>(
-          <div key={s.label} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 18px"}}>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>{s.label}</div>
-            <div style={{fontSize:22,fontWeight:800,color:s.color,fontFamily:"'Playfair Display'",marginBottom:4}}>{s.value}</div>
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>{s.sub}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* ── Charts Row ── */}
-      {allTx.length>0&&(
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}}>
-          {/* Monthly trend */}
-          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 20px"}}>
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:14}}>6-month trend</div>
-            <div style={{display:"flex",gap:6,alignItems:"flex-end",height:72}}>
-              {monthlyData.map((m,i)=>(
-                <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <div style={{width:"100%",display:"flex",gap:2,alignItems:"flex-end",height:60}}>
-                    <div title={`Income: ₹${m.inc.toLocaleString("en-IN")}`} style={{flex:1,background:"rgba(74,222,128,0.5)",borderRadius:"3px 3px 0 0",height:`${Math.max(2,(m.inc/maxBar)*100)}%`}}/>
-                    <div title={`Expense: ₹${m.exp.toLocaleString("en-IN")}`} style={{flex:1,background:"rgba(255,100,100,0.5)",borderRadius:"3px 3px 0 0",height:`${Math.max(2,(m.exp/maxBar)*100)}%`}}/>
-                  </div>
-                  <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",textTransform:"uppercase"}}>{m.label}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{display:"flex",gap:12,marginTop:8}}>
-              {[["rgba(74,222,128,0.7)","Income"],["rgba(255,100,100,0.7)","Expense"]].map(([c,l])=>(
-                <div key={l} style={{display:"flex",alignItems:"center",gap:5,fontSize:10,color:"rgba(255,255,255,0.35)"}}>
-                  <div style={{width:8,height:8,borderRadius:2,background:c}}/>{l}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Revenue breakdown donut */}
-          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 20px"}}>
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Income by category</div>
-            {donutSegments.length===0
-              ? <div style={{color:"rgba(255,255,255,0.2)",fontSize:12,paddingTop:20}}>No income in range</div>
-              : (
-                <div style={{display:"flex",gap:12,alignItems:"center"}}>
-                  <DonutChart segments={donutSegments} size={88}/>
-                  <div style={{flex:1,display:"grid",gap:6}}>
-                    {donutSegments.map((s,i)=>(
-                      <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                        <div style={{display:"flex",alignItems:"center",gap:6}}>
-                          <div style={{width:8,height:8,borderRadius:"50%",background:s.color,flexShrink:0}}/>
-                          <span style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{s.label.split(" ").slice(1).join(" ")}</span>
-                        </div>
-                        <span style={{fontSize:11,fontWeight:600,color:s.color}}>{fmt(s.value)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )
-            }
-          </div>
-        </div>
-      )}
-
-      {/* ── Add / Edit Form ── */}
-      {showForm&&(
-        <div style={{background:"rgba(212,133,10,0.04)",border:"1px solid rgba(212,133,10,0.35)",borderRadius:14,padding:"20px 24px",marginBottom:24}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-            <h3 style={{color:"#f0c060",fontSize:18}}>{editId?"✏️ Edit Transaction":form.type==="income"?"➕ New Income":"➖ New Expense"}</h3>
-            <button onClick={cancel} style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.3)",fontSize:20,cursor:"pointer"}}>✕</button>
-          </div>
-          {/* Type toggle */}
-          {!editId&&(
-            <div style={{display:"flex",gap:8,marginBottom:20}}>
-              {[["income","✅ Income","#4ade80"],["expense","❌ Expense","#ff6b6b"]].map(([t,l,c])=>(
-                <button key={t} onClick={()=>{set("type",t);set("category",t==="income"?"vehicle_rental":"maintenance");}}
-                  style={{padding:"8px 20px",borderRadius:8,border:`2px solid ${form.type===t?c:"rgba(255,255,255,0.1)"}`,background:form.type===t?`rgba(${t==="income"?"74,222,128":"255,100,100"},0.1)`:"transparent",color:form.type===t?c:"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:13,fontWeight:600}}>
-                  {l}
-                </button>
-              ))}
-            </div>
-          )}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
-            <div>
-              <label className="adm-label">Category</label>
-              <select className="adm-input" value={form.category} onChange={e=>set("category",e.target.value)}>
-                {categories.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
-            </div>
-            <div><label className="adm-label">Amount (₹) *</label><input className="adm-input" type="number" value={form.amount} onChange={e=>set("amount",e.target.value)} placeholder="5000"/></div>
-            <div><label className="adm-label">Date</label><input className="adm-input" type="date" value={form.date} onChange={e=>set("date",e.target.value)}/></div>
-            <div><label className="adm-label">Client name</label><input className="adm-input" value={form.clientName||""} onChange={e=>set("clientName",e.target.value)} placeholder="Priya Sharma"/></div>
-            {form.category==="agency_commission"&&(
-              <div><label className="adm-label">Agency name</label><input className="adm-input" value={form.agencyName||""} onChange={e=>set("agencyName",e.target.value)} placeholder="Make My Trip"/></div>
-            )}
-            <div>
-              <label className="adm-label">Payment method</label>
-              <select className="adm-input" value={form.paymentMethod} onChange={e=>set("paymentMethod",e.target.value)}>
-                {PAYMENT_METHODS.map(m=><option key={m} value={m}>{m.replace(/_/g," ")}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="adm-label">Payment status</label>
-              <select className="adm-input" value={form.paymentStatus} onChange={e=>set("paymentStatus",e.target.value)}>
-                <option value="paid">✅ Paid</option>
-                <option value="pending">⏳ Pending</option>
-                <option value="partial">🔶 Partial</option>
-              </select>
-            </div>
-            <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Description</label><input className="adm-input" value={form.description||""} onChange={e=>set("description",e.target.value)} placeholder="e.g. Honda Activa rental — 3 days"/></div>
-            <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Notes (internal)</label><textarea className="adm-input" value={form.notes||""} onChange={e=>set("notes",e.target.value)} rows={2}/></div>
-          </div>
-          <div style={{display:"flex",gap:10}}>
-            <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 28px",borderRadius:8,fontWeight:700,cursor:"pointer"}}>Save Transaction</button>
-            <button onClick={cancel} style={{background:"transparent",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.5)",padding:"10px 20px",borderRadius:8,cursor:"pointer"}}>Cancel</button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Ledger Filter Bar ── */}
-      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {[["all","All",allTx.length],["income","Income",allTx.filter(t=>t.type==="income").length],["expense","Expenses",allTx.filter(t=>t.type==="expense").length],["pending","Pending",allTx.filter(t=>t.paymentStatus==="pending").length]].map(([val,lbl,cnt])=>(
-            <button key={val} onClick={()=>setFilterCat(val)} style={{padding:"6px 14px",borderRadius:16,border:`1px solid ${filterCat===val?"#d4850a":"rgba(255,255,255,0.1)"}`,background:filterCat===val?"rgba(212,133,10,0.15)":"transparent",color:filterCat===val?"#f0c060":"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:12,fontWeight:filterCat===val?600:400}}>
-              {lbl} ({cnt})
-            </button>
-          ))}
-        </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <span style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>Showing {filtered.length} entries</span>
-          <button onClick={()=>setSortDir(d=>d==="desc"?"asc":"desc")} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.5)",padding:"5px 12px",borderRadius:7,cursor:"pointer",fontSize:11}}>
-            Date {sortDir==="desc"?"↓":"↑"}
-          </button>
-        </div>
-      </div>
-
-      {/* ── Transaction Ledger ── */}
-      <div style={{display:"grid",gap:8}}>
-        {filtered.length===0&&(
-          <div style={{textAlign:"center",padding:"60px 0",color:"rgba(255,255,255,0.2)"}}>
-            <div style={{fontSize:40,marginBottom:12}}>💳</div>
-            <div style={{fontSize:14}}>{allTx.length===0?"No transactions yet — add your first entry above":"No results for this date range / filter"}</div>
-          </div>
-        )}
-        {filtered.map(tx=>{
-          const isIncome = tx.type==="income";
-          const paidColor = tx.paymentStatus==="paid"?"#4ade80":tx.paymentStatus==="pending"?"#f0c060":"#fb923c";
-          return (
-            <div key={tx._id} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"14px 18px",display:"flex",gap:14,alignItems:"center",borderLeft:`3px solid ${isIncome?"#4ade80":"#ff6b6b"}`,borderRadius:"0 14px 14px 0",transition:"border-color 0.2s"}}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.06)"}
-              onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.04)"}>
-              <div style={{width:42,height:42,borderRadius:10,background:isIncome?"rgba(74,222,128,0.1)":"rgba(255,100,100,0.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
-                {isIncome?"📥":"📤"}
-              </div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginBottom:3}}>
-                  <span style={{fontWeight:600,fontSize:14}}>{tx.description||categoryLabel(tx.category)}</span>
-                  <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:0.5}}>{categoryLabel(tx.category)}</span>
-                  <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"transparent",border:`1px solid ${paidColor}33`,color:paidColor}}>{tx.paymentStatus}</span>
-                </div>
-                <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",display:"flex",gap:10,flexWrap:"wrap"}}>
-                  {tx.clientName&&<span>👤 {tx.clientName}</span>}
-                  {tx.agencyName&&<span>🤝 {tx.agencyName}</span>}
-                  {tx.paymentMethod&&<span>{tx.paymentMethod.replace(/_/g," ")}</span>}
-                  <span>{tx.date?new Date(tx.date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}):""}</span>
-                </div>
-              </div>
-              <div style={{textAlign:"right",flexShrink:0}}>
-                <div style={{fontSize:18,fontWeight:700,color:isIncome?"#4ade80":"#ff6b6b",fontFamily:"'Playfair Display'"}}>{isIncome?"+":"-"}{fmt(tx.amount)}</div>
-                <div style={{display:"flex",gap:6,marginTop:6,justifyContent:"flex-end"}}>
-                  <button onClick={()=>startEdit(tx)} style={{background:"rgba(212,133,10,0.12)",border:"1px solid rgba(212,133,10,0.25)",color:"#f0c060",padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:11}}>Edit</button>
-                  <button onClick={()=>del(tx._id)} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.15)",color:"#ff6b6b",padding:"4px 8px",borderRadius:6,cursor:"pointer"}}><Icon name="trash" size={12}/></button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ─── Booking Modal (public site) ─────────────────────────────────────────────
-function BookingModal({ vehicle, whatsapp, api, onClose }) {
-  const today = new Date().toISOString().slice(0,10);
-  const [form, setForm] = useState({ customerName:"", phone:"", checkIn:today, checkOut:"", stayAddress:"", notes:"" });
-  const [step, setStep] = useState("form"); // form | qr | success
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [waUrl, setWaUrl] = useState("");
-  const [bookingId, setBookingId] = useState("");
-  const set = (k,v) => setForm(f=>({...f,[k]:v}));
-
-  const days = form.checkIn && form.checkOut
-    ? Math.max(0, Math.round((new Date(form.checkOut) - new Date(form.checkIn)) / 864e5))
-    : 0;
-  const priceNum = vehicle.price ? Number(String(vehicle.price).replace(/[^0-9]/g,"")) : 0;
-  const total = priceNum * days;
-
-  const buildWaUrl = () => {
-    const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
-    const d = days || "?";
-
-    const msg = [
-      "🛵 *New Booking Request!*",
-      "",
-      `*Vehicle:* ${vehicle.name}`,
-      `*Customer:* ${form.customerName}`,
-      `*Phone:* ${form.phone}`,
-      `*Check-in:* ${fmt(form.checkIn)}`,
-      `*Check-out:* ${fmt(form.checkOut)}`,
-      `*Duration:* ${d} day${d!==1?"s":""}`,
-      `*Stay Address:* ${form.stayAddress||"—"}`,
-      form.notes ? `*Notes:* ${form.notes}` : null,
-    ].filter(Boolean).join("\n");
-    const num = (whatsapp||"").replace(/[^0-9]/g,"");
-    return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
-  };
-
-  const submit = async () => {
-    if (!form.customerName.trim()) { setError("Please enter your name."); return; }
-    if (!form.phone.trim() || form.phone.length < 7) { setError("Please enter a valid phone number."); return; }
-    if (!form.checkIn) { setError("Please select a check-in date."); return; }
-    if (!form.checkOut) { setError("Please select a check-out date."); return; }
-    if (new Date(form.checkOut) <= new Date(form.checkIn)) { setError("Check-out must be after check-in."); return; }
-    if (!form.stayAddress.trim()) { setError("Please enter your hotel or stay address."); return; }
-    setError("");
-    setLoading(true);
-    // Open WhatsApp BEFORE the await — browsers block window.open after async calls
-    const waWin = window.open(buildWaUrl(), "_blank");
-    try {
-      const result = await api.post("/bookings", { ...form, vehicleName: vehicle.name, vehicleId: vehicle._id, pricePerDay: vehicle.priceNum || 0 });
-      // Update the already-open window with the server URL if available
-      if (result?.whatsappUrl && waWin && !waWin.closed) {
-        waWin.location.href = result.whatsappUrl;
-      }
-      setBookingId(result?.booking?._id || "");
-      setStep("success"); // Show thank you message — payment request comes from admin
-
-
-
-    } catch (err) {
-      setError("Something went wrong. Please try again.");
-    }
-    setLoading(false);
-  };
-
-  return (
-    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
-      {/* Backdrop */}
-      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(4px)"}} onClick={onClose}/>
-      {/* Modal */}
-      <div style={{position:"relative",background:"#0d1b2e",border:"1px solid rgba(240,192,96,0.2)",borderRadius:20,width:"100%",maxWidth:480,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.6)"}}>
-        {/* Header */}
-        <div style={{padding:"22px 24px 16px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",gap:14,alignItems:"center"}}>
-          {vehicle.image && <img src={vehicle.image} alt="" style={{width:56,height:56,objectFit:"cover",borderRadius:10,flexShrink:0}}/>}
-          <div style={{flex:1}}>
-            <div style={{fontFamily:"'Playfair Display'",fontSize:20,fontWeight:700,color:"white"}}>{vehicle.name}</div>
-            <div style={{fontSize:13,color:"#f0c060",fontWeight:600,marginTop:2}}>
-              {vehicle.price && `₹${vehicle.price}`}<span style={{color:"rgba(255,255,255,0.3)",fontWeight:400}}>{vehicle.period||"/day"}</span>
-            </div>
-          </div>
-          <button onClick={onClose} style={{background:"rgba(255,255,255,0.06)",border:"none",color:"rgba(255,255,255,0.5)",width:32,height:32,borderRadius:"50%",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
-        </div>
-
-        {step==="success" ? (
-          <div style={{padding:"40px 24px",textAlign:"center"}}>
-            <div style={{fontSize:56,marginBottom:16}}>🎉</div>
-            <div style={{fontFamily:"'Playfair Display'",fontSize:24,color:"#f0c060",marginBottom:12}}>Thank You for Your Booking!</div>
-            <div style={{fontSize:14,color:"rgba(255,255,255,0.6)",lineHeight:1.8,marginBottom:12}}>
-              Your booking request for <strong style={{color:"white"}}>{vehicle.name}</strong> has been successfully received.
-            </div>
-            <div style={{background:"rgba(240,192,96,0.08)",border:"1px solid rgba(240,192,96,0.2)",borderRadius:12,padding:"16px 20px",marginBottom:20,textAlign:"left"}}>
-              <div style={{fontSize:13,color:"rgba(255,255,255,0.7)",lineHeight:1.9}}>
-                📋 <strong style={{color:"#f0c060"}}>What happens next?</strong><br/>
-                Our team will review your request and get back to you shortly on WhatsApp with confirmation and further details.<br/><br/>
-                📞 For any queries, feel free to contact us directly on <strong style={{color:"white"}}>{whatsapp||"our registered number"}</strong>.
-              </div>
-            </div>
-            <button onClick={onClose} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"13px 36px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14}}>Close</button>
-          </div>
-        ) : step==="qr" ? (() => {
-          const advance = total>0 ? Math.ceil(total * 0.5) : 0;
-          const upiId = "vinay.purbia-2@oksbi";
-          const upiName = "Travel Engineers";
-          // UPI deep link with amount pre-filled
-          const upiLink = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${advance}&cu=INR&tn=${encodeURIComponent(`Advance for ${vehicle.name} booking`)}`;
-          // QR code via Google Charts API
-          const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiLink)}&bgcolor=1a1a2e&color=f0c060&margin=10`;
-          return (
-            <div style={{padding:"28px 24px",textAlign:"center"}}>
-              <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:4}}>Step 2 — Pay Advance</div>
-              <div style={{fontFamily:"'Playfair Display'",fontSize:22,color:"white",marginBottom:4}}>Scan & Pay 50% Now</div>
-              <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginBottom:20}}>Remaining 50% paid at vehicle pickup</div>
-
-              {/* Price breakdown */}
-              <div style={{background:"rgba(212,133,10,0.08)",border:"1px solid rgba(212,133,10,0.2)",borderRadius:12,padding:"14px 18px",marginBottom:20,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,textAlign:"center"}}>
-                <div>
-                  <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:4}}>TOTAL</div>
-                  <div style={{fontSize:16,fontWeight:700,color:"white"}}>₹{total.toLocaleString("en-IN")}</div>
-                </div>
-                <div style={{borderLeft:"1px solid rgba(255,255,255,0.08)",borderRight:"1px solid rgba(255,255,255,0.08)"}}>
-                  <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:4}}>PAY NOW</div>
-                  <div style={{fontSize:16,fontWeight:700,color:"#f0c060"}}>₹{advance.toLocaleString("en-IN")}</div>
-                </div>
-                <div>
-                  <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:4}}>AT PICKUP</div>
-                  <div style={{fontSize:16,fontWeight:700,color:"#4ade80"}}>₹{(total-advance).toLocaleString("en-IN")}</div>
-                </div>
-              </div>
-
-              {/* QR Code */}
-              <div style={{display:"inline-block",background:"white",borderRadius:16,padding:12,marginBottom:16,boxShadow:"0 8px 32px rgba(0,0,0,0.4)"}}>
-                <img src={qrUrl} alt="UPI QR Code" width={200} height={200} style={{display:"block",borderRadius:8}}/>
-              </div>
-
-              <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginBottom:6}}>UPI ID: <span style={{color:"#f0c060",fontWeight:600}}>{upiId}</span></div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.25)",marginBottom:20}}>Works with GPay, PhonePe, Paytm & all UPI apps</div>
-
-              {/* UPI app button */}
-              <a href={upiLink} style={{display:"block",marginBottom:12}}>
-                <button style={{width:"100%",padding:"12px",background:"linear-gradient(135deg,#1a8f3c,#25d366)",color:"white",border:"none",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>
-                  📱 Open UPI App to Pay ₹{advance.toLocaleString("en-IN")}
-                </button>
-              </a>
-
-              <button onClick={()=>setStep("success")} style={{width:"100%",padding:"11px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.5)",borderRadius:10,fontWeight:600,fontSize:13,cursor:"pointer"}}>
-                I've paid — Continue ✓
-              </button>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.2)",marginTop:10}}>
-                Screenshot your payment as confirmation
-              </div>
-            </div>
-          );
-        })() : (
-          <div style={{padding:"20px 24px 24px"}}>
-            <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:16}}>Booking details</div>
-
-            <div style={{display:"grid",gap:14}}>
-              <div>
-                <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Your name *</label>
-                <input value={form.customerName} onChange={e=>set("customerName",e.target.value)} placeholder="Priya Sharma"
-                  style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none"}}/>
-              </div>
-              <div>
-                <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Phone number (WhatsApp) *</label>
-                <input value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="+965 XXXX XXXX or +91 XXXXX XXXXX" type="tel"
-                  style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none"}}/>
-                <div style={{fontSize:11,color:"rgba(255,255,255,0.25)",marginTop:4}}>Always include your country code e.g. +965 for Kuwait, +91 for India</div>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                <div>
-                  <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Check-in *</label>
-                  <input type="date" value={form.checkIn} min={today} onChange={e=>set("checkIn",e.target.value)}
-                    style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",colorScheme:"dark"}}/>
-                </div>
-                <div>
-                  <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Check-out *</label>
-                  <input type="date" value={form.checkOut} min={form.checkIn||today} onChange={e=>set("checkOut",e.target.value)}
-                    style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",colorScheme:"dark"}}/>
-                </div>
-              </div>
-              <div>
-                <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Hotel / Stay address *</label>
-                <input value={form.stayAddress} onChange={e=>set("stayAddress",e.target.value)} placeholder="Hotel name, area, Udaipur"
-                  style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none"}}/>
-              </div>
-              <div>
-                <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Notes (optional)</label>
-                <textarea value={form.notes} onChange={e=>set("notes",e.target.value)} placeholder="Any special requests…" rows={2}
-                  style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",resize:"vertical"}}/>
-              </div>
-            </div>
-
-            {/* Price summary */}
-            {days>0&&priceNum>0&&(
-              <div style={{margin:"16px 0",background:"rgba(212,133,10,0.08)",border:"1px solid rgba(212,133,10,0.2)",borderRadius:10,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:13,color:"rgba(255,255,255,0.5)"}}>₹{priceNum.toLocaleString("en-IN")} × {days} day{days!==1?"s":""}</span>
-                <span style={{fontSize:18,fontWeight:700,color:"#f0c060",fontFamily:"'Playfair Display'"}}>₹{total.toLocaleString("en-IN")}</span>
-              </div>
-            )}
-
-            {error&&<div style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.25)",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#ff6b6b",marginBottom:12}}>{error}</div>}
-
-            <button onClick={submit} disabled={loading}
-              style={{width:"100%",padding:"13px",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",borderRadius:10,fontWeight:700,fontSize:15,cursor:loading?"not-allowed":"pointer",opacity:loading?0.7:1,marginTop:4,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-              {loading ? "Sending…" : "📲 Confirm Booking → WhatsApp"}
-            </button>
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.25)",textAlign:"center",marginTop:8}}>
-              Owner will confirm via WhatsApp within a few hours
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Bookings Editor (admin tab) ─────────────────────────────────────────────
-const STATUS_CONFIG = {
-  pending:           { color:"#f0c060", bg:"rgba(240,192,96,0.12)",  border:"rgba(240,192,96,0.3)",  label:"⏳ Pending",            dot:"#f0c060" },
-  payment_requested: { color:"#fb923c", bg:"rgba(251,146,60,0.12)",  border:"rgba(251,146,60,0.3)",  label:"💳 Payment Requested",  dot:"#fb923c" },
-  confirmed:         { color:"#4ade80", bg:"rgba(74,222,128,0.12)",  border:"rgba(74,222,128,0.3)",  label:"✅ Confirmed",           dot:"#4ade80" },
-  completed:         { color:"#60a5fa", bg:"rgba(96,165,250,0.12)",  border:"rgba(96,165,250,0.3)",  label:"🏁 Completed",          dot:"#60a5fa" },
-  cancelled:         { color:"#ff6b6b", bg:"rgba(255,107,107,0.12)", border:"rgba(255,107,107,0.3)", label:"❌ Cancelled",           dot:"#ff6b6b" },
-};
-
-function BookingsEditor({ data, api, reload, rentals=[] }) {
-  const bookings = data.bookings || [];
-  // Look up pricePerDay from the rentals list using vehicleId
-  const getPricePerDay = (b) => {
-    if (b.pricePerDay > 0) return b.pricePerDay;
-    const rental = rentals.find(r => r._id === b.vehicleId);
-    return rental ? (Number(rental.price) || 0) : 0;
-  };
-  const [filter, setFilter]   = useState("all");
-  const [search, setSearch]   = useState("");
-  const [sortDir, setSortDir] = useState("desc");
-  const [expanded, setExpanded] = useState(null);
-  const [paymentModal, setPaymentModal] = useState(null);
-  const [recordPaymentModal, setRecordPaymentModal] = useState(null); // { booking, suggestedAmount }
-
-  // Auto-refresh every 20 seconds so new bookings appear without page reload
-  useEffect(() => {
-    const interval = setInterval(() => reload(), 20000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
-  const days = (b) => (b.checkIn&&b.checkOut) ? Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)) : null;
-
-  // Strip everything except digits — customer must type their full number with country code
-  const formatPhoneForWA = (raw) => (raw || "").replace(/[^0-9]/g, "");
-
-  // Counts
-  const counts = { all:bookings.length, pending:0, payment_requested:0, confirmed:0, completed:0, cancelled:0 };
-  bookings.forEach(b=>{ if(counts[b.status]!==undefined) counts[b.status]++; });
-
-  // Filter + search + sort
-  let filtered = bookings;
-  if (filter!=="all") filtered = filtered.filter(b=>b.status===filter);
-  if (search.trim()) {
-    const q = search.toLowerCase();
-    filtered = filtered.filter(b=>(b.customerName||"").toLowerCase().includes(q)||(b.phone||"").toLowerCase().includes(q)||(b.vehicleName||"").toLowerCase().includes(q)||(b.stayAddress||"").toLowerCase().includes(q));
-  }
-  filtered = [...filtered].sort((a,b)=>{
-    const da=a.createdAt||"", db=b.createdAt||"";
-    return sortDir==="desc"?new Date(db)-new Date(da):new Date(da)-new Date(db);
-  });
-
-  // Sync inventory status when booking status changes
-  const syncInventory = async (booking, newStatus) => {
-    if (!booking.vehicleId) return;
-    try {
-      // Find the inventory item linked to this rental
-      const invItems = data.inventory?.items || data.inventory || [];
-      const invItem = invItems.find(i => i.linkedRentalId === booking.vehicleId || String(i.linkedRentalId) === String(booking.vehicleId));
-      if (!invItem) return;
-      if (newStatus === "confirmed") {
-        // Mark inventory as booked, add booking dates
-        await api.put(`/inventory/${invItem._id}`, {
-          ...invItem,
-          status: "booked",
-          bookedDates: [...(invItem.bookedDates||[]), {
-            from: booking.checkIn,
-            to: booking.checkOut,
-            clientName: booking.customerName,
-            bookingRef: String(booking._id),
-          }],
-        });
-      } else if (newStatus === "completed" || newStatus === "cancelled") {
-        // Mark inventory as available again, remove this booking's dates
-        const remaining = (invItem.bookedDates||[]).filter(d => d.bookingRef !== String(booking._id));
-        await api.put(`/inventory/${invItem._id}`, { ...invItem, status: "available", bookedDates: remaining });
-      }
-    } catch(e) { console.error("Inventory sync failed:", e); }
-  };
-
-  const updateStatus = async (id, status, booking=null) => {
-    // For payment_requested: show modal BEFORE saving, so amount is set first
-    if (status === "payment_requested" && booking) {
-      const d = (booking.checkIn && booking.checkOut)
-        ? Math.max(1, Math.round((new Date(booking.checkOut) - new Date(booking.checkIn)) / 864e5))
-        : 1;
-      const pricePerDay = getPricePerDay(booking);
-      const total = pricePerDay * d;
-      // Pre-fill with 50% of total if price known, otherwise use previously saved tokenAmount
-      const suggested = total > 0 ? Math.round(total * 0.5) : (booking.tokenAmount > 0 ? booking.tokenAmount : "");
-      setPaymentModal({ booking, suggestedAmount: suggested, total, days: d });
-      return; // Don't save status yet — modal will handle it
-    }
-    await api.put(`/bookings?id=${id}`, { status });
-    if (booking) await syncInventory(booking, status);
-    await reload();
-  };
-
-  const del = async (id) => {
-    if (!window.confirm("Delete this booking?")) return;
-    await api.delete(`/bookings?id=${id}`);
-    await reload();
-  };
-
-  // Builds UPI payment link for exact 50% advance amount
-  const buildUpiLink = (b) => {
-    const priceMatch = getPricePerDay(b) || b.amount || 0;
-    const d = (b.checkIn && b.checkOut) ? Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5)) : 1;
-    const total = priceMatch * d;
-    const advance = Math.round(total * 0.5);
-    if (advance <= 0) return null;
-    // UPI deep link — works with all UPI apps
-    const upiUrl = `upi://pay?pa=vinay.purbia-2@oksbi&pn=Travel+Engineers&am=${advance}&cu=INR&tn=Advance+for+${encodeURIComponent(b.vehicleName||"booking")}`;
-    return { upiUrl, advance, total, remaining: total - advance, days: d };
-  };
-
-  const openPaymentWhatsApp = (b, tokenAmount) => {
-    const fmt2 = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
-    const d = (b.checkIn && b.checkOut) ? Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)) : 1;
-    const advance = Number(tokenAmount) || 0;
-    const upiUrl = advance > 0
-      ? `upi://pay?pa=vinay.purbia-2@oksbi&pn=Travel+Engineers&am=${advance}&cu=INR&tn=Advance+for+${encodeURIComponent(b.vehicleName||"booking")}`
-      : null;
-    const payPageUrl = advance > 0
-      ? `${window.location.origin}/pay?amount=${advance}&upi=vinay.purbia-2%40oksbi&name=${encodeURIComponent(b.vehicleName||"booking")}&customer=${encodeURIComponent(b.customerName)}`
-      : null;
-    const msg = [
-      `✅ *Booking Confirmed — Travel Engineers*`,
-      ``,
-      `Hi ${b.customerName}! Your booking is confirmed 🎉`,
-      ``,
-      `🛵 *Vehicle:* ${b.vehicleName||"—"}`,
-      `📅 *Dates:* ${fmt2(b.checkIn)} → ${fmt2(b.checkOut)} (${d} day${d!==1?"s":""})`,
-      `📍 *Delivery to:* ${b.stayAddress||"—"}`,
-      ``,
-      `💰 *Payment Request:*`,
-      advance > 0 ? `*Token amount to pay now: ₹${advance}*` : null,
-      `Remaining balance to be paid at pickup`,
-      ``,
-      payPageUrl ? `👇 *Tap to open payment QR code:*` : null,
-      payPageUrl ? payPageUrl : null,
-      ``,
-      `Or pay directly via UPI ID: *vinay.purbia-2@oksbi*`,
-      advance > 0 ? `Amount: ₹${advance}` : null,
-      ``,
-      `Thank you! See you soon 🙏`,
-      `— Travel Engineers`,
-    ].filter(Boolean).join("\n");
-    const num = formatPhoneForWA(b.phone);
-    window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,"_blank");
-  };
-
-  const openWhatsApp = (b) => {
-    // Simple message to customer (not payment request — just chat)
-    const fmt2 = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
-    const msg = [`Hi ${b.customerName}! This is Travel Engineers regarding your booking for *${b.vehicleName||"vehicle"}* (${fmt2(b.checkIn)} → ${fmt2(b.checkOut)}). How can I help you?`].join("");
-    const num = formatPhoneForWA(b.phone);
-    window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,"_blank");
-  };
-
-  return (
-    <div>
-      {/* Header */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
-        <div>
-          <h2 style={{fontFamily:"'Playfair Display'",fontSize:30,marginBottom:4}}>Bookings</h2>
-          <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>{bookings.length} total · {counts.pending} pending action</p>
-        </div>
-      </div>
-
-      {/* KPI Cards */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10,marginBottom:20}}>
-        {[
-          {label:"Total",      value:counts.all,               color:"#f0c060"},
-          {label:"Pending",    value:counts.pending,           color:"#f0c060"},
-          {label:"💳 Payment", value:counts.payment_requested, color:"#fb923c"},
-          {label:"Confirmed",  value:counts.confirmed,         color:"#4ade80"},
-          {label:"Completed",  value:counts.completed,         color:"#60a5fa"},
-          {label:"Cancelled",  value:counts.cancelled,         color:"#ff6b6b"},
-        ].map(s=>(
-          <div key={s.label} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 16px"}}>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>{s.label}</div>
-            <div style={{fontSize:28,fontWeight:800,color:s.color,fontFamily:"'Playfair Display'"}}>{s.value}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Search + Filter */}
-      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 18px",marginBottom:16,display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-        <div style={{flex:1,minWidth:180,position:"relative"}}>
-          <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",opacity:0.4}}>🔍</span>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name, phone, vehicle…"
-            style={{width:"100%",paddingLeft:34,padding:"9px 14px 9px 34px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:13,outline:"none"}}/>
-        </div>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {["all","pending","payment_requested","confirmed","completed","cancelled"].map(s=>(
-            <button key={s} onClick={()=>setFilter(s)} style={{padding:"7px 14px",borderRadius:16,border:`1px solid ${filter===s?"#d4850a":"rgba(255,255,255,0.1)"}`,background:filter===s?"rgba(212,133,10,0.15)":"transparent",color:filter===s?"#f0c060":"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:12,fontWeight:filter===s?600:400}}>
-              {s==="payment_requested"?"💳 Payment Req":s.charAt(0).toUpperCase()+s.slice(1)} ({counts[s]??counts.all})
-            </button>
-          ))}
-        </div>
-        <button onClick={()=>setSortDir(d=>d==="desc"?"asc":"desc")} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.5)",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:12}}>
-          Date {sortDir==="desc"?"↓":"↑"}
-        </button>
-      </div>
-
-      {/* Bookings List */}
-      <div style={{display:"grid",gap:10}}>
-        {filtered.length===0&&(
-          <div style={{textAlign:"center",padding:"60px 0",color:"rgba(255,255,255,0.2)"}}>
-            <div style={{fontSize:40,marginBottom:12}}>📋</div>
-            <div style={{fontSize:14}}>{bookings.length===0?"No bookings yet — they'll appear here when customers book":"No results for this filter"}</div>
-          </div>
-        )}
-        {filtered.map(b=>{
-          const sc = STATUS_CONFIG[b.status]||STATUS_CONFIG.pending;
-          const d  = days(b);
-          const isExpanded = expanded===b._id;
-          return (
-            <div key={b._id} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,overflow:"hidden",transition:"border-color 0.2s",borderLeft:`3px solid ${sc.dot}`}}
-              onMouseEnter={e=>e.currentTarget.style.borderColor=sc.border}
-              onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.07)"}>
-              {/* Main row */}
-              <div style={{padding:"14px 18px",display:"flex",gap:14,alignItems:"center",cursor:"pointer"}} onClick={()=>setExpanded(isExpanded?null:b._id)}>
-                <div style={{width:44,height:44,borderRadius:10,background:sc.bg,border:`1px solid ${sc.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
-                  {b.status==="pending"?"⏳":b.status==="confirmed"?"✅":b.status==="completed"?"🏁":"❌"}
-                </div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:3}}>
-                    <span style={{fontWeight:700,fontSize:15}}>{b.customerName}</span>
-                    <span style={{fontSize:11,padding:"2px 9px",borderRadius:10,background:sc.bg,border:`1px solid ${sc.border}`,color:sc.color}}>{sc.label}</span>
-                    {b.vehicleName&&<span style={{fontSize:11,background:"rgba(255,255,255,0.06)",padding:"2px 8px",borderRadius:10,color:"rgba(255,255,255,0.4)"}}>🛵 {b.vehicleName}</span>}
-                  </div>
-                  <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",display:"flex",gap:12,flexWrap:"wrap"}}>
-                    <span>📞 {b.phone}</span>
-                    {b.checkIn&&<span>📅 {fmt(b.checkIn)} → {fmt(b.checkOut)}{d?` (${d}d)`:""}</span>}
-                    {b.stayAddress&&<span style={{maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📍 {b.stayAddress}</span>}
-                    <span style={{color:"rgba(255,255,255,0.2)"}}>{b.createdAt?new Date(b.createdAt).toLocaleDateString("en-IN",{day:"numeric",month:"short"}):"—"}</span>
-                  </div>
-                </div>
-                <div style={{display:"flex",gap:6,flexShrink:0,alignItems:"center"}}>
-                  <button onClick={e=>{e.stopPropagation();openWhatsApp(b);}} title="Message customer on WhatsApp"
-                    style={{background:"rgba(37,211,102,0.12)",border:"1px solid rgba(37,211,102,0.3)",color:"#25d366",padding:"6px 10px",borderRadius:7,cursor:"pointer",fontSize:13}}>💬</button>
-                  {b.status==="payment_requested"&&(
-                    <button
-                      onClick={e=>{
-                        e.stopPropagation();
-                        const d = (b.checkIn && b.checkOut) ? Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5)) : 1;
-                        const pricePerDay = getPricePerDay(b);
-                        const total = pricePerDay * d;
-                        // Pre-fill with previously saved tokenAmount, or 50% of total, or blank
-                        const suggested = b.tokenAmount > 0 ? b.tokenAmount : (total > 0 ? Math.round(total * 0.5) : "");
-                        setPaymentModal({ booking: b, suggestedAmount: suggested, total, days: d });
-                      }}
-                      title="Resend payment request to customer"
-                      style={{background:"rgba(251,146,60,0.12)",border:"1px solid rgba(251,146,60,0.4)",color:"#fb923c",padding:"6px 11px",borderRadius:7,cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
-                      🔁 Resend
-                    </button>
-                  )}
-                  <select value={b.status} onChange={e=>{e.stopPropagation();updateStatus(b._id,e.target.value,b);}}
-                    onClick={e=>e.stopPropagation()}
-                    style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${sc.border}`,background:sc.bg,color:sc.color,fontSize:11,cursor:"pointer",fontWeight:600}}>
-                    <option value="pending">⏳ Pending</option>
-                    <option value="payment_requested">💳 Request Payment</option>
-                    <option value="confirmed">✅ Confirmed</option>
-                    <option value="completed">🏁 Completed</option>
-                    <option value="cancelled">❌ Cancelled</option>
-                  </select>
-                  <button onClick={e=>{e.stopPropagation();del(b._id);}} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.15)",color:"#ff6b6b",padding:"6px 10px",borderRadius:7,cursor:"pointer"}}>🗑</button>
-                  <span style={{fontSize:12,color:"rgba(255,255,255,0.2)",userSelect:"none"}}>{isExpanded?"▲":"▼"}</span>
-                </div>
-              </div>
-              {/* Expanded details */}
-              {isExpanded&&(
-                <div style={{borderTop:"1px solid rgba(255,255,255,0.06)",padding:"14px 18px",background:"rgba(0,0,0,0.15)",display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                  {[
-                    ["Customer", b.customerName],
-                    ["Phone", b.phone],
-                    ["Vehicle", b.vehicleName||"—"],
-                    ["Check-in", fmt(b.checkIn)],
-                    ["Check-out", fmt(b.checkOut)],
-                    ["Duration", d?`${d} day${d!==1?"s":""}` :"—"],
-                    ["Stay Address", b.stayAddress||"—"],
-                    ["Booked on", b.createdAt?new Date(b.createdAt).toLocaleString("en-IN"):"—"],
-                  ].map(([l,v])=>(
-                    <div key={l}>
-                      <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:3}}>{l}</div>
-                      <div style={{fontSize:13,color:"rgba(255,255,255,0.8)"}}>{v}</div>
-                    </div>
-                  ))}
-                  {b.notes&&(
-                    <div style={{gridColumn:"1/-1"}}>
-                      <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:3}}>Notes</div>
-                      <div style={{fontSize:13,color:"rgba(255,255,255,0.8)"}}>{b.notes}</div>
-                    </div>
-                  )}
-                  {/* Payment summary */}
-                  {(b.payOnArrival || b.tokenAmount > 0 || b.receivedAmount > 0) && (
-                    <div style={{gridColumn:"1/-1",background:"rgba(240,192,96,0.06)",border:"1px solid rgba(240,192,96,0.15)",borderRadius:10,padding:"12px 16px"}}>
-                      <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>Payment Summary</div>
-                      {b.payOnArrival ? (
-                        <div style={{display:"flex",alignItems:"center",gap:10}}>
-                          <span style={{fontSize:13,padding:"4px 12px",borderRadius:20,background:"rgba(99,102,241,0.15)",border:"1px solid rgba(99,102,241,0.35)",color:"#a5b4fc",fontWeight:600}}>🤝 Pay on Arrival</span>
-                          <span style={{fontSize:12,color:"rgba(255,255,255,0.35)"}}>Full amount due at pickup / delivery</span>
-                        </div>
-                      ) : (()=>{
-                        const bDays = (b.checkIn&&b.checkOut)?Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)):1;
-                        const bPPD = getPricePerDay(b);
-                        const bTotal = bPPD>0 ? bPPD*bDays : (b.tokenAmount>0 ? b.tokenAmount*2 : 0);
-                        const received = b.receivedAmount||0;
-                        const remaining = bTotal>0 ? Math.max(0, bTotal - received) : Math.max(0, (b.tokenAmount*2||0) - received);
-                        return (
-                        <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-                          {bTotal>0&&<div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Order Total</div><div style={{fontSize:16,fontWeight:700,color:"#60a5fa"}}>₹{bTotal.toLocaleString("en-IN")}</div></div>}
-                          {b.tokenAmount>0&&<div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Requested</div><div style={{fontSize:16,fontWeight:700,color:"#fb923c"}}>₹{b.tokenAmount.toLocaleString("en-IN")}</div></div>}
-                          {b.receivedAmount>0&&<div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Received</div><div style={{fontSize:16,fontWeight:700,color:"#4ade80"}}>₹{b.receivedAmount.toLocaleString("en-IN")}</div></div>}
-                          <div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Remaining</div><div style={{fontSize:16,fontWeight:700,color:remaining>0?"#f0c060":"#4ade80"}}>₹{remaining.toLocaleString("en-IN")}</div></div>
-                        </div>
-                        );
-                      })()}
-                    </div>
-                  )}
-                  {/* Record Payment button */}
-                  <div style={{gridColumn:"1/-1"}}>
-                    <button onClick={()=>setRecordPaymentModal(b)} style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
-                      💰 Record Received Payment
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* ── Payment Token Modal ── */}
-      {paymentModal&&(
-        <PaymentTokenModal
-          booking={paymentModal.booking}
-          suggestedAmount={paymentModal.suggestedAmount}
-          total={paymentModal.total}
-          days={paymentModal.days}
-          onSend={async (amount)=>{
-            // Save status + token amount to DB
-            await api.put(`/bookings?id=${paymentModal.booking._id}`, { status:"payment_requested", tokenAmount: Number(amount) });
-            await reload();
-            openPaymentWhatsApp(paymentModal.booking, amount);
-            setPaymentModal(null);
-          }}
-          onApproveArrival={async ()=>{
-            // Approve pay-on-arrival — confirm booking and send WhatsApp
-            await api.put(`/bookings?id=${paymentModal.booking._id}`, { status:"confirmed", payOnArrival: true, tokenAmount: 0, receivedAmount: 0 });
-            await syncInventory(paymentModal.booking, "confirmed");
-            await reload();
-            const b = paymentModal.booking;
-            const fmt2 = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
-            const msg = [
-              `✅ *Booking Confirmed — Travel Engineers*`,
-              ``,
-              `Hi ${b.customerName}! Your booking is confirmed 🎉`,
-              ``,
-              `🛵 *Vehicle:* ${b.vehicleName||"—"}`,
-              `📅 *Dates:* ${fmt2(b.checkIn)} → ${fmt2(b.checkOut)}`,
-              `📍 *Delivery to:* ${b.stayAddress||"—"}`,
-              ``,
-              `💰 *Payment:* Full amount to be paid at the time of vehicle pickup/delivery.`,
-              ``,
-              `Thank you! See you soon 🙏`,
-              `— Travel Engineers`,
-            ].filter(Boolean).join("\n");
-            const num = (b.phone||"").replace(/[^0-9]/g,"");
-            window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,"_blank");
-            setPaymentModal(null);
-          }}
-          onClose={()=>setPaymentModal(null)}
-        />
-      )}
-
-      {/* ── Record Payment Modal ── */}
-      {recordPaymentModal&&(
-        <RecordPaymentModal
-          booking={recordPaymentModal}
-          totalAmount={getPricePerDay(recordPaymentModal) * ((recordPaymentModal.checkIn && recordPaymentModal.checkOut) ? Math.max(1, Math.round((new Date(recordPaymentModal.checkOut) - new Date(recordPaymentModal.checkIn)) / 864e5)) : 1)}
-          onSave={async(received, totalAmt)=>{
-            // 1. Update booking receivedAmount
-            const bid = String(recordPaymentModal._id||"");
-            const days_ = (recordPaymentModal.checkIn&&recordPaymentModal.checkOut)?Math.max(1,Math.round((new Date(recordPaymentModal.checkOut)-new Date(recordPaymentModal.checkIn))/864e5)):1;
-            const orderTotal = totalAmt || (getPricePerDay(recordPaymentModal)*days_) || (recordPaymentModal.tokenAmount*2) || 0;
-            const alreadyReceived = recordPaymentModal.receivedAmount||0;
-            const newReceived = alreadyReceived + Number(received);
-            const newStatus = newReceived >= orderTotal && orderTotal>0 ? "completed" : "confirmed";
-            await api.put(`/bookings?id=${bid}`, { receivedAmount: newReceived, status: newStatus });
-            if (newStatus === "confirmed"||newStatus==="completed") await syncInventory(recordPaymentModal, newStatus);
-            // 2. Auto-create accounting transaction for this payment
-            const balanceRemaining = Math.max(0, orderTotal - newReceived);
-            try {
-              // Record the received payment
-              await api.post("/accounting", {
-                type: "income",
-                category: "vehicle_rental",
-                amount: Number(received),
-                description: `${alreadyReceived>0?"Balance payment":"Advance payment"} — ${recordPaymentModal.vehicleName||"vehicle"} booking for ${recordPaymentModal.customerName}`,
-                clientName: recordPaymentModal.customerName,
-                linkedBookingId: bid,
-                paymentStatus: balanceRemaining > 0 ? "partial" : "paid",
-                paymentMethod: "upi",
-                date: new Date().toISOString(),
-                notes: `Order total: ₹${orderTotal} | Paid so far: ₹${newReceived} | Remaining: ₹${balanceRemaining}`,
-              });
-              // If balance still due, create a pending entry so accounting shows the outstanding amount
-              if (balanceRemaining > 0) {
-                await api.post("/accounting", {
-                  type: "income",
-                  category: "vehicle_rental",
-                  amount: balanceRemaining,
-                  description: `Balance due at pickup — ${recordPaymentModal.vehicleName||"vehicle"} booking for ${recordPaymentModal.customerName}`,
-                  clientName: recordPaymentModal.customerName,
-                  linkedBookingId: bid,
-                  paymentStatus: "pending",
-                  paymentMethod: "upi",
-                  date: new Date().toISOString(),
-                  notes: `Order total: ₹${orderTotal} | Already received: ₹${newReceived} | Balance pending: ₹${balanceRemaining}`,
-                });
-              }
-            } catch(e) { console.error("Accounting sync failed:", e); }
-            await reload();
-            setRecordPaymentModal(null);
-          }}
-          onClose={()=>setRecordPaymentModal(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-// ─── Payment Token Modal ──────────────────────────────────────────────────────
-function PaymentTokenModal({ booking, suggestedAmount, total, days, onSend, onApproveArrival, onClose }) {
-  const [amount, setAmount] = useState(suggestedAmount > 0 ? String(suggestedAmount) : "");
-  const [error, setError] = useState("");
-
-  const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
-
-  const handleSend = () => {
-    const num = Number(amount);
-    if (!amount || isNaN(num) || num <= 0) { setError("Please enter a valid amount."); return; }
-    onSend(num);
-  };
-
-  const presets = total > 0
-    ? [
-        { label:"25%", value: Math.round(total*0.25) },
-        { label:"50%", value: Math.round(total*0.50) },
-        { label:"75%", value: Math.round(total*0.75) },
-        { label:"Full", value: total },
-      ]
-    : [];
-
-  return (
-    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)"}} onClick={onClose}/>
-      <div style={{position:"relative",background:"#0d1b2e",border:"1px solid rgba(212,133,10,0.35)",borderRadius:20,width:"100%",maxWidth:420,boxShadow:"0 24px 80px rgba(0,0,0,0.6)",overflow:"hidden"}}>
-        {/* Header */}
-        <div style={{padding:"20px 24px 16px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div>
-            <div style={{fontFamily:"'Playfair Display'",fontSize:20,fontWeight:700,color:"#f0c060"}}>💰 Payment Request</div>
-            <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginTop:3}}>Set token amount to send to customer</div>
-          </div>
-          <button onClick={onClose} style={{background:"rgba(255,255,255,0.06)",border:"none",color:"rgba(255,255,255,0.4)",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15}}>✕</button>
-        </div>
-
-        <div style={{padding:"20px 24px 24px"}}>
-          {/* Booking summary */}
-          <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 16px",marginBottom:20}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-              <span style={{fontSize:13,color:"rgba(255,255,255,0.5)"}}>Customer</span>
-              <span style={{fontSize:13,fontWeight:600}}>{booking.customerName}</span>
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-              <span style={{fontSize:13,color:"rgba(255,255,255,0.5)"}}>Vehicle</span>
-              <span style={{fontSize:13,fontWeight:600}}>{booking.vehicleName||"—"}</span>
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-              <span style={{fontSize:13,color:"rgba(255,255,255,0.5)"}}>Dates</span>
-              <span style={{fontSize:13}}>{fmt(booking.checkIn)} → {fmt(booking.checkOut)} ({days}d)</span>
-            </div>
-            {total>0&&(
-              <div style={{display:"flex",justifyContent:"space-between",paddingTop:8,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
-                <span style={{fontSize:13,color:"rgba(255,255,255,0.5)"}}>Total amount</span>
-                <span style={{fontSize:15,fontWeight:700,color:"#f0c060"}}>₹{total.toLocaleString("en-IN")}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Amount input */}
-          <div style={{marginBottom:16}}>
-            <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:8}}>
-              Token amount to request (₹)
-            </label>
-            <div style={{position:"relative"}}>
-              <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:16,color:"#f0c060",fontWeight:700}}>₹</span>
-              <input
-                type="number"
-                value={amount}
-                onChange={e=>{ setAmount(e.target.value); setError(""); }}
-                autoFocus
-                placeholder={total > 0 ? `e.g. ₹${Math.round(total*0.5)} (50%)` : "Enter amount"}
-                style={{width:"100%",padding:"12px 14px 12px 32px",background:"rgba(255,255,255,0.07)",border:`1.5px solid ${error?"#ff6b6b":"rgba(255,255,255,0.12)"}`,borderRadius:10,color:"white",fontFamily:"'DM Sans'",fontSize:18,fontWeight:700,outline:"none"}}
-              />
-            </div>
-            {error&&<div style={{fontSize:12,color:"#ff6b6b",marginTop:6}}>{error}</div>}
-          </div>
-
-          {/* Quick presets */}
-          {presets.length>0&&(
-            <div style={{marginBottom:20}}>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>Quick select</div>
-              <div style={{display:"flex",gap:8}}>
-                {presets.map(p=>(
-                  <button key={p.label} onClick={()=>{ setAmount(String(p.value)); setError(""); }}
-                    style={{flex:1,padding:"8px 4px",borderRadius:8,border:`1px solid ${amount===String(p.value)?"#d4850a":"rgba(255,255,255,0.1)"}`,background:amount===String(p.value)?"rgba(212,133,10,0.2)":"rgba(255,255,255,0.04)",color:amount===String(p.value)?"#f0c060":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:12,fontWeight:600,textAlign:"center"}}>
-                    <div>{p.label}</div>
-                    <div style={{fontSize:11,marginTop:2}}>₹{p.value.toLocaleString("en-IN")}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Remaining info */}
-          {amount&&!isNaN(Number(amount))&&Number(amount)>0&&total>0&&(
-            <div style={{background:"rgba(74,222,128,0.06)",border:"1px solid rgba(74,222,128,0.15)",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:12,color:"rgba(255,255,255,0.5)",display:"flex",justifyContent:"space-between"}}>
-              <span>Remaining at pickup</span>
-              <span style={{color:"#4ade80",fontWeight:600}}>₹{Math.max(0,total-Number(amount)).toLocaleString("en-IN")}</span>
-            </div>
-          )}
-
-          {/* Send button */}
-          <button onClick={handleSend}
-            style={{width:"100%",padding:"13px",background:"linear-gradient(135deg,#25d366,#128c7e)",color:"white",border:"none",borderRadius:10,fontWeight:700,fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-            💬 Send Payment Request on WhatsApp
-          </button>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.2)",textAlign:"center",marginTop:8}}>
-            WhatsApp will open — just tap Send to deliver to customer
-          </div>
-
-          {/* Divider */}
-          <div style={{display:"flex",alignItems:"center",gap:10,margin:"16px 0"}}>
-            <div style={{flex:1,height:1,background:"rgba(255,255,255,0.07)"}}/>
-            <span style={{fontSize:11,color:"rgba(255,255,255,0.25)",letterSpacing:1}}>OR</span>
-            <div style={{flex:1,height:1,background:"rgba(255,255,255,0.07)"}}/>
-          </div>
-
-          {/* Pay on Arrival */}
-          <button onClick={onApproveArrival}
-            style={{width:"100%",padding:"13px",background:"rgba(99,102,241,0.12)",border:"1px solid rgba(99,102,241,0.35)",color:"#a5b4fc",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-            🤝 Approve Pay on Arrival
-          </button>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.2)",textAlign:"center",marginTop:6}}>
-            Confirms booking — customer pays full amount at pickup/delivery
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Record Payment Modal ────────────────────────────────────────────────────
-function RecordPaymentModal({ booking, totalAmount=0, onSave, onClose }) {
-  const [received, setReceived] = useState(String(booking.receivedAmount || booking.tokenAmount || ""));
-  const [error, setError] = useState("");
-  const requested = booking.tokenAmount || 0;
-  // Remaining = total order value minus what's already been received
-  const alreadyReceived = booking.receivedAmount || 0;
-  const orderTotal = totalAmount > 0 ? totalAmount : requested;
-  const remaining = Math.max(0, orderTotal - alreadyReceived - (Number(received) || 0) + alreadyReceived);
-
-  const handleSave = () => {
-    const num = Number(received);
-    if (!received || isNaN(num) || num < 0) { setError("Please enter a valid amount."); return; }
-    onSave(num, orderTotal);
-  };
-
-  return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
-      <div style={{background:"#1a1d2e",border:"1px solid rgba(240,192,96,0.2)",borderRadius:16,padding:28,width:"100%",maxWidth:400}}>
-        <h3 style={{color:"#f0c060",fontFamily:"'Playfair Display'",margin:"0 0 4px"}}>💰 Record Payment</h3>
-        <p style={{color:"rgba(255,255,255,0.4)",fontSize:13,margin:"0 0 20px"}}>{booking.customerName} · {booking.vehicleName||"—"}</p>
-
-        {requested > 0 && (
-          <div style={{display:"flex",gap:12,marginBottom:20}}>
-            <div style={{flex:1,background:"rgba(251,146,60,0.1)",border:"1px solid rgba(251,146,60,0.2)",borderRadius:10,padding:"10px 14px",textAlign:"center"}}>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:4}}>Requested</div>
-              <div style={{fontSize:18,fontWeight:700,color:"#fb923c"}}>₹{requested.toLocaleString("en-IN")}</div>
-            </div>
-            <div style={{flex:1,background:"rgba(240,192,96,0.08)",border:"1px solid rgba(240,192,96,0.2)",borderRadius:10,padding:"10px 14px",textAlign:"center"}}>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:4}}>Order Total</div>
-              <div style={{fontSize:18,fontWeight:700,color:"#f0c060"}}>₹{orderTotal.toLocaleString("en-IN")}</div>
-            </div>
-          </div>
-        )}
-
-        <label style={{fontSize:12,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:6}}>Amount Received (₹)</label>
-        <input
-          type="number" value={received} onChange={e=>{setReceived(e.target.value);setError("");}}
-          placeholder="Enter amount received"
-          style={{width:"100%",padding:"12px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.06)",color:"white",fontSize:16,boxSizing:"border-box",marginBottom:8}}
-          autoFocus
-        />
-        {error&&<div style={{color:"#ff6b6b",fontSize:12,marginBottom:8}}>{error}</div>}
-        {Number(received)>0&&orderTotal>0&&(
-          <div style={{background:"rgba(240,192,96,0.06)",border:"1px solid rgba(240,192,96,0.15)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"rgba(255,255,255,0.6)",marginBottom:12,display:"flex",justifyContent:"space-between"}}>
-            <span>Balance due at pickup</span>
-            <span style={{color:"#f0c060",fontWeight:700}}>₹{Math.max(0, orderTotal - Number(received)).toLocaleString("en-IN")}</span>
-          </div>
-        )}
-        {Number(received)>0&&requested>0&&Number(received)>=requested&&(
-          <div style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#4ade80",marginBottom:12}}>
-            ✅ Full advance received — booking will be marked Confirmed
-          </div>
-        )}
-        <div style={{display:"flex",gap:10,marginTop:8}}>
-          <button onClick={onClose} style={{flex:1,padding:"11px",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:14}}>Cancel</button>
-          <button onClick={handleSave} style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"white",cursor:"pointer",fontSize:14,fontWeight:700}}>Save Payment</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Pay Page ─────────────────────────────────────────────────────────────────
-function PayPage() {
-  const params = new URLSearchParams(window.location.search);
-  const amount   = params.get("amount")  || "";
-  const upi      = params.get("upi")     || "vinay.purbia-2@oksbi";
-  const name     = params.get("name")    || "booking";
-  const customer = params.get("customer")|| "";
-
-  const upiLink = amount
-    ? `upi://pay?pa=${upi}&pn=Travel+Engineers&am=${amount}&cu=INR&tn=Advance+for+${encodeURIComponent(name)}`
-    : `upi://pay?pa=${upi}&pn=Travel+Engineers&cu=INR`;
-
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(upiLink)}&bgcolor=1a1a2e&color=f0c060&margin=10`;
-
-  return (
-    <div style={{minHeight:"100vh",background:"#0f1117",display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'DM Sans',sans-serif"}}>
-      <div style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(240,192,96,0.2)",borderRadius:20,padding:36,maxWidth:380,width:"100%",textAlign:"center"}}>
-        <div style={{fontSize:36,marginBottom:8}}>🛵</div>
-        <h2 style={{color:"#f0c060",fontFamily:"'Playfair Display'",fontSize:24,margin:"0 0 4px"}}>Travel Engineers</h2>
-        <p style={{color:"rgba(255,255,255,0.5)",fontSize:13,margin:"0 0 24px"}}>Payment Request</p>
-
-        {customer && <p style={{color:"rgba(255,255,255,0.7)",fontSize:14,marginBottom:4}}>Hi <strong style={{color:"#fff"}}>{customer}</strong>!</p>}
-        <p style={{color:"rgba(255,255,255,0.6)",fontSize:13,marginBottom:4}}>For: <strong style={{color:"#f0c060"}}>{name}</strong></p>
-
-        {amount && (
-          <div style={{background:"rgba(240,192,96,0.1)",border:"1px solid rgba(240,192,96,0.3)",borderRadius:12,padding:"12px 20px",margin:"16px 0 24px"}}>
-            <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",marginBottom:4}}>Token Advance Amount</div>
-            <div style={{fontSize:32,fontWeight:700,color:"#f0c060"}}>₹{Number(amount).toLocaleString("en-IN")}</div>
-          </div>
-        )}
-
-        <div style={{background:"white",borderRadius:12,padding:12,display:"inline-block",marginBottom:20}}>
-          <img src={qrUrl} alt="UPI QR Code" width={220} height={220} style={{display:"block"}}/>
-        </div>
-
-        <p style={{color:"rgba(255,255,255,0.4)",fontSize:12,marginBottom:4}}>UPI ID: <span style={{color:"#f0c060",fontWeight:600}}>{upi}</span></p>
-        <p style={{color:"rgba(255,255,255,0.3)",fontSize:11,marginBottom:24}}>Scan with GPay, PhonePe, Paytm or any UPI app</p>
-
-        <a href={upiLink} style={{display:"block",background:"#d4850a",color:"white",padding:"14px 24px",borderRadius:12,textDecoration:"none",fontWeight:600,fontSize:15,marginBottom:12}}>
-          Open UPI App to Pay
-        </a>
-        <a href="https://travel-engineers.vercel.app" style={{display:"block",color:"rgba(255,255,255,0.3)",fontSize:12,textDecoration:"none"}}>
-          ← Back to Travel Engineers
-        </a>
-      </div>
-    </div>
-  );
-}
+              <div><label className="adm-label">Room Name</label><input className="adm-input" value={r.name||""} on
