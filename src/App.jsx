@@ -952,7 +952,29 @@ function ToursEditor({ data, api, reload, showSaved }) {
                       <button onClick={()=>updateBookingStatus(b,"confirmed")} style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"8px 14px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>Confirm</button>
                     )}
                     {b.status==="pending"&&(
-                      <button onClick={()=>updateBookingStatus(b,"cancelled")} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"8px 14px",borderRadius:8,cursor:"pointer",fontSize:13}}>Cancel</button>
+                      <button onClick={async()=>{
+                        await updateBookingStatus(b,"cancelled");
+                        const fmt2=(d)=>d?new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}):"—";
+                        const msg=[
+                          `❌ *Booking Update — Travel Engineers*`,
+                          ``,
+                          `Hi ${b.customerName},`,
+                          ``,
+                          `We regret to inform you that we are unable to accommodate your booking request for *${b.tourTitle}* on *${fmt2(b.travelDate)}* due to unavailability of vehicles/resources on that date.`,
+                          ``,
+                          `We suggest you consider the following alternatives:`,
+                          `• Choose a different date for the same tour`,
+                          `• Check our other available tour packages`,
+                          `• Contact us directly and we will try our best to arrange something suitable for you`,
+                          ``,
+                          `We apologize for the inconvenience and hope to serve you soon.`,
+                          ``,
+                          `— Travel Engineers`,
+                        ].join("\n");
+                        const num=(b.phone||"").replace(/[^0-9]/g,"");
+                        const replyNum=num.length===10?"91"+num:num;
+                        window.open("https://wa.me/"+replyNum+"?text="+encodeURIComponent(msg),"_blank");
+                      }} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"8px 14px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>❌ Cancel & Notify</button>
                     )}
                     {b.status==="confirmed"&&(
                       <button onClick={()=>updateBookingStatus(b,"completed")} style={{background:"rgba(96,165,250,0.15)",border:"1px solid rgba(96,165,250,0.3)",color:"#60a5fa",padding:"8px 14px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>Mark Completed</button>
