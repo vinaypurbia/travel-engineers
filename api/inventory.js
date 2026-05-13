@@ -12,6 +12,11 @@ module.exports = async (req, res) => {
     const id = req.query?.id || null;
 
     if (id) {
+      if (req.method === "GET") {
+        const item = await Inventory.findById(id);
+        if (!item) return res.status(404).json({ error: "Not found" });
+        return res.json(item);
+      }
       if (req.method === "PUT" || req.method === "PATCH") {
         const item = await Inventory.findByIdAndUpdate(
           id, { ...req.body, updatedAt: new Date() }, { new: true }
