@@ -851,7 +851,7 @@ function ToursEditor({ data, api, reload, showSaved }) {
           )}
           {tours.length===0&&!adding&&<div style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:48}}>No tours yet. Add your first package above!</div>}
           <div style={{display:"grid",gap:12}}>
-            {tours.map(t=>(
+            {tours.filter(t=>t._id!==editId).map(t=>(
               <div key={t._id} className="adm-card" style={{display:"flex",gap:16,alignItems:"center"}}>
                 {t.image&&<img src={t.image} alt="" style={{width:70,height:70,objectFit:"cover",borderRadius:10,flexShrink:0}}/>}
                 <div style={{flex:1,minWidth:0}}>
@@ -929,8 +929,8 @@ function ToursEditor({ data, api, reload, showSaved }) {
           </div>
         </div>
       )}
-      {adjModal&&<TourPriceModal booking={adjModal} api={api} reload={reload} showSaved={showSaved} onClose={()=>setAdjModal(null)} />}
-      {recordModal&&<TourPaymentModal booking={recordModal} api={api} reload={reload} showSaved={showSaved} onClose={()=>setRecordModal(null)} />}
+      {adjModal&&<TourPriceModal booking={adjModal} api={api} reload={reload} showSaved={showSavedLocal} onClose={()=>setAdjModal(null)} />}
+      {recordModal&&<TourPaymentModal booking={recordModal} api={api} reload={reload} showSaved={showSavedLocal} onClose={()=>setRecordModal(null)} />}
     </div>
   );
 }
@@ -1074,6 +1074,10 @@ function LoginScreen({ loginInput, setLoginInput, loginError, onLogin, onBack, a
 
 // ─── Admin Panel Shell ───────────────────────────────────────────────────────
 function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, setAdminTab }) {
+  const [toast, setToast] = React.useState(null);
+  const showToast = (msg, type="success") => { setToast({msg,type}); setTimeout(()=>setToast(null),2500); };
+  // Override showSaved to also show local toast
+  const showSavedLocal = (msg="✅ Changes saved!", type="success") => { showSaved(msg, type); showToast(msg, type); };
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const tabs = [
     {id:"dashboard",   label:"Dashboard",   icon:"⊞"},
@@ -1088,7 +1092,13 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
   ];
   const goTo = (id) => { setAdminTab(id); reload(); };
   return (
-    <div style={{minHeight:"100vh",background:"#f5f6fa",fontFamily:"'DM Sans',sans-serif",color:"#1a1a2e",display:"flex"}}>
+    <div style={{minHeight:"100vh",background:"#f5f6fa",fontFamily:"'DM Sans',sans-serif",color:"#1a1a2e",display:"flex",position:"relative"}}>
+      {/* Toast Notification */}
+      {toast&&(
+        <div style={{position:"fixed",bottom:32,left:"50%",transform:"translateX(-50%)",zIndex:9999,background:toast.type==="delete"?"#ef4444":toast.type==="error"?"#ef4444":"#16a34a",color:"white",padding:"13px 28px",borderRadius:12,fontFamily:"'DM Sans'",fontSize:15,fontWeight:600,boxShadow:"0 8px 32px rgba(0,0,0,0.3)",display:"flex",alignItems:"center",gap:10,whiteSpace:"nowrap"}}>
+          {toast.type==="delete"?"🗑️":toast.type==="error"?"❌":"✅"} {toast.msg}
+        </div>
+      )}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
@@ -1146,14 +1156,14 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
           {adminTab==="dashboard"&&<AdminDashboard data={data} goTo={goTo}/>}
           {adminTab!=="dashboard"&&(
             <div style={{background:"#0d1b2e",color:"white",minHeight:"100%",padding:"32px"}}>
-              {adminTab==="agency"       &&<AgencyEditor       data={data} api={api} reload={reload} showSaved={showSaved}/>}
-              {adminTab==="rentals"      &&<RentalsEditor      data={data} api={api} reload={reload} showSaved={showSaved}/>}
-              {adminTab==="villa"        &&<VillaEditor        data={data} api={api} reload={reload} showSaved={showSaved}/>}
-              {adminTab==="testimonials" &&<TestimonialsEditor data={data} api={api} reload={reload} showSaved={showSaved}/>}
-              {adminTab==="inventory"    &&<InventoryEditor    data={data} api={api} reload={reload} showSaved={showSaved}/>}
-              {adminTab==="accounting"   &&<AccountingEditor   data={data} api={api} reload={reload} showSaved={showSaved}/>}
-              {adminTab==="bookings"     &&<BookingsEditor     data={data} api={api} reload={reload} showSaved={showSaved} rentals={data.rentals||[]}/>}
-              {adminTab==="tours"        &&<ToursEditor        data={data} api={api} reload={reload} showSaved={showSaved}/>}
+              {adminTab==="agency"       &&<AgencyEditor       data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
+              {adminTab==="rentals"      &&<RentalsEditor      data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
+              {adminTab==="villa"        &&<VillaEditor        data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
+              {adminTab==="testimonials" &&<TestimonialsEditor data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
+              {adminTab==="inventory"    &&<InventoryEditor    data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
+              {adminTab==="accounting"   &&<AccountingEditor   data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
+              {adminTab==="bookings"     &&<BookingsEditor     data={data} api={api} reload={reload} showSaved={showSavedLocal} rentals={data.rentals||[]}/>}
+              {adminTab==="tours"        &&<ToursEditor        data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
             </div>
           )}
         </div>
