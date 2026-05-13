@@ -1074,7 +1074,7 @@ function LoginScreen({ loginInput, setLoginInput, loginError, onLogin, onBack, a
 
 // ─── Admin Panel Shell ───────────────────────────────────────────────────────
 function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, setAdminTab }) {
-  const [toast, setToast] = React.useState(null);
+  const [toast, setToast] = useState(null);
   const showToast = (msg, type="success") => { setToast({msg,type}); setTimeout(()=>setToast(null),2500); };
   // Override showSaved to also show local toast
   const showSavedLocal = (msg="✅ Changes saved!", type="success") => { showSaved(msg, type); showToast(msg, type); };
