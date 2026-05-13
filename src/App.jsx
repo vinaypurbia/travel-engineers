@@ -167,11 +167,6 @@ export default function App() {
   if (view === "admin") return (
     <>
       <AdminPanel data={data} api={api} reload={loadAllData} saved={saved} showSaved={showSaved} onExit={() => { setView("home"); loadAllData(); }} adminTab={adminTab} setAdminTab={setAdminTab} />
-      {toast&&(
-        <div style={{position:"fixed",bottom:32,left:"50%",transform:"translateX(-50%)",zIndex:9999,background:toast.type==="delete"?"#ef4444":toast.type==="error"?"#ef4444":"#16a34a",color:"white",padding:"12px 28px",borderRadius:12,fontFamily:"'DM Sans'",fontSize:15,fontWeight:600,boxShadow:"0 4px 24px rgba(0,0,0,0.25)",display:"flex",alignItems:"center",gap:10,whiteSpace:"nowrap"}}>
-          {toast.type==="delete"?"🗑️":toast.type==="error"?"❌":"✅"} {toast.msg}
-        </div>
-      )}
     </>
   );
 
@@ -444,6 +439,13 @@ export default function App() {
           api={api}
           onClose={()=>setBookingVehicle(null)}
         />
+      )}
+
+      {/* ── Global Toast Notification ── */}
+      {toast&&(
+        <div style={{position:"fixed",bottom:32,left:"50%",transform:"translateX(-50%)",zIndex:9999,background:toast.type==="delete"?"#ef4444":toast.type==="error"?"#ef4444":"#16a34a",color:"white",padding:"13px 28px",borderRadius:12,fontFamily:"'DM Sans'",fontSize:15,fontWeight:600,boxShadow:"0 8px 32px rgba(0,0,0,0.3)",display:"flex",alignItems:"center",gap:10,whiteSpace:"nowrap"}}>
+          {toast.type==="delete"?"🗑️":toast.type==="error"?"❌":"✅"} {toast.msg}
+        </div>
       )}
     </div>
   );
