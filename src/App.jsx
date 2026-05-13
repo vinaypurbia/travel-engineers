@@ -582,16 +582,21 @@ function TourSection({ tours, agency, api }) {
             <div style={{padding:"22px 24px 24px"}}>
               <h3 style={{fontFamily:"'Playfair Display'",fontSize:21,fontWeight:700,marginBottom:8}}>{tour.title}</h3>
               {tour.destinations&&tour.destinations.length>0&&<div style={{fontSize:12,color:"#d4850a",fontFamily:"'DM Sans'",marginBottom:10,fontWeight:600}}>Destinations: {tour.destinations.join(" / ")}</div>}
-              {tour.description&&<p style={{fontFamily:"'Lora'",fontSize:14,color:"#666",marginBottom:16,lineHeight:1.6,fontStyle:"italic"}}>{tour.description.slice(0,120)}{tour.description.length>120?"...":""}</p>}
-              {tour.highlights&&tour.highlights.slice(0,3).map((h,i)=>(
-                <div key={i} style={{fontSize:12,color:"#555",fontFamily:"'DM Sans'",marginBottom:4}}>+ {h}</div>
-              ))}
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:18}}>
+              {tour.description&&<p style={{fontFamily:"'Lora'",fontSize:14,color:"#666",marginBottom:16,lineHeight:1.6,fontStyle:"italic"}}>{tour.description.slice(0,100)}{tour.description.length>100?"...":""}</p>}
+              {tour.inclusions&&tour.inclusions.length>0&&(
+                <div style={{fontSize:12,color:"#555",fontFamily:"'DM Sans'",marginBottom:12}}>
+                  ✓ {tour.inclusions[0]}{tour.inclusions.length>1?` +${tour.inclusions.length-1} more inclusions`:""}
+                </div>
+              )}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:18,gap:8,flexWrap:"wrap"}}>
                 <div>
                   <span style={{fontFamily:"'Playfair Display'",fontSize:22,fontWeight:700,color:"#d4850a"}}>₹{(tour.basePrice||0).toLocaleString("en-IN")}</span>
                   <span style={{fontFamily:"'DM Sans'",fontSize:12,color:"#999",marginLeft:4}}>{tour.priceLabel||"per package"}</span>
                 </div>
-                <button className="btn-primary" style={{padding:"10px 20px",fontSize:13}} onClick={e=>{e.stopPropagation();setBooking(tour);}}>Book Now</button>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={e=>{e.stopPropagation();setSelected(tour);}} style={{padding:"9px 16px",fontSize:12,fontFamily:"'DM Sans'",fontWeight:600,border:"2px solid #d4850a",borderRadius:20,background:"transparent",color:"#d4850a",cursor:"pointer"}}>See Details</button>
+                  <button className="btn-primary" style={{padding:"9px 16px",fontSize:12}} onClick={e=>{e.stopPropagation();setBooking(tour);}}>Book Now</button>
+                </div>
               </div>
             </div>
           </div>
@@ -621,12 +626,27 @@ function TourDetailModal({ tour, onBook, onClose }) {
           <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,fontWeight:700,color:"#1a1a2e",marginBottom:8}}>{tour.title}</h2>
           {tour.destinations&&tour.destinations.length>0&&<div style={{color:"#d4850a",fontFamily:"'DM Sans'",fontWeight:600,marginBottom:16}}>{tour.destinations.join(" / ")}</div>}
           {tour.description&&<p style={{fontFamily:"'Lora'",fontSize:15,color:"#555",lineHeight:1.8,marginBottom:24,fontStyle:"italic"}}>{tour.description}</p>}
-          {tour.highlights&&tour.highlights.length>0&&<div style={{marginBottom:24}}>
-            <h4 style={{fontFamily:"'DM Sans'",fontWeight:700,color:"#1a1a2e",marginBottom:12,textTransform:"uppercase",fontSize:12,letterSpacing:2}}>Highlights</h4>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-              {tour.highlights.map((h,i)=><div key={i} style={{fontSize:14,color:"#444",fontFamily:"'DM Sans'"}}>+ {h}</div>)}
+          {tour.highlights&&tour.highlights.length>0&&<div style={{marginBottom:28}}>
+            <h4 style={{fontFamily:"'DM Sans'",fontWeight:700,color:"#1a1a2e",marginBottom:16,textTransform:"uppercase",fontSize:12,letterSpacing:2,borderBottom:"2px solid #f0e8d8",paddingBottom:8}}>Tour Itinerary & Highlights</h4>
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              {tour.highlights.map((h,i)=>(
+                <div key={i} style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+                  <div style={{minWidth:28,height:28,borderRadius:"50%",background:"#d4850a",color:"white",fontFamily:"'DM Sans'",fontWeight:700,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div>
+                  <div style={{fontFamily:"'DM Sans'",fontSize:14,color:"#333",lineHeight:1.7,paddingTop:4}}>{h}</div>
+                </div>
+              ))}
             </div>
           </div>}
+          {(tour.inclusions&&tour.inclusions.length>0)||(tour.exclusions&&tour.exclusions.length>0)?<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:24}}>
+            {tour.inclusions&&tour.inclusions.length>0&&<div>
+              <h4 style={{fontFamily:"'DM Sans'",fontWeight:700,color:"#1a1a2e",marginBottom:10,textTransform:"uppercase",fontSize:12,letterSpacing:2}}>What's Included</h4>
+              {tour.inclusions.map((inc,i)=><div key={i} style={{display:"flex",gap:8,marginBottom:6,fontSize:13,color:"#444",fontFamily:"'DM Sans'"}}><span style={{color:"#16a34a",fontWeight:700}}>✓</span>{inc}</div>)}
+            </div>}
+            {tour.exclusions&&tour.exclusions.length>0&&<div>
+              <h4 style={{fontFamily:"'DM Sans'",fontWeight:700,color:"#1a1a2e",marginBottom:10,textTransform:"uppercase",fontSize:12,letterSpacing:2}}>Not Included</h4>
+              {tour.exclusions.map((exc,i)=><div key={i} style={{display:"flex",gap:8,marginBottom:6,fontSize:13,color:"#444",fontFamily:"'DM Sans'"}}><span style={{color:"#ef4444",fontWeight:700}}>✕</span>{exc}</div>)}
+            </div>}
+          </div>:null}
           {tour.itinerary&&tour.itinerary.length>0&&<div style={{marginBottom:24}}>
             <h4 style={{fontFamily:"'DM Sans'",fontWeight:700,color:"#1a1a2e",marginBottom:12,textTransform:"uppercase",fontSize:12,letterSpacing:2}}>Itinerary</h4>
             {tour.itinerary.map((day,i)=>(
@@ -638,6 +658,18 @@ function TourDetailModal({ tour, onBook, onClose }) {
               </div>
             ))}
           </div>}
+          {/* Package Details Table */}
+          <div style={{background:"#faf8f3",borderRadius:12,padding:"16px 20px",marginBottom:20,border:"1px solid #f0e8d8"}}>
+            <h4 style={{fontFamily:"'DM Sans'",fontWeight:700,color:"#1a1a2e",marginBottom:12,textTransform:"uppercase",fontSize:12,letterSpacing:2}}>Package Details</h4>
+            <table style={{width:"100%",borderCollapse:"collapse",fontFamily:"'DM Sans'",fontSize:13}}>
+              <tbody>
+                {tour.duration&&<tr><td style={{padding:"5px 0",color:"#888",width:"40%"}}>Duration</td><td style={{padding:"5px 0",fontWeight:600,color:"#333"}}>{tour.duration}</td></tr>}
+                {tour.maxPax&&<tr><td style={{padding:"5px 0",color:"#888"}}>Max Capacity</td><td style={{padding:"5px 0",fontWeight:600,color:"#333"}}>{tour.maxPax} Pax</td></tr>}
+                {tour.destinations&&tour.destinations.length>0&&<tr><td style={{padding:"5px 0",color:"#888"}}>Route</td><td style={{padding:"5px 0",fontWeight:600,color:"#333"}}>{tour.destinations.join(" → ")}</td></tr>}
+                {tour.pickupPoints&&tour.pickupPoints.length>0&&<tr><td style={{padding:"5px 0",color:"#888"}}>Pickup Points</td><td style={{padding:"5px 0",color:"#333"}}>{tour.pickupPoints.join(", ")}</td></tr>}
+              </tbody>
+            </table>
+          </div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:20,borderTop:"1px solid #eee"}}>
             <div>
               <span style={{fontFamily:"'Playfair Display'",fontSize:28,fontWeight:700,color:"#d4850a"}}>₹{(tour.basePrice||0).toLocaleString("en-IN")}</span>
