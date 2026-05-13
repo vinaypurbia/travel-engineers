@@ -735,12 +735,12 @@ function ToursEditor({ data, api, reload, showSaved }) {
   const saveTour = async () => {
     if (!form.title) { alert("Tour title required"); return; }
     if (adding) await api.post("/tours", form);
-    else await api.put("/tours/"+editId, form);
+    else await api.put("/tours?id="+editId, form);
     await reload(); showSaved(); setEditId(null); setForm(null); setAdding(false);
   };
   const deleteTour = async (id) => {
     if (!window.confirm("Delete this tour?")) return;
-    await api.delete("/tours/"+id);
+    await api.delete("/tours?id="+id);
     await reload();
   };
   const updateBookingStatus = async (b, status) => {
