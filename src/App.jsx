@@ -1055,9 +1055,9 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
         </div>
       </div>
       <div style={{display:"flex",minHeight:"calc(100vh - 64px)"}}>
-        <div style={{width:220,background:"rgba(0,0,0,0.2)",borderRight:"1px solid rgba(255,255,255,0.06)",padding:"24px 0",flexShrink:0}}>
+        <div style={{width:220,background:"rgba(0,0,0,0.2)",borderRight:"1px solid rgba(255,255,255,0.06)",padding:"24px 0",flexShrink:0,overflowY:"auto"}}>
           {tabs.map(t=>(
-            <button key={t.id} onClick={()=>{ setAdminTab(t.id); reload(); }} style={{width:"100%",padding:"14px 24px",textAlign:"left",background:adminTab===t.id?"rgba(212,133,10,0.15)":"transparent",border:"none",borderLeft:`3px solid ${adminTab===t.id?"#d4850a":"transparent"}`,color:adminTab===t.id?"#f0c060":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:14,fontFamily:"'DM Sans'",fontWeight:500,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <button key={t.id} onClick={()=>{ setAdminTab(t.id); reload(); }} style={{width:"100%",padding:"11px 20px",textAlign:"left",background:adminTab===t.id?"rgba(212,133,10,0.15)":"transparent",border:"none",borderLeft:`3px solid ${adminTab===t.id?"#d4850a":"transparent"}`,color:adminTab===t.id?"#f0c060":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:14,fontFamily:"'DM Sans'",fontWeight:500,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                 <span>{t.label}</span>
                 {t.badge>0&&<span style={{background:"#ef4444",color:"white",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:10,minWidth:18,textAlign:"center"}}>{t.badge}</span>}
               </button>
@@ -2125,6 +2125,42 @@ function AccountingEditor({ data, api, reload, showSaved }) {
   );
 }
 
+
+// ─── QR Pay Step (extracted from IIFE for babel compat) ──────────────────────
+function QRPayStep({ total, setStep }) {
+  const advance  = total > 0 ? Math.ceil(total * 0.5) : 0;
+  const upiId    = "vinay.purbia-2@oksbi";
+  const upiName  = "Travel Engineers";
+  const upiLink  = "upi://pay?pa=" + upiId + "&pn=" + encodeURIComponent(upiName) + "&am=" + advance + "&cu=INR&tn=" + encodeURIComponent("Vehicle booking advance");
+  const qrUrl    = "https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=" + encodeURIComponent(upiLink) + "&bgcolor=ffffff";
+  return (
+    <div style={{padding:"28px 24px",textAlign:"center"}}>
+      <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>Step 2 of 2</div>
+      <div style={{fontFamily:"'Playfair Display'",fontSize:22,color:"white",marginBottom:4}}>Scan & Pay 50% Now</div>
+      <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginBottom:20}}>Remaining 50% paid at vehicle pickup</div>
+      <div style={{background:"rgba(212,133,10,0.08)",border:"1px solid rgba(212,133,10,0.2)",borderRadius:12,padding:"16px",display:"flex",justifyContent:"space-around",marginBottom:20}}>
+        <div><div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:4}}>TOTAL</div><div style={{fontSize:16,fontWeight:700,color:"white"}}>&#8377;{total.toLocaleString("en-IN")}</div></div>
+        <div style={{borderLeft:"1px solid rgba(255,255,255,0.08)",borderRight:"1px solid rgba(255,255,255,0.08)",padding:"0 20px"}}><div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:4}}>PAY NOW</div><div style={{fontSize:16,fontWeight:700,color:"#f0c060"}}>&#8377;{advance.toLocaleString("en-IN")}</div></div>
+        <div><div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:4}}>AT PICKUP</div><div style={{fontSize:16,fontWeight:700,color:"#4ade80"}}>&#8377;{(total-advance).toLocaleString("en-IN")}</div></div>
+      </div>
+      <div style={{display:"inline-block",background:"white",borderRadius:16,padding:12,marginBottom:16,boxShadow:"0 8px 32px rgba(0,0,0,0.3)"}}>
+        <img src={qrUrl} alt="UPI QR Code" width={200} height={200} style={{display:"block",borderRadius:8}}/>
+      </div>
+      <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginBottom:6}}>UPI ID: <span style={{color:"#f0c060",fontWeight:600}}>vinay.purbia-2@oksbi</span></div>
+      <div style={{fontSize:11,color:"rgba(255,255,255,0.25)",marginBottom:20}}>Works with GPay, PhonePe, Paytm and all UPI apps</div>
+      <a href={upiLink} style={{display:"block",marginBottom:12}}>
+        <button style={{width:"100%",padding:"12px",background:"linear-gradient(135deg,#1a8f3c,#25d366)",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>
+          Open UPI App to Pay &#8377;{advance.toLocaleString("en-IN")}
+        </button>
+      </a>
+      <button onClick={()=>setStep("success")} style={{width:"100%",padding:"11px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.5)",borderRadius:12,cursor:"pointer",fontSize:13}}>
+        I have paid - Continue
+      </button>
+      <div style={{fontSize:11,color:"rgba(255,255,255,0.2)",marginTop:10}}>Screenshot your payment as confirmation</div>
+    </div>
+  );
+}
+
 // ─── Booking Modal (public site) ─────────────────────────────────────────────
 function BookingModal({ vehicle, whatsapp, api, onClose }) {
   const today = new Date().toISOString().slice(0,10);
@@ -2224,60 +2260,9 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
             </div>
             <button onClick={onClose} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"13px 36px",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:14}}>Close</button>
           </div>
-        ) : step==="qr" ? (() => {
-          const advance = total>0 ? Math.ceil(total * 0.5) : 0;
-          const upiId = "vinay.purbia-2@oksbi";
-          const upiName = "Travel Engineers";
-          // UPI deep link with amount pre-filled
-          const upiLink = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${advance}&cu=INR&tn=${encodeURIComponent(`Advance for ${vehicle.name} booking`)}`;
-          // QR code via Google Charts API
-          const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiLink)}&bgcolor=1a1a2e&color=f0c060&margin=10`;
-          return (
-            <div style={{padding:"28px 24px",textAlign:"center"}}>
-              <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:4}}>Step 2 — Pay Advance</div>
-              <div style={{fontFamily:"'Playfair Display'",fontSize:22,color:"white",marginBottom:4}}>Scan & Pay 50% Now</div>
-              <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginBottom:20}}>Remaining 50% paid at vehicle pickup</div>
-
-              {/* Price breakdown */}
-              <div style={{background:"rgba(212,133,10,0.08)",border:"1px solid rgba(212,133,10,0.2)",borderRadius:12,padding:"14px 18px",marginBottom:20,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,textAlign:"center"}}>
-                <div>
-                  <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:4}}>TOTAL</div>
-                  <div style={{fontSize:16,fontWeight:700,color:"white"}}>₹{total.toLocaleString("en-IN")}</div>
-                </div>
-                <div style={{borderLeft:"1px solid rgba(255,255,255,0.08)",borderRight:"1px solid rgba(255,255,255,0.08)"}}>
-                  <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:4}}>PAY NOW</div>
-                  <div style={{fontSize:16,fontWeight:700,color:"#f0c060"}}>₹{advance.toLocaleString("en-IN")}</div>
-                </div>
-                <div>
-                  <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:4}}>AT PICKUP</div>
-                  <div style={{fontSize:16,fontWeight:700,color:"#4ade80"}}>₹{(total-advance).toLocaleString("en-IN")}</div>
-                </div>
-              </div>
-
-              {/* QR Code */}
-              <div style={{display:"inline-block",background:"white",borderRadius:16,padding:12,marginBottom:16,boxShadow:"0 8px 32px rgba(0,0,0,0.4)"}}>
-                <img src={qrUrl} alt="UPI QR Code" width={200} height={200} style={{display:"block",borderRadius:8}}/>
-              </div>
-
-              <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginBottom:6}}>UPI ID: <span style={{color:"#f0c060",fontWeight:600}}>{upiId}</span></div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.25)",marginBottom:20}}>Works with GPay, PhonePe, Paytm & all UPI apps</div>
-
-              {/* UPI app button */}
-              <a href={upiLink} style={{display:"block",marginBottom:12}}>
-                <button style={{width:"100%",padding:"12px",background:"linear-gradient(135deg,#1a8f3c,#25d366)",color:"white",border:"none",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>
-                  📱 Open UPI App to Pay ₹{advance.toLocaleString("en-IN")}
-                </button>
-              </a>
-
-              <button onClick={()=>setStep("success")} style={{width:"100%",padding:"11px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.5)",borderRadius:10,fontWeight:600,fontSize:13,cursor:"pointer"}}>
-                I've paid — Continue ✓
-              </button>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.2)",marginTop:10}}>
-                Screenshot your payment as confirmation
-              </div>
-            </div>
-          );
-        })() : (
+        ) : step==="qr" ? (
+          <QRPayStep total={total} setStep={setStep} />
+        ) : (
           <div style={{padding:"20px 24px 24px"}}>
             <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:16}}>Booking details</div>
 
