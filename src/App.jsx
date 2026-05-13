@@ -103,6 +103,8 @@ export default function App() {
   const [filterType, setFilterType] = useState("all");
   const [adminTab, setAdminTab] = useState("dashboard");
   const [saved, setSaved] = useState(false);
+  const [toast, setToast] = useState(null); // { msg, type: "success"|"error"|"delete" }
+  const showToast = (msg, type="success") => { setToast({ msg, type }); setTimeout(() => setToast(null), 2500); };
   const [bookingVehicle, setBookingVehicle] = useState(null); // vehicle being booked
 
   const safeGet = async (path, fallback) => {
@@ -143,7 +145,7 @@ export default function App() {
     }
   }, []);
 
-  const showSaved = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
+  const showSaved = (msg="✅ Changes saved!", type="success") => { setSaved(true); setTimeout(() => setSaved(false), 2000); showToast(msg, type); };
 
   if (loading) return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"#faf8f3"}}>
@@ -162,7 +164,16 @@ export default function App() {
     }} onBack={() => setView("home")} />;
 
   if (view === "pay") return <PayPage />;
-  if (view === "admin") return <AdminPanel data={data} api={api} reload={loadAllData} saved={saved} showSaved={showSaved} onExit={() => { setView("home"); loadAllData(); }} adminTab={adminTab} setAdminTab={setAdminTab} />;
+  if (view === "admin") return (
+    <>
+      <AdminPanel data={data} api={api} reload={loadAllData} saved={saved} showSaved={showSaved} onExit={() => { setView("home"); loadAllData(); }} adminTab={adminTab} setAdminTab={setAdminTab} />
+      {toast&&(
+        <div style={{position:"fixed",bottom:32,left:"50%",transform:"translateX(-50%)",zIndex:9999,background:toast.type==="delete"?"#ef4444":toast.type==="error"?"#ef4444":"#16a34a",color:"white",padding:"12px 28px",borderRadius:12,fontFamily:"'DM Sans'",fontSize:15,fontWeight:600,boxShadow:"0 4px 24px rgba(0,0,0,0.25)",display:"flex",alignItems:"center",gap:10,whiteSpace:"nowrap"}}>
+          {toast.type==="delete"?"🗑️":toast.type==="error"?"❌":"✅"} {toast.msg}
+        </div>
+      )}
+    </>
+  );
 
   const { agency, rentals, villa, testimonials } = data;
   const filtered = filterType === "all" ? rentals : rentals.filter(r => r.type === filterType);
@@ -736,7 +747,7 @@ function ToursEditor({ data, api, reload, showSaved }) {
     if (!form.title) { alert("Tour title required"); return; }
     if (adding) await api.post("/tours", form);
     else await api.put("/tours?id="+editId, form);
-    await reload(); showSaved(); setEditId(null); setForm(null); setAdding(false);
+    await reload(); showSaved("✅ Rental saved!"); setEditId(null); setForm(null); setAdding(false);
   };
   const deleteTour = async (id) => {
     if (!window.confirm("Delete this tour?")) return;
@@ -745,7 +756,7 @@ function ToursEditor({ data, api, reload, showSaved }) {
   };
   const updateBookingStatus = async (b, status) => {
     await api.put("/tours?bookings=1&id="+b._id, { ...b, status });
-    await reload(); showSaved();
+    await reload(); showSaved("✅ Saved!");
   };
   const arrField = (key, placeholder) => (
     <div style={{marginBottom:16}}>
@@ -930,7 +941,7 @@ function TourPriceModal({ booking, api, reload, showSaved, onClose }) {
     setSaving(true);
     const token = Math.ceil(Number(price)*0.5);
     await api.put("/tours?bookings=1&id="+booking._id, {...booking, finalPrice:Number(price), tokenAmount:token, adminNotes:notes});
-    await reload(); showSaved(); onClose(); setSaving(false);
+    await reload(); showSaved("✅ Changes saved!"); onClose(); setSaving(false);
   };
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
@@ -975,7 +986,7 @@ function TourPaymentModal({ booking, api, reload, showSaved, onClose }) {
         await api.post("/accounting", { type:"income", category:"tours", amount:balLeft, description:"Balance due - "+booking.tourTitle+" / "+booking.customerName, clientName:booking.customerName, paymentStatus:"pending", paymentMethod:"cash", date:new Date().toISOString(), notes:"Tour total: Rs."+finalPrice+" | Paid: Rs."+newReceived+" | Pending: Rs."+balLeft });
       }
     } catch(e) { console.error("Accounting sync:",e); }
-    await reload(); showSaved(); onClose(); setSaving(false);
+    await reload(); showSaved("✅ Changes saved!"); onClose(); setSaving(false);
   };
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
@@ -1269,10 +1280,9 @@ function AgencyEditor({ data, api, reload, showSaved }) {
       const res = await api.put("/agency", form);
       if (res && (res._id || res.name)) {
         await reload();
-        showSaved();
-        alert("✅ Agency info saved successfully!");
+        showSaved("✅ Agency info saved!");
       } else {
-        alert("❌ Save failed! Response: " + JSON.stringify(res));
+        showSaved("❌ Save failed!","error");
       }
     } catch (err) {
       alert("❌ Error: " + err.message);
@@ -1307,9 +1317,9 @@ function RentalsEditor({ data, api, reload, showSaved }) {
   const saveRental = async () => {
     if (adding) await api.post("/rentals", form);
     else await api.put(`/rentals/${editId}`, form);
-    await reload(); showSaved(); setEditId(null); setForm(null); setAdding(false);
+    await reload(); showSaved("✅ Rental saved!"); setEditId(null); setForm(null); setAdding(false);
   };
-  const deleteRental = async (id) => { if(window.confirm("Delete?")){ await api.delete(`/rentals/${id}`); await reload(); } };
+  const deleteRental = async (id) => { if(window.confirm("Delete this vehicle?")){ await api.delete(`/rentals/${id}`); await reload(); showSaved("🗑️ Vehicle deleted","delete"); } };
   const toggleAvail = async (r) => { await api.put(`/rentals/${r._id}`,{...r,available:!r.available}); await reload(); };
   const btnStyle = (color) => ({background:`rgba(${color},0.15)`,border:`1px solid rgba(${color},0.3)`,color:`rgb(${color})`,padding:"6px 12px",borderRadius:7,cursor:"pointer",fontSize:12});
   return (
@@ -1394,7 +1404,7 @@ function VillaEditor({ data, api, reload, showSaved }) {
     setSaving(true);
     try {
       const res = await api.put("/villa", form);
-      if (res && res._id) { await reload(); showSaved(); alert("✅ Villa saved successfully!"); }
+      if (res && res._id) { await reload(); showSaved("✅ Villa saved!"); }
       else { alert("❌ Save failed: " + JSON.stringify(res)); }
     } catch(err) { alert("❌ Error: " + err.message); }
     setSaving(false);
@@ -1457,18 +1467,17 @@ function TestimonialsEditor({ data, api, reload, showSaved }) {
   const save = async () => {
     if (editId==="new") await api.post("/testimonials", form);
     else await api.put(`/testimonials/${editId}`, form);
-    setEditId(null); setForm(null); showSaved(); await reload();
+    setEditId(null); setForm(null); showSaved("✅ Item saved!"); await reload();
   };
   const del = async (id) => {
     if (!window.confirm("Delete this review?")) return;
     setLocalList(l=>l.filter(t=>t._id!==id));
-    await api.delete(`/testimonials/${id}`);
-    await reload();
+    await api.delete(`/testimonials/${id}`); await reload(); showSaved("🗑️ Review deleted","delete");
   };
   const approve = async (t) => {
     setActionId(t._id+"_approve");
     setLocalList(l=>l.map(r=>r._id===t._id?{...r,approved:true}:r));
-    try { await api.put(`/testimonials/${t._id}`,{...t,approved:true}); showSaved(); await reload(); }
+    try { await api.put(`/testimonials/${t._id}`,{...t,approved:true}); showSaved("✅ Review approved!"); await reload(); }
     catch(err) { setLocalList(l=>l.map(r=>r._id===t._id?{...r,approved:false}:r)); alert("Approve failed: "+err.message); }
     setActionId(null);
   };
@@ -1591,14 +1600,13 @@ function InventoryEditor({ data, api, reload, showSaved }) {
     if (!form.name.trim()) { alert("Please enter a name."); return; }
     if (adding) await api.post("/inventory", form);
     else        await api.put(`/inventory/${editId}`, form);
-    cancel(); showSaved(); await reload();
+    cancel(); showSaved("✅ Changes saved!"); await reload();
   };
 
   const del = async (id) => {
     if (!window.confirm("Delete this inventory item?")) return;
     setItems(l=>l.filter(i=>i._id!==id));
-    await api.delete(`/inventory/${id}`);
-    await reload();
+    await api.delete(`/inventory/${id}`); await reload(); showSaved("🗑️ Item deleted","delete");
   };
 
   const updateStatus = async (item, status) => {
@@ -2051,11 +2059,11 @@ function AccountingEditor({ data, api, reload, showSaved }) {
     const payload={...form,amount:Number(form.amount)};
     if(editId) await api.put(`/accounting/${editId}`,payload);
     else       await api.post("/accounting",payload);
-    cancel(); showSaved(); await reload();
+    cancel(); showSaved("✅ Changes saved!"); await reload();
   };
   const del = async (id) => {
     if(!window.confirm("Delete this transaction?"))return;
-    await api.delete(`/accounting/${id}`); await reload();
+    await api.delete(`/accounting/${id}`); await reload(); showSaved("🗑️ Entry deleted","delete");
   };
 
   // CSV export
@@ -2600,8 +2608,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
 
   const del = async (id) => {
     if (!window.confirm("Delete this booking?")) return;
-    await api.delete(`/bookings?id=${id}`);
-    await reload();
+    await api.delete(`/bookings?id=${id}`); await reload(); showSaved("🗑️ Booking deleted","delete");
   };
 
   // Builds UPI payment link for exact 50% advance amount
