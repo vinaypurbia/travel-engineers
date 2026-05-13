@@ -1145,7 +1145,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
         textarea.adm-input{resize:vertical;min-height:80px;line-height:1.6;}
         label.adm-label{display:block;font-size:11px;font-weight:600;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;}
         .adm-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;}
-        select.adm-input{cursor:pointer;}
+        select.adm-input{cursor:pointer;} select.adm-input option{background:#1a1d2e;color:#ffffff;}
         .adm-stat{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:18px 20px;}
         .tags-nav-btn{width:100%;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;font-family:'DM Sans';font-size:14px;font-weight:500;transition:all 0.15s;text-align:left;}
         .tags-nav-btn:hover{background:rgba(212,133,10,0.12);}
