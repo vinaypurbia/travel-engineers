@@ -584,8 +584,14 @@ function TourSection({ tours, agency, api }) {
               {tour.destinations&&tour.destinations.length>0&&<div style={{fontSize:12,color:"#d4850a",fontFamily:"'DM Sans'",marginBottom:10,fontWeight:600}}>Destinations: {tour.destinations.join(" / ")}</div>}
               {tour.description&&<p style={{fontFamily:"'Lora'",fontSize:14,color:"#666",marginBottom:16,lineHeight:1.6,fontStyle:"italic"}}>{tour.description.slice(0,100)}{tour.description.length>100?"...":""}</p>}
               {tour.inclusions&&tour.inclusions.length>0&&(
-                <div style={{fontSize:12,color:"#555",fontFamily:"'DM Sans'",marginBottom:12}}>
-                  ✓ {tour.inclusions[0]}{tour.inclusions.length>1?` +${tour.inclusions.length-1} more inclusions`:""}
+                <div style={{marginBottom:12}}>
+                  {tour.inclusions.slice(0,3).map((inc,i)=>(
+                    <div key={i} style={{display:"flex",gap:6,alignItems:"flex-start",marginBottom:4}}>
+                      <span style={{color:"#16a34a",fontWeight:700,fontSize:13,flexShrink:0}}>✓</span>
+                      <span style={{fontSize:12,color:"#555",fontFamily:"'DM Sans'",lineHeight:1.5}}>{inc}</span>
+                    </div>
+                  ))}
+                  {tour.inclusions.length>3&&<div style={{fontSize:11,color:"#d4850a",fontFamily:"'DM Sans'",fontWeight:600,marginTop:2}}>+{tour.inclusions.length-3} more — see details</div>}
                 </div>
               )}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:18,gap:8,flexWrap:"wrap"}}>
