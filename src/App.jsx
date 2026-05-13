@@ -127,7 +127,7 @@ export default function App() {
         safeGet("/accounting", {transactions:[],summary:{}}),
         safeGet("/bookings", []),
         safeGet("/tours", []),
-        safeGet("/tour-bookings", []),
+        safeGet("/tours?bookings=1", []),
       ]);
       setData({ agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings });
     } catch (err) {
@@ -651,7 +651,7 @@ function TourBookingModal({ tour, agency, api, onClose }) {
     if (!form.travelDate) { alert("Please select a travel date."); return; }
     setStatus("sending");
     try {
-      const res = await api.post("/tour-bookings", { tourId:tour._id, tourTitle:tour.title, tourType:tour.type, ...form, basePrice:tour.basePrice||0 });
+      const res = await api.post("/tours?bookings=1", { tourId:tour._id, tourTitle:tour.title, tourType:tour.type, ...form, basePrice:tour.basePrice||0 });
       if (res.success) { setResult(res); setStatus("done"); if (res.whatsappUrl) window.open(res.whatsappUrl,"_blank"); }
       else setStatus("error");
     } catch { setStatus("error"); }
@@ -744,7 +744,7 @@ function ToursEditor({ data, api, reload, showSaved }) {
     await reload();
   };
   const updateBookingStatus = async (b, status) => {
-    await api.put("/tour-bookings/"+b._id, { ...b, status });
+    await api.put("/tours?bookings=1&id="+b._id, { ...b, status });
     await reload(); showSaved();
   };
   const arrField = (key, placeholder) => (
@@ -929,7 +929,7 @@ function TourPriceModal({ booking, api, reload, showSaved, onClose }) {
   const save = async () => {
     setSaving(true);
     const token = Math.ceil(Number(price)*0.5);
-    await api.put("/tour-bookings/"+booking._id, {...booking, finalPrice:Number(price), tokenAmount:token, adminNotes:notes});
+    await api.put("/tours?bookings=1&id="+booking._id, {...booking, finalPrice:Number(price), tokenAmount:token, adminNotes:notes});
     await reload(); showSaved(); onClose(); setSaving(false);
   };
   return (
@@ -967,7 +967,7 @@ function TourPaymentModal({ booking, api, reload, showSaved, onClose }) {
     setSaving(true);
     const newReceived = alreadyRec + amt;
     const newStatus   = newReceived >= finalPrice ? "paid" : "partial";
-    await api.put("/tour-bookings/"+booking._id, {...booking, receivedAmount:newReceived, paymentStatus:newStatus});
+    await api.put("/tours?bookings=1&id="+booking._id, {...booking, receivedAmount:newReceived, paymentStatus:newStatus});
     try {
       const balLeft = Math.max(0, finalPrice - newReceived);
       await api.post("/accounting", { type:"income", category:"tours", amount:amt, description:(alreadyRec>0?"Balance":"Advance")+" - "+booking.tourTitle+" / "+booking.customerName, clientName:booking.customerName, paymentStatus:balLeft>0?"partial":"paid", paymentMethod:"cash", date:new Date().toISOString(), notes:"Tour total: Rs."+finalPrice+" | Received: Rs."+newReceived+" | Remaining: Rs."+balLeft });
