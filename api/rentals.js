@@ -13,6 +13,11 @@ module.exports = async (req, res) => {
     const id = req.query?.id || null;
 
     if (id) {
+      if (req.method === "GET") {
+        const rental = await Rental.findById(id);
+        if (!rental) return res.status(404).json({ error: "Not found" });
+        return res.json(rental);
+      }
       if (req.method === "PUT" || req.method === "PATCH") {
         const rental = await Rental.findByIdAndUpdate(id, req.body, { new: true });
         if (!rental) return res.status(404).json({ error: "Not found" });
