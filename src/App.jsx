@@ -101,7 +101,7 @@ export default function App() {
   const [loginError, setLoginError] = useState("");
   const [activeNav, setActiveNav] = useState("home");
   const [filterType, setFilterType] = useState("all");
-  const [adminTab, setAdminTab] = useState("agency");
+  const [adminTab, setAdminTab] = useState("dashboard");
   const [saved, setSaved] = useState(false);
   const [bookingVehicle, setBookingVehicle] = useState(null); // vehicle being booked
 
@@ -152,7 +152,7 @@ export default function App() {
     </div>
   );
 
-  if (view === "login") return <LoginScreen loginInput={loginInput} setLoginInput={setLoginInput} loginError={loginError}
+  if (view === "login") return <LoginScreen loginInput={loginInput} setLoginInput={setLoginInput} loginError={loginError} agency={data.agency||{}}
     onLogin={async () => {
       try {
         const res = await api.post("/auth", { password: loginInput });
@@ -1006,17 +1006,54 @@ function TourPaymentModal({ booking, api, reload, showSaved, onClose }) {
 }
 
 // ─── Login Screen ────────────────────────────────────────────────────────────
-function LoginScreen({ loginInput, setLoginInput, loginError, onLogin, onBack }) {
+function LoginScreen({ loginInput, setLoginInput, loginError, onLogin, onBack, agency }) {
+  const heroImage   = agency?.heroImage   || "";
+  const agencyName  = agency?.name        || "Travel Engineers";
+  const tagline     = agency?.tagline     || "Paving Your Holidays";
+  const heroSub     = agency?.heroSubtitle|| "Scooters · Cars · Bikes · Villa";
   return (
-    <div style={{minHeight:"100vh",background:"#0a1628",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif"}}>
-      <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(240,192,96,0.2)",borderRadius:24,padding:"48px 40px",width:"100%",maxWidth:400,textAlign:"center"}}>
-        <div style={{width:56,height:56,background:"rgba(212,133,10,0.15)",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 24px",color:"#f0c060"}}><Icon name="lock" size={24} /></div>
-        <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,color:"white",marginBottom:24}}>Admin Access</h2>
-        <input type="password" placeholder="Password" value={loginInput} onChange={e=>setLoginInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onLogin()}
-          style={{width:"100%",padding:"14px 18px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:10,color:"white",fontFamily:"'DM Sans'",fontSize:15,outline:"none",marginBottom:12}} />
-        {loginError&&<p style={{color:"#ff6b6b",fontSize:13,marginBottom:12}}>{loginError}</p>}
-        <button onClick={onLogin} style={{width:"100%",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:14,borderRadius:10,fontWeight:700,fontSize:15,cursor:"pointer",marginBottom:12}}>Login</button>
-        <button onClick={onBack} style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.4)",fontSize:13,cursor:"pointer"}}>← Back to website</button>
+    <div style={{minHeight:"100vh",fontFamily:"'DM Sans',sans-serif",display:"flex",position:"relative",overflow:"hidden"}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');`}</style>
+      {/* Full-bleed hero image */}
+      <div style={{position:"absolute",inset:0,background:"#0a1628"}}>
+        {heroImage && <img src={heroImage} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.45}} onError={e=>e.target.style.display="none"} />}
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(135deg,rgba(10,22,40,0.82) 0%,rgba(10,22,40,0.55) 50%,rgba(10,22,40,0.75) 100%)"}}></div>
+      </div>
+      {/* Left — branding */}
+      <div style={{flex:1,position:"relative",display:"flex",flexDirection:"column",justifyContent:"center",padding:"60px 64px",zIndex:1}}>
+        <div style={{display:"inline-flex",alignItems:"center",gap:10,marginBottom:40}}>
+          <div style={{width:10,height:10,borderRadius:"50%",background:"#d4850a"}}></div>
+          <span style={{fontSize:13,fontWeight:600,color:"rgba(255,255,255,0.6)",letterSpacing:"2px",textTransform:"uppercase"}}>Admin Portal</span>
+        </div>
+        <h1 style={{fontFamily:"'Playfair Display'",fontSize:"clamp(36px,4vw,60px)",color:"white",lineHeight:1.15,marginBottom:16,fontWeight:700}}>
+          {agencyName}
+        </h1>
+        <p style={{fontSize:"clamp(18px,2vw,26px)",color:"#f0c060",fontWeight:500,marginBottom:12,letterSpacing:"0.5px"}}>{tagline}</p>
+        <p style={{fontSize:15,color:"rgba(255,255,255,0.5)",letterSpacing:"1.5px"}}>{heroSub}</p>
+        <div style={{marginTop:48,display:"flex",gap:16,flexWrap:"wrap"}}>
+          {["Vehicle Rentals","Villa Stays","Tours & Taxi"].map(s=>(
+            <span key={s} style={{padding:"6px 16px",borderRadius:20,border:"1px solid rgba(240,192,96,0.25)",color:"rgba(255,255,255,0.5)",fontSize:12,letterSpacing:"0.5px"}}>{s}</span>
+          ))}
+        </div>
+      </div>
+      {/* Right — login card */}
+      <div style={{width:"420px",flexShrink:0,position:"relative",zIndex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"40px 48px",background:"rgba(255,255,255,0.04)",backdropFilter:"blur(20px)",borderLeft:"1px solid rgba(255,255,255,0.08)"}}>
+        <div style={{width:"100%"}}>
+          <div style={{width:52,height:52,background:"rgba(212,133,10,0.15)",borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:28,color:"#f0c060"}}><Icon name="lock" size={22}/></div>
+          <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,color:"white",marginBottom:6}}>Welcome back</h2>
+          <p style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginBottom:32}}>Sign in to manage your agency</p>
+          <label style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"1.5px",display:"block",marginBottom:8}}>Password</label>
+          <input type="password" placeholder="Enter your password" value={loginInput}
+            onChange={e=>setLoginInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onLogin()}
+            style={{width:"100%",padding:"14px 18px",background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:12,color:"white",fontFamily:"'DM Sans'",fontSize:15,outline:"none",marginBottom:12,boxSizing:"border-box",transition:"border-color 0.2s"}} />
+          {loginError&&<p style={{color:"#ff6b6b",fontSize:13,marginBottom:12}}>{loginError}</p>}
+          <button onClick={onLogin} style={{width:"100%",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"15px",borderRadius:12,fontWeight:700,fontSize:15,cursor:"pointer",marginBottom:16,fontFamily:"'DM Sans'",letterSpacing:"0.3px"}}>
+            Sign In
+          </button>
+          <div style={{textAlign:"center"}}>
+            <button onClick={onBack} style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.35)",fontSize:13,cursor:"pointer",fontFamily:"'DM Sans'"}}>← Back to website</button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1050,34 +1087,34 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
         select.adm-input{cursor:pointer;}
         .adm-stat{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:18px 20px;}
         .tags-nav-btn{width:100%;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;font-family:'DM Sans';font-size:14px;font-weight:500;transition:all 0.15s;text-align:left;}
-        .tags-nav-btn:hover{background:rgba(212,133,10,0.08);}
-        .tags-nav-btn.active{background:#d4850a;color:white!important;}
-        .tags-stat-card{background:white;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.06);border:1px solid #eef0f4;}
-        .tags-content{flex:1;overflow-y:auto;height:100vh;}
+        .tags-nav-btn:hover{background:rgba(212,133,10,0.12);}
+        .tags-nav-btn.active{background:linear-gradient(135deg,#d4850a,#f0c060);color:#1a1a2e!important;font-weight:700;}
+        .tags-stat-card{background:rgba(255,255,255,0.04);border-radius:16px;padding:22px 24px;border:1px solid rgba(255,255,255,0.08);}
+        .tags-content{flex:1;overflow-y:auto;height:100vh;background:#0d1b2e;}
         ::-webkit-scrollbar{width:5px;height:5px;}
         ::-webkit-scrollbar-track{background:transparent;}
         ::-webkit-scrollbar-thumb{background:#d4850a55;border-radius:10px;}
       `}</style>
       {/* Sidebar */}
-      <div style={{width:sidebarOpen?220:68,flexShrink:0,background:"white",borderRight:"1px solid #eef0f4",display:"flex",flexDirection:"column",height:"100vh",position:"sticky",top:0,transition:"width 0.2s",overflow:"hidden"}}>
-        <div style={{padding:"20px 14px 16px",borderBottom:"1px solid #eef0f4",display:"flex",alignItems:"center",gap:10,minHeight:64}}>
+      <div style={{width:sidebarOpen?220:68,flexShrink:0,background:"#0a1421",borderRight:"1px solid rgba(240,192,96,0.1)",display:"flex",flexDirection:"column",height:"100vh",position:"sticky",top:0,transition:"width 0.2s",overflow:"hidden"}}>
+        <div style={{padding:"20px 14px 16px",borderBottom:"1px solid rgba(240,192,96,0.1)",display:"flex",alignItems:"center",gap:10,minHeight:64}}>
           <div style={{width:36,height:36,background:"#d4850a",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18,color:"white",fontWeight:700}}>T</div>
-          {sidebarOpen && <div><div style={{fontWeight:700,fontSize:14,color:"#1a1a2e",lineHeight:1.2}}>Travel Engineers</div><div style={{fontSize:11,color:"#9ca3af"}}>Admin Panel</div></div>}
+          {sidebarOpen && <div><div style={{fontWeight:700,fontSize:14,color:"#f0c060",lineHeight:1.2}}>Travel Engineers</div><div style={{fontSize:11,color:"rgba(255,255,255,0.35)"}}>Admin Panel</div></div>}
         </div>
-        <button onClick={()=>setSidebarOpen(o=>!o)} style={{margin:"10px auto",width:28,height:28,borderRadius:7,border:"1px solid #eef0f4",background:"white",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#6b7280",flexShrink:0}}>
+        <button onClick={()=>setSidebarOpen(o=>!o)} style={{margin:"10px auto",width:28,height:28,borderRadius:7,border:"1px solid rgba(240,192,96,0.15)",background:"rgba(255,255,255,0.04)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"rgba(255,255,255,0.4)",flexShrink:0}}>
           {sidebarOpen?"◀":"▶"}
         </button>
         <nav style={{flex:1,padding:"4px 8px",overflowY:"auto"}}>
           {tabs.map(t=>(
-            <button key={t.id} className={"tags-nav-btn"+(adminTab===t.id?" active":"")} style={{color:adminTab===t.id?"white":"#4b5563",marginBottom:2}} onClick={()=>goTo(t.id)}>
+            <button key={t.id} className={"tags-nav-btn"+(adminTab===t.id?" active":"")} style={{color:adminTab===t.id?"#1a1a2e":"rgba(255,255,255,0.55)",marginBottom:2}} onClick={()=>goTo(t.id)}>
               <span style={{fontSize:16,flexShrink:0,width:20,textAlign:"center"}}>{t.icon}</span>
               {sidebarOpen&&<span style={{flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.label}</span>}
               {sidebarOpen&&t.badge>0&&<span style={{background:"#ef4444",color:"white",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:10,minWidth:18,textAlign:"center",flexShrink:0}}>{t.badge}</span>}
             </button>
           ))}
         </nav>
-        <div style={{padding:"12px 8px",borderTop:"1px solid #eef0f4"}}>
-          <button onClick={onExit} className="tags-nav-btn" style={{color:"#6b7280"}}>
+        <div style={{padding:"12px 8px",borderTop:"1px solid rgba(240,192,96,0.1)"}}>
+          <button onClick={onExit} className="tags-nav-btn" style={{color:"rgba(255,255,255,0.4)"}}>
             <span style={{fontSize:16,flexShrink:0,width:20,textAlign:"center"}}>↗</span>
             {sidebarOpen&&<span>View Site</span>}
           </button>
@@ -1085,10 +1122,10 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
       </div>
       {/* Main */}
       <div className="tags-content">
-        <div style={{background:"white",borderBottom:"1px solid #eef0f4",padding:"0 28px",height:64,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
+        <div style={{background:"#0a1421",borderBottom:"1px solid rgba(240,192,96,0.1)",padding:"0 28px",height:64,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
           <div>
-            <div style={{fontWeight:700,fontSize:18,color:"#1a1a2e"}}>{tabs.find(t=>t.id===adminTab)?.label||"Dashboard"}</div>
-            <div style={{fontSize:12,color:"#9ca3af"}}>{adminTab==="dashboard"?"Overview & quick stats":`Manage your ${(tabs.find(t=>t.id===adminTab)?.label||"").toLowerCase()}`}</div>
+            <div style={{fontWeight:700,fontSize:18,color:"#f0c060",fontFamily:"'Playfair Display'"}}>{tabs.find(t=>t.id===adminTab)?.label||"Dashboard"}</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>{adminTab==="dashboard"?"Overview & quick stats":`Manage your ${(tabs.find(t=>t.id===adminTab)?.label||"").toLowerCase()}`}</div>
           </div>
           {saved&&<span style={{color:"#16a34a",fontSize:13,fontWeight:600}}>✓ Saved!</span>}
         </div>
@@ -1146,47 +1183,47 @@ function AdminDashboard({ data, goTo }) {
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:16,marginBottom:24}}>
         {statCards.map(c=>(
-          <div key={c.label} style={{background:"white",borderRadius:16,padding:"22px 24px",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",border:"1px solid #eef0f4",cursor:"pointer"}} onClick={()=>goTo(c.tab)}>
+          <div key={c.label} style={{background:"rgba(255,255,255,0.04)",borderRadius:16,padding:"22px 24px",border:"1px solid rgba(255,255,255,0.08)",cursor:"pointer"}} onClick={()=>goTo(c.tab)}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-              <span style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.5px"}}>{c.label}</span>
+              <span style={{fontSize:12,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.5px"}}>{c.label}</span>
               <div style={{width:36,height:36,borderRadius:10,background:c.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{c.icon}</div>
             </div>
             <div style={{fontSize:28,fontWeight:700,color:c.color,lineHeight:1}}>{c.value}</div>
-            <div style={{fontSize:12,color:"#9ca3af",marginTop:6}}>{c.sub}</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginTop:6}}>{c.sub}</div>
           </div>
         ))}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
-        <div style={{background:"white",borderRadius:16,padding:"22px 24px",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",border:"1px solid #eef0f4"}}>
-          <div style={{fontWeight:700,fontSize:15,color:"#1a1a2e",marginBottom:4}}>🔔 Pending Actions</div>
-          <div style={{fontSize:12,color:"#9ca3af",marginBottom:16}}>{pendingActions.length} items need your attention</div>
-          {pendingActions.length===0&&<div style={{textAlign:"center",padding:"32px 0",color:"#9ca3af"}}><div style={{fontSize:32,marginBottom:8}}>✅</div><div style={{fontSize:13}}>All caught up!</div></div>}
+        <div style={{background:"rgba(255,255,255,0.04)",borderRadius:16,padding:"22px 24px",border:"1px solid rgba(255,255,255,0.08)"}}>
+          <div style={{fontWeight:700,fontSize:15,color:"#f0c060",marginBottom:4}}>🔔 Pending Actions</div>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginBottom:16}}>{pendingActions.length} items need your attention</div>
+          {pendingActions.length===0&&<div style={{textAlign:"center",padding:"32px 0",color:"rgba(255,255,255,0.3)"}}><div style={{fontSize:32,marginBottom:8}}>✅</div><div style={{fontSize:13}}>All caught up!</div></div>}
           {pendingActions.map((a,i)=>(
-            <div key={i} onClick={()=>goTo(a.tab)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:i<pendingActions.length-1?"1px solid #f3f4f6":"none",cursor:"pointer"}}>
+            <div key={i} onClick={()=>goTo(a.tab)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:i<pendingActions.length-1?"1px solid rgba(255,255,255,0.06)":"none",cursor:"pointer"}}>
               <div style={{width:8,height:8,borderRadius:"50%",background:a.color,flexShrink:0}}></div>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:13,fontWeight:600,color:"#1a1a2e",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.label}</div>
-                <div style={{fontSize:12,color:"#9ca3af"}}>{a.sub}</div>
+                <div style={{fontSize:13,fontWeight:600,color:"white",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.label}</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>{a.sub}</div>
               </div>
               <span style={{fontSize:11,background:a.color+"18",color:a.color,padding:"2px 8px",borderRadius:6,fontWeight:600,flexShrink:0,textTransform:"capitalize"}}>{a.type}</span>
             </div>
           ))}
         </div>
-        <div style={{background:"white",borderRadius:16,padding:"22px 24px",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",border:"1px solid #eef0f4"}}>
+        <div style={{background:"rgba(255,255,255,0.04)",borderRadius:16,padding:"22px 24px",border:"1px solid rgba(255,255,255,0.08)"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
-            <div style={{fontWeight:700,fontSize:15,color:"#1a1a2e"}}>📋 Recent Bookings</div>
-            <button onClick={()=>goTo("bookings")} style={{fontSize:12,color:"#d4850a",background:"#fff8ec",border:"none",padding:"4px 10px",borderRadius:6,cursor:"pointer",fontWeight:600,fontFamily:"'DM Sans'"}}>View all</button>
+            <div style={{fontWeight:700,fontSize:15,color:"#f0c060"}}>📋 Recent Bookings</div>
+            <button onClick={()=>goTo("bookings")} style={{fontSize:12,color:"#f0c060",background:"rgba(212,133,10,0.15)",border:"none",padding:"4px 10px",borderRadius:6,cursor:"pointer",fontWeight:600,fontFamily:"'DM Sans'"}}>View all</button>
           </div>
-          <div style={{fontSize:12,color:"#9ca3af",marginBottom:16}}>Latest vehicle bookings</div>
-          {recentBookings.length===0&&<div style={{textAlign:"center",padding:"32px 0",color:"#9ca3af"}}><div style={{fontSize:32,marginBottom:8}}>📭</div><div style={{fontSize:13}}>No bookings yet</div></div>}
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginBottom:16}}>Latest vehicle bookings</div>
+          {recentBookings.length===0&&<div style={{textAlign:"center",padding:"32px 0",color:"rgba(255,255,255,0.3)"}}><div style={{fontSize:32,marginBottom:8}}>📭</div><div style={{fontSize:13}}>No bookings yet</div></div>}
           {recentBookings.map((b,i)=>{
             const sc={pending:"#f59e0b",confirmed:"#16a34a",payment_requested:"#2563eb",cancelled:"#ef4444",completed:"#6b7280"}[b.status]||"#6b7280";
             return(
-              <div key={b._id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:i<recentBookings.length-1?"1px solid #f3f4f6":"none"}}>
-                <div style={{width:36,height:36,borderRadius:10,background:"#f5f6fa",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>🛵</div>
+              <div key={b._id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:i<recentBookings.length-1?"1px solid rgba(255,255,255,0.06)":"none"}}>
+                <div style={{width:36,height:36,borderRadius:10,background:"rgba(212,133,10,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>🛵</div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:600,color:"#1a1a2e",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{b.customerName}</div>
-                  <div style={{fontSize:12,color:"#9ca3af"}}>{b.vehicleName} · {fmtDate(b.checkIn)}</div>
+                  <div style={{fontSize:13,fontWeight:600,color:"white",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{b.customerName}</div>
+                  <div style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>{b.vehicleName} · {fmtDate(b.checkIn)}</div>
                 </div>
                 <span style={{fontSize:11,background:sc+"18",color:sc,padding:"2px 8px",borderRadius:6,fontWeight:600,flexShrink:0,textTransform:"capitalize"}}>{(b.status||"").replace("_"," ")}</span>
               </div>
@@ -1194,8 +1231,8 @@ function AdminDashboard({ data, goTo }) {
           })}
         </div>
       </div>
-      <div style={{background:"white",borderRadius:16,padding:"22px 24px",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",border:"1px solid #eef0f4"}}>
-        <div style={{fontWeight:700,fontSize:15,color:"#1a1a2e",marginBottom:16}}>⚡ Quick Actions</div>
+      <div style={{background:"rgba(255,255,255,0.04)",borderRadius:16,padding:"22px 24px",border:"1px solid rgba(255,255,255,0.08)"}}>
+        <div style={{fontWeight:700,fontSize:15,color:"#f0c060",marginBottom:16}}>⚡ Quick Actions</div>
         <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
           {[
             {label:"+ Add Rental",    color:"#2563eb",tab:"rentals"},
