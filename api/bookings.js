@@ -72,7 +72,37 @@ module.exports = async (req, res) => {
       }
       if (req.method === "DELETE") {
         await Booking.findByIdAndDelete(id);
+        // Also remove linked accounting entries for this booking
+        try {
+          const { connectDB } = require("./_db");
+          const mongoose = require("mongoose");
+          // Get or create Accounting model
+          const AccSchema = new mongoose.Schema({}, { strict: false });
+          const Acc = mongoose.models.Accounting || mongoose.model("Accounting", AccSchema);
+          await Acc.deleteMany({ linkedBookingId: id });
+        } catch(e) { console.error("Accounting cleanup error:", e.message); }
         return res.json({ success: true });
+      }
+    }
+
+    // Special: cleanup orphaned accounting entries
+    if (req.method === "DELETE" && req.query.cleanup === "accounting") {
+      try {
+        const mongoose = require("mongoose");
+        const AccSchema = new mongoose.Schema({}, { strict: false });
+        const Acc = mongoose.models.Accounting || mongoose.model("Accounting", AccSchema);
+        const allBookingIds = (await Booking.find({}, "_id").lean()).map(b => String(b._id));
+        const allEntries = await Acc.find({ linkedBookingId: { $exists: true, $ne: null } }).lean();
+        let deleted = 0;
+        for (const entry of allEntries) {
+          if (!allBookingIds.includes(String(entry.linkedBookingId))) {
+            await Acc.findByIdAndDelete(entry._id);
+            deleted++;
+          }
+        }
+        return res.json({ success: true, deleted, message: deleted + " orphaned accounting entries removed" });
+      } catch(e) {
+        return res.status(500).json({ error: e.message });
       }
     }
 
