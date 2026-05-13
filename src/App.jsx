@@ -1030,9 +1030,9 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
     {id:"villa",       label:"🏡 Villa"},
     {id:"testimonials",label:"⭐ Reviews"},
     {id:"inventory",   label:"📦 Inventory"},
+    {id:"tours",       label:"🗺 Tours & Taxi", badge: (data.tourBookings||[]).filter(b=>b.status==="pending").length},
     {id:"accounting",  label:"💰 Accounting"},
     {id:"bookings",    label:"📋 Bookings", badge: (data.bookings||[]).filter(b=>b.status==="pending").length},
-    {id:"tours",       label:"Tours & Taxi", badge: (data.tourBookings||[]).filter(b=>b.status==="pending").length},
   ];
   return (
     <div style={{minHeight:"100vh",background:"#0d1b2e",fontFamily:"'DM Sans',sans-serif",color:"white"}}>
@@ -1054,8 +1054,8 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
           <button onClick={onExit} style={{background:"transparent",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.7)",padding:"8px 18px",borderRadius:20,cursor:"pointer",fontSize:13}}>← View Site</button>
         </div>
       </div>
-      <div style={{display:"flex",minHeight:"calc(100vh - 64px)"}}>
-        <div style={{width:220,background:"rgba(0,0,0,0.2)",borderRight:"1px solid rgba(255,255,255,0.06)",padding:"24px 0",flexShrink:0,overflowY:"auto"}}>
+      <div style={{display:"flex",height:"calc(100vh - 64px)",overflow:"hidden"}}>
+        <div style={{width:220,background:"rgba(0,0,0,0.2)",borderRight:"1px solid rgba(255,255,255,0.06)",padding:"24px 0",flexShrink:0,overflowY:"auto",height:"100%"}}>
           {tabs.map(t=>(
             <button key={t.id} onClick={()=>{ setAdminTab(t.id); reload(); }} style={{width:"100%",padding:"11px 20px",textAlign:"left",background:adminTab===t.id?"rgba(212,133,10,0.15)":"transparent",border:"none",borderLeft:`3px solid ${adminTab===t.id?"#d4850a":"transparent"}`,color:adminTab===t.id?"#f0c060":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:14,fontFamily:"'DM Sans'",fontWeight:500,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                 <span>{t.label}</span>
@@ -1063,7 +1063,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
               </button>
           ))}
         </div>
-        <div style={{flex:1,padding:"32px",overflowY:"auto"}}>
+        <div style={{flex:1,padding:"32px",overflowY:"auto",height:"100%"}}>
           {adminTab==="agency"       && <AgencyEditor       data={data} api={api} reload={reload} showSaved={showSaved}/>}
           {adminTab==="rentals"      && <RentalsEditor      data={data} api={api} reload={reload} showSaved={showSaved}/>}
           {adminTab==="villa"        && <VillaEditor        data={data} api={api} reload={reload} showSaved={showSaved}/>}
@@ -1908,6 +1908,7 @@ function AccountingEditor({ data, api, reload, showSaved }) {
           <button onClick={exportCSV} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",color:"rgba(255,255,255,0.6)",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>↓ Export CSV</button>
           <button onClick={()=>startAdd("income")} style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Income</button>
           <button onClick={()=>startAdd("expense")} style={{background:"rgba(255,100,100,0.15)",border:"1px solid rgba(255,100,100,0.3)",color:"#ff6b6b",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Expense</button>
+          <button onClick={async()=>{ if(!window.confirm("Remove accounting entries linked to deleted bookings?")) return; const r=await api.delete("/bookings?cleanup=accounting"); alert(r.message||"Done"); await reload(); }} style={{background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.4)",border:"1px solid rgba(255,255,255,0.1)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>Clean Orphaned</button>
         </div>
       </div>
 
