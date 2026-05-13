@@ -1024,20 +1024,23 @@ function LoginScreen({ loginInput, setLoginInput, loginError, onLogin, onBack })
 
 // ─── Admin Panel Shell ───────────────────────────────────────────────────────
 function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, setAdminTab }) {
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const tabs = [
-    {id:"agency",      label:"🏢 Agency Info"},
-    {id:"rentals",     label:"🛵 Rentals"},
-    {id:"villa",       label:"🏡 Villa"},
-    {id:"testimonials",label:"⭐ Reviews"},
-    {id:"inventory",   label:"📦 Inventory"},
-    {id:"tours",       label:"🗺 Tours & Taxi", badge: (data.tourBookings||[]).filter(b=>b.status==="pending").length},
-    {id:"accounting",  label:"💰 Accounting"},
-    {id:"bookings",    label:"📋 Bookings", badge: (data.bookings||[]).filter(b=>b.status==="pending").length},
+    {id:"dashboard",   label:"Dashboard",   icon:"⊞"},
+    {id:"agency",      label:"Agency Info",  icon:"🏢"},
+    {id:"rentals",     label:"Rentals",      icon:"🛵"},
+    {id:"villa",       label:"Villa",        icon:"🏡"},
+    {id:"testimonials",label:"Reviews",      icon:"⭐"},
+    {id:"inventory",   label:"Inventory",    icon:"📦"},
+    {id:"tours",       label:"Tours & Taxi", icon:"🗺", badge: (data.tourBookings||[]).filter(b=>b.status==="pending").length},
+    {id:"accounting",  label:"Accounting",   icon:"💰"},
+    {id:"bookings",    label:"Bookings",     icon:"📋", badge: (data.bookings||[]).filter(b=>b.status==="pending").length},
   ];
+  const goTo = (id) => { setAdminTab(id); reload(); };
   return (
-    <div style={{minHeight:"100vh",background:"#0d1b2e",fontFamily:"'DM Sans',sans-serif",color:"white"}}>
+    <div style={{minHeight:"100vh",background:"#f5f6fa",fontFamily:"'DM Sans',sans-serif",color:"#1a1a2e",display:"flex"}}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Playfair+Display:wght@700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
         .adm-input{width:100%;padding:10px 14px;background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);border-radius:8px;color:white;font-family:'DM Sans';font-size:14px;outline:none;transition:border-color 0.2s;}
         .adm-input:focus{border-color:#d4850a;}
@@ -1046,32 +1049,165 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
         .adm-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;}
         select.adm-input{cursor:pointer;}
         .adm-stat{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:18px 20px;}
+        .tags-nav-btn{width:100%;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;font-family:'DM Sans';font-size:14px;font-weight:500;transition:all 0.15s;text-align:left;}
+        .tags-nav-btn:hover{background:rgba(212,133,10,0.08);}
+        .tags-nav-btn.active{background:#d4850a;color:white!important;}
+        .tags-stat-card{background:white;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.06);border:1px solid #eef0f4;}
+        .tags-content{flex:1;overflow-y:auto;height:100vh;}
+        ::-webkit-scrollbar{width:5px;height:5px;}
+        ::-webkit-scrollbar-track{background:transparent;}
+        ::-webkit-scrollbar-thumb{background:#d4850a55;border-radius:10px;}
       `}</style>
-      <div style={{background:"rgba(0,0,0,0.3)",borderBottom:"1px solid rgba(240,192,96,0.15)",padding:"0 32px",height:64,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <span style={{fontFamily:"'Playfair Display'",fontSize:20,color:"#f0c060"}}>Admin Panel</span>
-        <div style={{display:"flex",gap:12,alignItems:"center"}}>
-          {saved&&<span style={{color:"#4ade80",fontSize:13,display:"flex",alignItems:"center",gap:6}}><Icon name="check" size={16}/> Saved!</span>}
-          <button onClick={onExit} style={{background:"transparent",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.7)",padding:"8px 18px",borderRadius:20,cursor:"pointer",fontSize:13}}>← View Site</button>
+      {/* Sidebar */}
+      <div style={{width:sidebarOpen?220:68,flexShrink:0,background:"white",borderRight:"1px solid #eef0f4",display:"flex",flexDirection:"column",height:"100vh",position:"sticky",top:0,transition:"width 0.2s",overflow:"hidden"}}>
+        <div style={{padding:"20px 14px 16px",borderBottom:"1px solid #eef0f4",display:"flex",alignItems:"center",gap:10,minHeight:64}}>
+          <div style={{width:36,height:36,background:"#d4850a",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18,color:"white",fontWeight:700}}>T</div>
+          {sidebarOpen && <div><div style={{fontWeight:700,fontSize:14,color:"#1a1a2e",lineHeight:1.2}}>Travel Engineers</div><div style={{fontSize:11,color:"#9ca3af"}}>Admin Panel</div></div>}
+        </div>
+        <button onClick={()=>setSidebarOpen(o=>!o)} style={{margin:"10px auto",width:28,height:28,borderRadius:7,border:"1px solid #eef0f4",background:"white",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#6b7280",flexShrink:0}}>
+          {sidebarOpen?"◀":"▶"}
+        </button>
+        <nav style={{flex:1,padding:"4px 8px",overflowY:"auto"}}>
+          {tabs.map(t=>(
+            <button key={t.id} className={"tags-nav-btn"+(adminTab===t.id?" active":"")} style={{color:adminTab===t.id?"white":"#4b5563",marginBottom:2}} onClick={()=>goTo(t.id)}>
+              <span style={{fontSize:16,flexShrink:0,width:20,textAlign:"center"}}>{t.icon}</span>
+              {sidebarOpen&&<span style={{flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.label}</span>}
+              {sidebarOpen&&t.badge>0&&<span style={{background:"#ef4444",color:"white",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:10,minWidth:18,textAlign:"center",flexShrink:0}}>{t.badge}</span>}
+            </button>
+          ))}
+        </nav>
+        <div style={{padding:"12px 8px",borderTop:"1px solid #eef0f4"}}>
+          <button onClick={onExit} className="tags-nav-btn" style={{color:"#6b7280"}}>
+            <span style={{fontSize:16,flexShrink:0,width:20,textAlign:"center"}}>↗</span>
+            {sidebarOpen&&<span>View Site</span>}
+          </button>
         </div>
       </div>
-      <div style={{display:"flex",height:"calc(100vh - 64px)",overflow:"hidden"}}>
-        <div style={{width:220,background:"rgba(0,0,0,0.2)",borderRight:"1px solid rgba(255,255,255,0.06)",padding:"24px 0",flexShrink:0,overflowY:"auto",height:"100%"}}>
-          {tabs.map(t=>(
-            <button key={t.id} onClick={()=>{ setAdminTab(t.id); reload(); }} style={{width:"100%",padding:"11px 20px",textAlign:"left",background:adminTab===t.id?"rgba(212,133,10,0.15)":"transparent",border:"none",borderLeft:`3px solid ${adminTab===t.id?"#d4850a":"transparent"}`,color:adminTab===t.id?"#f0c060":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:14,fontFamily:"'DM Sans'",fontWeight:500,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <span>{t.label}</span>
-                {t.badge>0&&<span style={{background:"#ef4444",color:"white",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:10,minWidth:18,textAlign:"center"}}>{t.badge}</span>}
-              </button>
+      {/* Main */}
+      <div className="tags-content">
+        <div style={{background:"white",borderBottom:"1px solid #eef0f4",padding:"0 28px",height:64,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
+          <div>
+            <div style={{fontWeight:700,fontSize:18,color:"#1a1a2e"}}>{tabs.find(t=>t.id===adminTab)?.label||"Dashboard"}</div>
+            <div style={{fontSize:12,color:"#9ca3af"}}>{adminTab==="dashboard"?"Overview & quick stats":`Manage your ${(tabs.find(t=>t.id===adminTab)?.label||"").toLowerCase()}`}</div>
+          </div>
+          {saved&&<span style={{color:"#16a34a",fontSize:13,fontWeight:600}}>✓ Saved!</span>}
+        </div>
+        <div style={{padding:adminTab==="dashboard"?"28px":"0"}}>
+          {adminTab==="dashboard"&&<AdminDashboard data={data} goTo={goTo}/>}
+          {adminTab!=="dashboard"&&(
+            <div style={{background:"#0d1b2e",color:"white",minHeight:"100%",padding:"32px"}}>
+              {adminTab==="agency"       &&<AgencyEditor       data={data} api={api} reload={reload} showSaved={showSaved}/>}
+              {adminTab==="rentals"      &&<RentalsEditor      data={data} api={api} reload={reload} showSaved={showSaved}/>}
+              {adminTab==="villa"        &&<VillaEditor        data={data} api={api} reload={reload} showSaved={showSaved}/>}
+              {adminTab==="testimonials" &&<TestimonialsEditor data={data} api={api} reload={reload} showSaved={showSaved}/>}
+              {adminTab==="inventory"    &&<InventoryEditor    data={data} api={api} reload={reload} showSaved={showSaved}/>}
+              {adminTab==="accounting"   &&<AccountingEditor   data={data} api={api} reload={reload} showSaved={showSaved}/>}
+              {adminTab==="bookings"     &&<BookingsEditor     data={data} api={api} reload={reload} showSaved={showSaved} rentals={data.rentals||[]}/>}
+              {adminTab==="tours"        &&<ToursEditor        data={data} api={api} reload={reload} showSaved={showSaved}/>}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Admin Dashboard ──────────────────────────────────────────────────────────
+function AdminDashboard({ data, goTo }) {
+  const bookings     = data.bookings     || [];
+  const tourBookings = data.tourBookings || [];
+  const rentals      = data.rentals      || [];
+  const accData      = data.accounting   || { summary:{totalIncome:0,totalExpense:0,netProfit:0}, transactions:[] };
+  const pendingBookings   = bookings.filter(b=>b.status==="pending");
+  const confirmedBookings = bookings.filter(b=>b.status==="confirmed");
+  const pendingTours      = tourBookings.filter(b=>b.status==="pending");
+  const income     = accData.summary?.totalIncome  || 0;
+  const expense    = accData.summary?.totalExpense || 0;
+  const profit     = income - expense;
+  const available  = rentals.filter(r=>r.available).length;
+  const fmt      = (n) => `₹${Number(n||0).toLocaleString("en-IN")}`;
+  const fmtDate  = (d) => d?new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short"}):"—";
+  const statCards = [
+    {label:"Total Bookings",     value:bookings.length,     sub:`${pendingBookings.length} pending`,   color:"#d4850a",bg:"#fff8ec",icon:"📋",tab:"bookings"},
+    {label:"Vehicles Available", value:available,           sub:`of ${rentals.length} total`,          color:"#2563eb",bg:"#eff6ff",icon:"🛵",tab:"rentals"},
+    {label:"Net Profit",         value:fmt(profit),         sub:`Income ${fmt(income)}`,               color:"#16a34a",bg:"#f0fdf4",icon:"💰",tab:"accounting"},
+    {label:"Tour Bookings",      value:tourBookings.length, sub:`${pendingTours.length} need action`,  color:"#7c3aed",bg:"#f5f3ff",icon:"🗺",tab:"tours"},
+  ];
+  const recentBookings = [...bookings].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,5);
+  const pendingActions = [
+    ...pendingBookings.map(b=>({label:`New booking — ${b.customerName}`,sub:`${b.vehicleName} · ${fmtDate(b.checkIn)}`,color:"#d4850a",tab:"bookings",type:"booking"})),
+    ...pendingTours.map(b=>({label:`Tour request — ${b.customerName}`,sub:b.tourTitle||"Tour",color:"#7c3aed",tab:"tours",type:"tour"})),
+  ].slice(0,6);
+  return (
+    <div>
+      <div style={{marginBottom:24}}>
+        <h1 style={{fontSize:26,fontWeight:700,color:"#1a1a2e"}}>Welcome back 👋</h1>
+        <p style={{color:"#6b7280",fontSize:14,marginTop:4}}>Here's what's happening with Travel Engineers this month.</p>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:16,marginBottom:24}}>
+        {statCards.map(c=>(
+          <div key={c.label} style={{background:"white",borderRadius:16,padding:"22px 24px",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",border:"1px solid #eef0f4",cursor:"pointer"}} onClick={()=>goTo(c.tab)}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+              <span style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.5px"}}>{c.label}</span>
+              <div style={{width:36,height:36,borderRadius:10,background:c.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{c.icon}</div>
+            </div>
+            <div style={{fontSize:28,fontWeight:700,color:c.color,lineHeight:1}}>{c.value}</div>
+            <div style={{fontSize:12,color:"#9ca3af",marginTop:6}}>{c.sub}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+        <div style={{background:"white",borderRadius:16,padding:"22px 24px",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",border:"1px solid #eef0f4"}}>
+          <div style={{fontWeight:700,fontSize:15,color:"#1a1a2e",marginBottom:4}}>🔔 Pending Actions</div>
+          <div style={{fontSize:12,color:"#9ca3af",marginBottom:16}}>{pendingActions.length} items need your attention</div>
+          {pendingActions.length===0&&<div style={{textAlign:"center",padding:"32px 0",color:"#9ca3af"}}><div style={{fontSize:32,marginBottom:8}}>✅</div><div style={{fontSize:13}}>All caught up!</div></div>}
+          {pendingActions.map((a,i)=>(
+            <div key={i} onClick={()=>goTo(a.tab)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:i<pendingActions.length-1?"1px solid #f3f4f6":"none",cursor:"pointer"}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:a.color,flexShrink:0}}></div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:600,color:"#1a1a2e",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.label}</div>
+                <div style={{fontSize:12,color:"#9ca3af"}}>{a.sub}</div>
+              </div>
+              <span style={{fontSize:11,background:a.color+"18",color:a.color,padding:"2px 8px",borderRadius:6,fontWeight:600,flexShrink:0,textTransform:"capitalize"}}>{a.type}</span>
+            </div>
           ))}
         </div>
-        <div style={{flex:1,padding:"32px",overflowY:"auto",height:"100%"}}>
-          {adminTab==="agency"       && <AgencyEditor       data={data} api={api} reload={reload} showSaved={showSaved}/>}
-          {adminTab==="rentals"      && <RentalsEditor      data={data} api={api} reload={reload} showSaved={showSaved}/>}
-          {adminTab==="villa"        && <VillaEditor        data={data} api={api} reload={reload} showSaved={showSaved}/>}
-          {adminTab==="testimonials" && <TestimonialsEditor data={data} api={api} reload={reload} showSaved={showSaved}/>}
-          {adminTab==="inventory"    && <InventoryEditor    data={data} api={api} reload={reload} showSaved={showSaved}/>}
-          {adminTab==="accounting"   && <AccountingEditor   data={data} api={api} reload={reload} showSaved={showSaved}/>}
-          {adminTab==="bookings"     && <BookingsEditor     data={data} api={api} reload={reload} showSaved={showSaved} rentals={data.rentals||[]}/>}
-          {adminTab==="tours"        && <ToursEditor        data={data} api={api} reload={reload} showSaved={showSaved}/>}
+        <div style={{background:"white",borderRadius:16,padding:"22px 24px",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",border:"1px solid #eef0f4"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+            <div style={{fontWeight:700,fontSize:15,color:"#1a1a2e"}}>📋 Recent Bookings</div>
+            <button onClick={()=>goTo("bookings")} style={{fontSize:12,color:"#d4850a",background:"#fff8ec",border:"none",padding:"4px 10px",borderRadius:6,cursor:"pointer",fontWeight:600,fontFamily:"'DM Sans'"}}>View all</button>
+          </div>
+          <div style={{fontSize:12,color:"#9ca3af",marginBottom:16}}>Latest vehicle bookings</div>
+          {recentBookings.length===0&&<div style={{textAlign:"center",padding:"32px 0",color:"#9ca3af"}}><div style={{fontSize:32,marginBottom:8}}>📭</div><div style={{fontSize:13}}>No bookings yet</div></div>}
+          {recentBookings.map((b,i)=>{
+            const sc={pending:"#f59e0b",confirmed:"#16a34a",payment_requested:"#2563eb",cancelled:"#ef4444",completed:"#6b7280"}[b.status]||"#6b7280";
+            return(
+              <div key={b._id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:i<recentBookings.length-1?"1px solid #f3f4f6":"none"}}>
+                <div style={{width:36,height:36,borderRadius:10,background:"#f5f6fa",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>🛵</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:600,color:"#1a1a2e",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{b.customerName}</div>
+                  <div style={{fontSize:12,color:"#9ca3af"}}>{b.vehicleName} · {fmtDate(b.checkIn)}</div>
+                </div>
+                <span style={{fontSize:11,background:sc+"18",color:sc,padding:"2px 8px",borderRadius:6,fontWeight:600,flexShrink:0,textTransform:"capitalize"}}>{(b.status||"").replace("_"," ")}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{background:"white",borderRadius:16,padding:"22px 24px",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",border:"1px solid #eef0f4"}}>
+        <div style={{fontWeight:700,fontSize:15,color:"#1a1a2e",marginBottom:16}}>⚡ Quick Actions</div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          {[
+            {label:"+ Add Rental",    color:"#2563eb",tab:"rentals"},
+            {label:"+ Add Tour",      color:"#7c3aed",tab:"tours"},
+            {label:"View Accounting", color:"#16a34a",tab:"accounting"},
+            {label:"Manage Inventory",color:"#d4850a",tab:"inventory"},
+            {label:"Edit Agency Info", color:"#6b7280",tab:"agency"},
+          ].map(q=>(
+            <button key={q.label} onClick={()=>goTo(q.tab)} style={{padding:"9px 18px",borderRadius:8,border:`1.5px solid ${q.color}22`,background:`${q.color}10`,color:q.color,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:"'DM Sans'"}}>
+              {q.label}
+            </button>
+          ))}
         </div>
       </div>
     </div>
