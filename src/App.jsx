@@ -794,7 +794,7 @@ function ToursEditor({ data, api, reload, showSaved }) {
                   </select>
                 </div>
                 <div><label className="adm-label">Duration</label><input className="adm-input" value={form.duration||""} onChange={e=>set("duration",e.target.value)} placeholder="e.g. 1 Day / 3D 2N"/></div>
-                <div><label className="adm-label">Base Price (Rs.)</label><input className="adm-input" type="number" value={form.basePrice||0} onChange={e=>set("basePrice",Number(e.target.value))}/></div>
+                <div><label className="adm-label">Base Price (Rs.)</label><input className="adm-input" type="number" value={form.basePrice===0||form.basePrice?""+form.basePrice:""} onChange={e=>set("basePrice",e.target.value===""?"":Number(e.target.value))} placeholder="0"/></div>
                 <div><label className="adm-label">Price Label</label><input className="adm-input" value={form.priceLabel||""} onChange={e=>set("priceLabel",e.target.value)} placeholder="per package / per person"/></div>
                 <div><label className="adm-label">Max Pax</label><input className="adm-input" type="number" value={form.maxPax||6} onChange={e=>set("maxPax",Number(e.target.value))}/></div>
                 <div><label className="adm-label">Tag (optional)</label><input className="adm-input" value={form.tag||""} onChange={e=>set("tag",e.target.value)} placeholder="Popular / Best Value"/></div>
