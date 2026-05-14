@@ -64,7 +64,7 @@ function MobileNav({ agency, activeNav, setActiveNav }) {
     <>
       <nav style={{position:"fixed",top:0,left:0,right:0,zIndex:100,padding:"0 5%",height:70,display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(10,22,40,0.95)",backdropFilter:"blur(12px)",borderBottom:"1px solid rgba(212,133,10,0.2)"}}>
         <div style={{cursor:"pointer",display:"flex",alignItems:"center"}} onClick={()=>scrollTo("home")}>
-          <LogoAnimation size={58} />
+          <LogoAnimation size={52} />
         </div>
         <div className="nav-desktop" style={{display:"flex",gap:28,alignItems:"center"}}>
           {["home","rentals","villa","tours","contact"].map(n=>(
@@ -364,11 +364,20 @@ export default function App() {
 
       {/* HERO */}
       <section id="sec-home" style={{height:"100vh",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+        {/* Hero image */}
         <div style={{position:"absolute",inset:0,backgroundImage:`url(${agency.heroImage})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(0.4)"}} />
+        {/* Dark gradient overlay */}
         <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,transparent 40%,rgba(10,22,40,0.9))"}} />
-        <div style={{position:"relative",textAlign:"center",color:"white",padding:"0 20px",display:"flex",flexDirection:"column",alignItems:"center"}}>
-          <LogoAnimation size={340} />
-          <div style={{marginTop:32,display:"flex",gap:16,justifyContent:"center",flexWrap:"wrap"}}>
+        {/* Watermark animation — centered, large, low opacity */}
+        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:0.13,pointerEvents:"none"}}>
+          <LogoAnimation size={680} />
+        </div>
+        {/* Foreground text — unchanged from original */}
+        <div style={{position:"relative",textAlign:"center",color:"white",padding:"0 20px",maxWidth:800}}>
+          <div className="hero-text" style={{fontFamily:"'DM Sans'",fontSize:13,letterSpacing:4,color:"#f0c060",marginBottom:18,textTransform:"uppercase"}}>{agency.heroSubtitle}</div>
+          <h1 className="hero-text" style={{fontFamily:"'Playfair Display'",fontSize:"clamp(42px,8vw,88px)",fontWeight:900,lineHeight:1.05,marginBottom:20,animationDelay:"0.2s"}}>{agency.name}</h1>
+          <p className="hero-text" style={{fontFamily:"'Lora'",fontSize:"clamp(16px,2vw,22px)",color:"rgba(255,255,255,0.8)",marginBottom:40,fontStyle:"italic",animationDelay:"0.4s"}}>{agency.tagline}</p>
+          <div style={{display:"flex",gap:16,justifyContent:"center",flexWrap:"wrap"}}>
             <button className="btn-primary" onClick={()=>document.getElementById("sec-rentals")?.scrollIntoView({behavior:"smooth"})}>Explore Rentals →</button>
             <button className="btn-outline" onClick={()=>document.getElementById("sec-villa")?.scrollIntoView({behavior:"smooth"})}>View Villa</button>
           </div>
