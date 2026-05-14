@@ -47,7 +47,7 @@ function ImageUpload({ value, onChange, label="Image" }) {
           <input type="file" accept="image/*,video/*" onChange={handleFile} style={{display:"none"}} disabled={uploading} />
         </label>
       </div>
-      {value && <img src={value} alt="" style={{marginTop:8,width:"100%",height:140,objectFit:"cover",borderRadius:8,opacity:0.8}} onError={e=>e.target.style.display="none"} />}
+      {value && <img src={value} alt="" style={{marginTop:8,width:"100%",height:140,objectFit:"cover",borderRadius:8,opacity:0.8}} onError={e=>{e.target.style.display="none"}} />}
     </div>
   );
 }
@@ -1355,7 +1355,7 @@ function LoginScreen({ loginInput, setLoginInput, loginError, onLogin, onBack, a
       <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');`}</style>
       {/* Full-bleed hero image */}
       <div style={{position:"absolute",inset:0,background:"#0a1628"}}>
-        {heroImage && <img src={heroImage} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.45}} onError={e=>e.target.style.display="none"} />}
+        {heroImage && <img src={heroImage} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.45}} onError={e=>{e.target.style.display="none"}} />}
         <div style={{position:"absolute",inset:0,background:"linear-gradient(135deg,rgba(10,22,40,0.82) 0%,rgba(10,22,40,0.55) 50%,rgba(10,22,40,0.75) 100%)"}}></div>
       </div>
       {/* Left — branding (hidden on mobile) */}
@@ -1364,4 +1364,4 @@ function LoginScreen({ loginInput, setLoginInput, loginError, onLogin, onBack, a
           <div style={{width:10,height:10,borderRadius:"50%",background:"#d4850a"}}></div>
           <span style={{fontSize:13,fontWeight:600,color:"rgba(255,255,255,0.6)",letterSpacing:"2px",textTransform:"uppercase"}}>Admin Portal</span>
         </div>
-        <h1 style={{fontFamily:"'Playfair Display'",fontSize:"clamp(36px,4vw,60px)",color:"white",lineHeight:1.15,marginBottom:16,fontWeig
+        <h1 style={{fontFamily:"'Playfair Display'",fontSize:"clamp(36px,4vw,60px)",color:"white",lineHeight:1.15,marginBottom:16,font
