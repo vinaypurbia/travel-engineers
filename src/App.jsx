@@ -1,5 +1,5 @@
 // v4
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 const API = "/api";
 
@@ -94,11 +94,11 @@ function MobileNav({ agency, activeNav, setActiveNav }) {
 
 // ─── Logo Animation Component ─────────────────────────────────────────────────
 function LogoAnimation({ size = 200 }) {
-  const canvasRef = React.useRef(null);
-  const rafRef = React.useRef(null);
-  const tRef = React.useRef(0);
+  const canvasRef = useRef(null);
+  const rafRef = useRef(null);
+  const tRef = useRef(0);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
