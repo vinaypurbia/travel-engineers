@@ -64,7 +64,7 @@ function MobileNav({ agency, activeNav, setActiveNav }) {
     <>
       <nav style={{position:"fixed",top:0,left:0,right:0,zIndex:100,padding:"0 5%",height:70,display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(10,22,40,0.95)",backdropFilter:"blur(12px)",borderBottom:"1px solid rgba(212,133,10,0.2)"}}>
         <div style={{cursor:"pointer",display:"flex",alignItems:"center"}} onClick={()=>scrollTo("home")}>
-          {/* Show full LogoAnimation canvas — it renders the compass + TRAVEL ENGINEERS text */}
+          {/* Show full LogoAnimation canvas - it renders the compass + TRAVEL ENGINEERS text */}
           <LogoAnimation size={58} />
         </div>
         <div className="nav-desktop" style={{display:"flex",gap:28,alignItems:"center"}}>
@@ -471,7 +471,7 @@ export default function App() {
         {/* Dark gradient overlay */}
         <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,transparent 40%,rgba(10,22,40,0.9))"}} />
 
-        {/* Foreground text — unchanged from original */}
+        {/* Foreground text - unchanged from original */}
         <div style={{position:"relative",textAlign:"center",color:"white",padding:"0 20px",maxWidth:800}}>
           <div className="hero-text" style={{fontFamily:"'DM Sans'",fontSize:13,letterSpacing:4,color:"#f0c060",marginBottom:18,textTransform:"uppercase"}}>{agency.heroSubtitle}</div>
           <h1 className="hero-text" style={{fontFamily:"'Playfair Display'",fontSize:"clamp(42px,8vw,88px)",fontWeight:900,lineHeight:1.05,marginBottom:20,animationDelay:"0.2s"}}>{agency.name}</h1>
@@ -1358,7 +1358,7 @@ function LoginScreen({ loginInput, setLoginInput, loginError, onLogin, onBack, a
         {heroImage && <img src={heroImage} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.45}} onError={e=>{e.target.style.display="none"}} />}
         <div style={{position:"absolute",inset:0,background:"linear-gradient(135deg,rgba(10,22,40,0.82) 0%,rgba(10,22,40,0.55) 50%,rgba(10,22,40,0.75) 100%)"}}></div>
       </div>
-      {/* Left — branding (hidden on mobile) */}
+      {/* Left - branding (hidden on mobile) */}
       <div className="login-left" style={{flex:1,position:"relative",display:"flex",flexDirection:"column",justifyContent:"center",padding:"60px 64px",zIndex:1}}>
         <div style={{display:"inline-flex",alignItems:"center",gap:10,marginBottom:40}}>
           <div style={{width:10,height:10,borderRadius:"50%",background:"#d4850a"}}></div>
