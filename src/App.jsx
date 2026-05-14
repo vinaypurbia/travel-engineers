@@ -62,13 +62,15 @@ function MobileNav({ agency, activeNav, setActiveNav }) {
   };
   return (
     <>
-      <nav style={{position:"fixed",top:0,left:0,right:0,zIndex:100,padding:"0 5%",height:70,display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(10,22,40,0.95)",backdropFilter:"blur(12px)",borderBottom:"1px solid rgba(212,133,10,0.2)"}}>
-        <div style={{fontFamily:"'Playfair Display'",fontWeight:900,fontSize:22,color:"#f0c060",cursor:"pointer"}} onClick={()=>scrollTo("home")}>
-          {agency.name}
+      <nav style={{position:"fixed",top:0,left:0,right:0,zIndex:100,padding:"0 5%",height:70,display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(245,240,232,0.97)",backdropFilter:"blur(12px)",borderBottom:"1px solid rgba(212,133,10,0.2)"}}>
+        <div style={{fontFamily:"'Playfair Display'",fontWeight:900,fontSize:22,color:"#1a1210",cursor:"pointer"}} onClick={()=>scrollTo("home")}>
+          {agency.logoImage
+            ? <img src={agency.logoImage} alt={agency.name} style={{height:44,maxWidth:160,objectFit:"contain"}}/>
+            : agency.name}
         </div>
         <div className="nav-desktop" style={{display:"flex",gap:28,alignItems:"center"}}>
           {["home","rentals","villa","tours","contact"].map(n=>(
-            <span key={n} className="nav-link" style={{color:activeNav===n?"#f0c060":"rgba(255,255,255,0.7)"}}
+            <span key={n} className="nav-link" style={{color:activeNav===n?"#d4850a":"#1a1210",fontWeight:activeNav===n?"600":"400"}}
               onClick={()=>scrollTo(n)}>{n}</span>
           ))}
         </div>
@@ -174,7 +176,7 @@ export default function App() {
   const filtered = filterType === "all" ? rentals : rentals.filter(r => r.type === filterType);
 
   return (
-    <div style={{fontFamily:"'Lora',Georgia,serif",background:"#faf8f3",color:"#1a1a2e",minHeight:"100vh",overflowX:"hidden",maxWidth:"100vw"}}>
+    <div style={{fontFamily:"'Lora',Georgia,serif",background:"#f5f0e8",color:"#1a1210",minHeight:"100vh",overflowX:"hidden",maxWidth:"100vw"}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Lora:wght@400;600;700&family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
@@ -204,7 +206,7 @@ export default function App() {
 
       {/* HERO */}
       <section id="sec-home" style={{height:"100vh",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
-        <div style={{position:"absolute",inset:0,backgroundImage:`url(${agency.heroImage})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(0.4)"}} />
+        <div style={{position:"absolute",inset:0,backgroundImage:`url(${agency.heroImage})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(0.35)"}} />
         <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,transparent 40%,rgba(10,22,40,0.9))"}} />
         <div style={{position:"relative",textAlign:"center",color:"white",padding:"0 20px",maxWidth:800}}>
           <div className="hero-text" style={{fontFamily:"'DM Sans'",fontSize:13,letterSpacing:4,color:"#f0c060",marginBottom:18,textTransform:"uppercase"}}>{agency.heroSubtitle}</div>
@@ -228,7 +230,7 @@ export default function App() {
           { value: vehicles || 0, label: "Vehicles" },
           { value: "24/7", label: "Support" }];
         return (
-          <div style={{background:"#0a1628",padding:"28px 5%",display:"flex",justifyContent:"space-around",flexWrap:"wrap",gap:20}}>
+          <div style={{background:"#1a1210",padding:"28px 5%",display:"flex",justifyContent:"space-around",flexWrap:"wrap",gap:20}}>
             {dynamicStats.map((s,i)=>(
               <div key={i} style={{textAlign:"center"}}>
                 <div style={{fontFamily:"'Playfair Display'",fontSize:32,fontWeight:900,color:"#f0c060"}}>{s.value}</div>
@@ -291,7 +293,7 @@ export default function App() {
       </section>
 
       {/* VILLA */}
-      <section id="sec-villa" style={{padding:"100px 5%",background:"#0a1628",color:"white"}}>
+      <section id="sec-villa" style={{padding:"100px 5%",background:"#fffdf9",color:"#1a1210"}}>
         <div style={{maxWidth:1100,margin:"0 auto"}}>
           <div style={{textAlign:"center",marginBottom:60}}>
             <div style={{fontFamily:"'DM Sans'",fontSize:12,letterSpacing:4,color:"#f0c060",textTransform:"uppercase",marginBottom:12}}>Private Luxury</div>
@@ -406,7 +408,7 @@ export default function App() {
       </section>
 
       {/* CONTACT */}
-      <section id="sec-contact" style={{background:"#0a1628",padding:"100px 5%",color:"white"}}>
+      <section id="sec-contact" style={{background:"#1a1210",padding:"100px 5%",color:"white"}}>
         <div style={{maxWidth:900,margin:"0 auto",textAlign:"center"}}>
           <h2 className="section-title" style={{color:"white",marginBottom:20}}>Contact Us</h2>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:24,marginBottom:48}}>
@@ -1371,6 +1373,7 @@ function AgencyEditor({ data, api, reload, showSaved }) {
         <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Address</label><input className="adm-input" value={form.address||""} onChange={e=>set("address",e.target.value)}/></div>
         <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Office Google Maps URL</label><input className="adm-input" value={form.googleMapUrl||""} onChange={e=>set("googleMapUrl",e.target.value)} placeholder="https://maps.google.com/..."/><div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:4}}>Paste the Google Maps share link for your office location</div></div>
         <div style={{gridColumn:"1 / -1"}}><ImageUpload label="Hero Image" value={form.heroImage} onChange={v=>set("heroImage",v)}/></div>
+        <div style={{gridColumn:"1 / -1"}}><ImageUpload label="Agency Logo" value={form.logoImage} onChange={v=>set("logoImage",v)}/><div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:4}}>Upload your agency logo (shown in navbar and footer)</div></div>
       </div>
       <button onClick={save} disabled={saving} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"12px 32px",borderRadius:10,fontWeight:700,fontSize:14,cursor:saving?"not-allowed":"pointer",opacity:saving?0.7:1}}>{saving?"Saving...":"Save Changes"}</button>
     </div>
