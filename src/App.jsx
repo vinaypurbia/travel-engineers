@@ -63,10 +63,8 @@ function MobileNav({ agency, activeNav, setActiveNav }) {
   return (
     <>
       <nav style={{position:"fixed",top:0,left:0,right:0,zIndex:100,padding:"0 5%",height:70,display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(10,22,40,0.95)",backdropFilter:"blur(12px)",borderBottom:"1px solid rgba(212,133,10,0.2)"}}>
-        <div style={{fontFamily:"'Playfair Display'",fontWeight:900,fontSize:22,color:"#f0c060",cursor:"pointer"}} onClick={()=>scrollTo("home")}>
-          {agency.logoImage
-            ? <img src={agency.logoImage} alt={agency.name} style={{height:44,maxWidth:160,objectFit:"contain"}}/>
-            : agency.name}
+        <div style={{cursor:"pointer",display:"flex",alignItems:"center"}} onClick={()=>scrollTo("home")}>
+          <LogoAnimation size={58} />
         </div>
         <div className="nav-desktop" style={{display:"flex",gap:28,alignItems:"center"}}>
           {["home","rentals","villa","tours","contact"].map(n=>(
@@ -91,6 +89,166 @@ function MobileNav({ agency, activeNav, setActiveNav }) {
         </div>
       )}
     </>
+  );
+}
+
+// ─── Logo Animation Component ─────────────────────────────────────────────────
+function LogoAnimation({ size = 200 }) {
+  const canvasRef = React.useRef(null);
+  const rafRef = React.useRef(null);
+  const tRef = React.useRef(0);
+
+  React.useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const S = size;
+    const cx = S / 2, cy = S * 0.44;
+    const scale = S / 400;
+    const GOLD = '#d4850a', MUTED = '#c8b898', DARK = '#0a1628', WHITE = '#ffffff';
+
+    const easeOut = (t, p=3) => 1 - Math.pow(1-t, p);
+    const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+
+    const T = {
+      spinEnd:2.2, titleWoosh:0.4, titleEnd:1.4,
+      settleStart:2.0, settleEnd:3.2,
+      taglineStart:3.0, taglineEnd:4.6, total:5.0
+    };
+
+    function drawCompass(angle, alpha) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(cx, cy);
+      ctx.scale(scale, scale);
+      [118,105].forEach(r => {
+        ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2);
+        ctx.strokeStyle = GOLD; ctx.lineWidth = 0.6;
+        ctx.globalAlpha = alpha * 0.18; ctx.stroke();
+      });
+      ctx.globalAlpha = alpha;
+      ctx.beginPath(); ctx.arc(0,0,92,0,Math.PI*2);
+      ctx.fillStyle = WHITE; ctx.fill();
+      ctx.strokeStyle = GOLD; ctx.lineWidth = 1.8; ctx.stroke();
+      ctx.beginPath(); ctx.arc(0,0,80,0,Math.PI*2);
+      ctx.strokeStyle = GOLD; ctx.lineWidth = 0.6;
+      ctx.globalAlpha = alpha * 0.3; ctx.stroke();
+      ctx.globalAlpha = alpha;
+      ctx.rotate(angle);
+      ctx.strokeStyle = GOLD; ctx.lineWidth = 2;
+      [[0,-92,0,-80],[0,92,0,80],[-92,0,-80,0],[92,0,80,0]].forEach(([x1,y1,x2,y2]) => {
+        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+      });
+      ctx.lineWidth = 1; ctx.globalAlpha = alpha * 0.4;
+      [[65,-65,57,-57],[65,65,57,57],[-65,-65,-57,-57],[-65,65,-57,57]].forEach(([x1,y1,x2,y2]) => {
+        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+      });
+      ctx.globalAlpha = alpha;
+      ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      [['N',0,-78,GOLD],['S',0,78,'#8a7868'],['W',-78,0,'#8a7868'],['E',78,0,'#8a7868']].forEach(([l,x,y,col]) => {
+        ctx.fillStyle = col; ctx.fillText(l,x,y);
+      });
+      ctx.fillStyle = GOLD;
+      ctx.beginPath(); ctx.moveTo(0,-66); ctx.lineTo(6,0); ctx.lineTo(0,-14); ctx.lineTo(-6,0); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = MUTED;
+      ctx.beginPath(); ctx.moveTo(0,66); ctx.lineTo(6,0); ctx.lineTo(0,14); ctx.lineTo(-6,0); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.arc(0,0,8,0,Math.PI*2); ctx.fillStyle = DARK; ctx.fill();
+      ctx.strokeStyle = GOLD; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.beginPath(); ctx.arc(0,0,3.5,0,Math.PI*2); ctx.fillStyle = GOLD; ctx.fill();
+      ctx.restore();
+    }
+
+    function drawTitle(progress) {
+      if (progress <= 0) return;
+      const p = clamp(progress, 0, 1);
+      ctx.save();
+      const fs = Math.max(11, Math.round(32 * scale));
+      ctx.font = `bold ${fs}px Georgia, serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const slideX = (1 - easeOut(p, 4)) * 200 * scale;
+      const alpha = easeOut(p, 2);
+      const ty = cy + 128 * scale, ey = cy + 163 * scale;
+      if (slideX > 2) {
+        ctx.globalAlpha = alpha * 0.15;
+        ctx.fillStyle = WHITE; ctx.fillText('TRAVEL', cx + slideX*1.6 + 40*scale, ty);
+        ctx.fillStyle = GOLD;  ctx.fillText('ENGINEERS', cx + slideX*1.3 + 30*scale, ey);
+      }
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = WHITE; ctx.fillText('TRAVEL', cx + slideX, ty);
+      ctx.fillStyle = GOLD;  ctx.fillText('ENGINEERS', cx + slideX, ey);
+      if (p > 0.6) {
+        const dp = easeOut((p-0.6)/0.4);
+        const divW = 70 * dp * scale;
+        const dy = cy + 147 * scale;
+        ctx.globalAlpha = alpha * 0.45;
+        ctx.strokeStyle = GOLD; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(cx-20*scale-divW, dy); ctx.lineTo(cx-24*scale, dy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx+24*scale, dy); ctx.lineTo(cx+20*scale+divW, dy); ctx.stroke();
+        ctx.fillStyle = GOLD;
+        ctx.beginPath();
+        ctx.moveTo(cx, dy-4*scale); ctx.lineTo(cx+4*scale,dy); ctx.lineTo(cx,dy+4*scale); ctx.lineTo(cx-4*scale,dy);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function drawTagline(progress) {
+      if (progress <= 0) return;
+      const chars = 'WE KNOW THE WAY'.split('');
+      ctx.save();
+      const fs = Math.max(11, Math.round(12 * scale));
+      ctx.font = `400 ${fs}px Arial, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const charW = 11 * scale;
+      const startX = cx - (chars.length * charW)/2 + charW/2;
+      const baseY = cy + 200 * scale;
+      chars.forEach((ch, i) => {
+        const delay = i / chars.length * 0.7;
+        const p = clamp((progress - delay) / 0.35, 0, 1);
+        const ep = easeOut(p, 2);
+        ctx.globalAlpha = ep;
+        ctx.fillStyle = '#8a7868';
+        ctx.fillText(ch, startX + i * charW, baseY + (1-ep) * 18 * scale);
+      });
+      ctx.restore();
+    }
+
+    function frame() {
+      ctx.clearRect(0, 0, S, S * 1.1);
+      const sec = tRef.current / 60;
+      let needleAngle = 0;
+      if (sec < T.spinEnd) {
+        const sp = sec / T.spinEnd;
+        const speed = Math.pow(1 - easeOut(sp,2), 2) * 25 + 0.02;
+        needleAngle = -tRef.current * speed * 0.3;
+      }
+      if (sec > T.settleStart) {
+        const settle = clamp((sec - T.settleStart)/(T.settleEnd - T.settleStart), 0, 1);
+        needleAngle = Math.sin(easeOut(settle)*Math.PI*3) * (1 - easeOut(settle,2)) * 0.25;
+      }
+      drawCompass(needleAngle, clamp(sec/0.3, 0, 1));
+      drawTitle(clamp((sec - T.titleWoosh)/(T.titleEnd - T.titleWoosh), 0, 1));
+      drawTagline(clamp((sec - T.taglineStart)/(T.taglineEnd - T.taglineStart), 0, 1));
+      tRef.current++;
+      if (sec < T.total + 1.5) {
+        rafRef.current = requestAnimationFrame(frame);
+      } else {
+        tRef.current = 0;
+        rafRef.current = requestAnimationFrame(frame);
+      }
+    }
+
+    rafRef.current = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [size]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={size}
+      height={Math.round(size * 1.1)}
+      style={{display:"block",background:"transparent"}}
+    />
   );
 }
 
@@ -208,11 +366,9 @@ export default function App() {
       <section id="sec-home" style={{height:"100vh",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
         <div style={{position:"absolute",inset:0,backgroundImage:`url(${agency.heroImage})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(0.4)"}} />
         <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,transparent 40%,rgba(10,22,40,0.9))"}} />
-        <div style={{position:"relative",textAlign:"center",color:"white",padding:"0 20px",maxWidth:800}}>
-          <div className="hero-text" style={{fontFamily:"'DM Sans'",fontSize:13,letterSpacing:4,color:"#f0c060",marginBottom:18,textTransform:"uppercase"}}>{agency.heroSubtitle}</div>
-          <h1 className="hero-text" style={{fontFamily:"'Playfair Display'",fontSize:"clamp(42px,8vw,88px)",fontWeight:900,lineHeight:1.05,marginBottom:20,animationDelay:"0.2s"}}>{agency.name}</h1>
-          <p className="hero-text" style={{fontFamily:"'Lora'",fontSize:"clamp(16px,2vw,22px)",color:"rgba(255,255,255,0.8)",marginBottom:40,fontStyle:"italic",animationDelay:"0.4s"}}>{agency.tagline}</p>
-          <div style={{display:"flex",gap:16,justifyContent:"center",flexWrap:"wrap"}}>
+        <div style={{position:"relative",textAlign:"center",color:"white",padding:"0 20px",display:"flex",flexDirection:"column",alignItems:"center"}}>
+          <LogoAnimation size={340} />
+          <div style={{marginTop:32,display:"flex",gap:16,justifyContent:"center",flexWrap:"wrap"}}>
             <button className="btn-primary" onClick={()=>document.getElementById("sec-rentals")?.scrollIntoView({behavior:"smooth"})}>Explore Rentals →</button>
             <button className="btn-outline" onClick={()=>document.getElementById("sec-villa")?.scrollIntoView({behavior:"smooth"})}>View Villa</button>
           </div>
