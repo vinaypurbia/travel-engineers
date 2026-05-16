@@ -1375,7 +1375,7 @@ function LoginScreen({ loginInput, setLoginInput, loginError, onLogin, onBack, a
       `}</style>
       {/* Full-bleed hero image */}
       <div style={{position:"absolute",inset:0,background:"#0a1628"}}>
-        {heroImage && <img src={heroImage} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.45}} onError={e=>{e.target.style.display:"none"}} />}
+        {heroImage && <img src={heroImage} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:0.45}} onError={e=>{e.target.style.display="none"}} />}
         <div style={{position:"absolute",inset:0,background:"linear-gradient(135deg,rgba(10,22,40,0.82) 0%,rgba(10,22,40,0.55) 50%,rgba(10,22,40,0.75) 100%)"}}></div>
       </div>
       {/* Left - branding (hidden on mobile) */}
