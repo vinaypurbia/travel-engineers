@@ -393,7 +393,6 @@ export default function App() {
     } catch (err) {
       console.error("API failed:", err);
     }
-    // Ensure preloader shows for at least 2.5 seconds
     const elapsed = Date.now() - startTime;
     const remaining = Math.max(0, 2500 - elapsed);
     setTimeout(() => setLoading(false), remaining);
