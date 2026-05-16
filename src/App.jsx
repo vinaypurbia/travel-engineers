@@ -64,20 +64,25 @@ function MobileNav({ agency, activeNav, setActiveNav }) {
     <>
       <nav style={{position:"fixed",top:0,left:0,right:0,zIndex:100,padding:"0 5%",height:70,display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(10,22,40,0.95)",backdropFilter:"blur(12px)",borderBottom:"1px solid rgba(212,133,10,0.2)"}}>
         <div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:10}} onClick={()=>scrollTo("home")}>
-          <div style={{width:40,height:40,borderRadius:"50%",border:"1.5px solid rgba(212,133,10,0.6)",background:"rgba(10,22,40,0.8)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-            <svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke="#d4850a" strokeWidth="1"/>
-              <polygon points="12,3 13.2,11 12,10 10.8,11" fill="#d4850a"/>
-              <polygon points="12,21 13.2,13 12,14 10.8,13" fill="#8a7868"/>
-              <polygon points="3,12 11,10.8 10,12 11,13.2" fill="#8a7868"/>
-              <polygon points="21,12 13,10.8 14,12 13,13.2" fill="#8a7868"/>
-              <circle cx="12" cy="12" r="1.5" fill="#d4850a"/>
-            </svg>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",lineHeight:1.15}}>
-            <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:600,color:"white",letterSpacing:"0.06em",textTransform:"uppercase"}}>Travel Engineers</span>
-            <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:9,color:"rgba(212,133,10,0.7)",letterSpacing:"0.15em",textTransform:"uppercase"}}>We Know The Way</span>
-          </div>
+          {agency.logoImage
+            ? <img src={agency.logoImage} alt="Travel Engineers" style={{height:48,maxWidth:160,objectFit:"contain"}} />
+            : <>
+                <div style={{width:40,height:40,borderRadius:"50%",border:"1.5px solid rgba(212,133,10,0.6)",background:"rgba(10,22,40,0.8)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="#d4850a" strokeWidth="1"/>
+                    <polygon points="12,3 13.2,11 12,10 10.8,11" fill="#d4850a"/>
+                    <polygon points="12,21 13.2,13 12,14 10.8,13" fill="#8a7868"/>
+                    <polygon points="3,12 11,10.8 10,12 11,13.2" fill="#8a7868"/>
+                    <polygon points="21,12 13,10.8 14,12 13,13.2" fill="#8a7868"/>
+                    <circle cx="12" cy="12" r="1.5" fill="#d4850a"/>
+                  </svg>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",lineHeight:1.15}}>
+                  <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:600,color:"white",letterSpacing:"0.06em",textTransform:"uppercase"}}>Travel Engineers</span>
+                  <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:9,color:"rgba(212,133,10,0.7)",letterSpacing:"0.15em",textTransform:"uppercase"}}>We Know The Way</span>
+                </div>
+              </>
+          }
         </div>
         <div className="nav-desktop" style={{display:"flex",gap:28,alignItems:"center"}}>
           {["home","rentals","villa","tours","contact"].map(n=>(
