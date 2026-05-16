@@ -2900,6 +2900,18 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
     return () => clearInterval(interval);
   }, []);
 
+  // Auto-complete bookings whose check-out date has passed
+  useEffect(() => {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const stale = bookings.filter(b =>
+      (b.status === "confirmed" || b.status === "payment_requested") &&
+      b.checkOut && new Date(b.checkOut) < today
+    );
+    if (stale.length === 0) return;
+    Promise.all(stale.map(b => api.put(`/bookings?id=${b._id}`, { status: "completed" })))
+      .then(() => reload());
+  }, [bookings]);
+
   const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
   const days = (b) => (b.checkIn&&b.checkOut) ? Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)) : null;
 
