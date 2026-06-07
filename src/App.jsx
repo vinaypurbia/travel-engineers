@@ -1,5 +1,6 @@
 // v4
 import { useState, useEffect, useRef, useCallback } from "react";
+import { ManualBookingModal, CustomerIdPanel } from "./BookingExtensions";
 
 const API = "/api";
 
@@ -2898,6 +2899,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   const [expanded, setExpanded] = useState(null);
   const [paymentModal, setPaymentModal] = useState(null);
   const [recordPaymentModal, setRecordPaymentModal] = useState(null); // { booking, suggestedAmount }
+  const [showManualModal, setShowManualModal] = useState(false);
 
   // Auto-refresh every 20 seconds so new bookings appear without page reload
   useEffect(() => {
