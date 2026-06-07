@@ -3056,6 +3056,10 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           <h2 style={{fontFamily:"'Playfair Display'",fontSize:30,marginBottom:4}}>Bookings</h2>
           <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>{bookings.length} total · {counts.pending} pending action</p>
         </div>
+        <button onClick={()=>setShowManualModal(true)}
+          style={{padding:"10px 20px",background:"linear-gradient(135deg,#d4850a,#f0c060)",border:"none",borderRadius:10,color:"white",fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",gap:8,whiteSpace:"nowrap"}}>
+          🏪 Walk-in Booking
+        </button>
       </div>
 
       {/* KPI Cards */}
@@ -3304,6 +3308,15 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
             setRecordPaymentModal(null);
           }}
           onClose={()=>setRecordPaymentModal(null)}
+        />
+      )}
+
+      {/* Walk-in / Manual Booking Modal */}
+      {showManualModal && (
+        <ManualBookingModal
+          rentals={data.rentals || rentals || []}
+          onClose={()=>setShowManualModal(false)}
+          onCreated={()=>{ setShowManualModal(false); reload(); }}
         />
       )}
     </div>
