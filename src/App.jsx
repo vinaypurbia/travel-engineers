@@ -745,8 +745,6 @@ export default function App() {
         <div style={{fontFamily:"'DM Sans'",fontSize:12,color:"rgba(255,255,255,0.3)",letterSpacing:2,display:"flex",alignItems:"center",justifyContent:"center",gap:16,flexWrap:"wrap"}}>
           <span>© {new Date().getFullYear()}</span>
           <span style={{color:"rgba(255,255,255,0.1)"}}>·</span>
-          <span style={{cursor:"pointer",color:"rgba(240,192,96,0.35)"}} onClick={()=>setView("login")}>Admin</span>
-          <span style={{color:"rgba(255,255,255,0.1)"}}>·</span>
           <button onClick={()=>setStaffLoginOpen(true)}
             style={{background:"rgba(212,133,10,0.1)",border:"1px solid rgba(212,133,10,0.25)",color:"rgba(240,192,96,0.7)",padding:"5px 14px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans'",letterSpacing:"1px",display:"inline-flex",alignItems:"center",gap:6}}>
             🔐 Staff Login
