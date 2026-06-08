@@ -447,7 +447,14 @@ export default function App() {
     onLogin={async () => {
       try {
         const res = await api.post("/auth", { password: loginInput });
-        if (res.success) { setView("admin"); setLoginError(""); setLoginInput(""); sessionStorage.setItem("adminToken", loginInput); }
+        if (res.success) {
+          // Exchange login password for ADMIN_SECRET (never store the password itself)
+          try {
+            const tokenRes = await api.post("/users?action=admin-token", { password: loginInput });
+            if (tokenRes.adminToken) sessionStorage.setItem("adminToken", tokenRes.adminToken);
+          } catch { /* token exchange failed, users module won't work */ }
+          setView("admin"); setLoginError(""); setLoginInput("");
+        }
         else setLoginError("Wrong password!");
       } catch { setLoginError("Error connecting. Try again."); }
     }} onBack={() => setView("home")} />;
