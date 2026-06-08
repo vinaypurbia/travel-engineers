@@ -447,7 +447,7 @@ export default function App() {
     onLogin={async () => {
       try {
         const res = await api.post("/auth", { password: loginInput });
-        if (res.success) { setView("admin"); setLoginError(""); setLoginInput(""); }
+        if (res.success) { setView("admin"); setLoginError(""); setLoginInput(""); sessionStorage.setItem("adminToken", loginInput); }
         else setLoginError("Wrong password!");
       } catch { setLoginError("Error connecting. Try again."); }
     }} onBack={() => setView("home")} />;
@@ -3791,13 +3791,22 @@ function StaffPanel({ staffUser, data, api, reload, onExit }) {
 function UsersEditor({ data, api, reload, showSaved }) {
   const [users, setUsers] = useState(data.users || []);
   const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState(null); // null = new, obj = edit
+  const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ username:"", password:"", name:"", designation:"", permissions:["bookings"], active:true });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
 
-  useEffect(() => { setUsers(data.users || []); }, [data.users]);
+  const adminToken = sessionStorage.getItem("adminToken") || localStorage.getItem("adminToken") || "";
+
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch("/api/users", { headers:{ "x-admin-token": adminToken } });
+      if (res.ok) { const u = await res.json(); setUsers(u); }
+    } catch {}
+  };
+
+  useEffect(() => { fetchUsers(); }, []);
 
   const openNew = () => {
     setEditing(null);
@@ -3827,24 +3836,28 @@ function UsersEditor({ data, api, reload, showSaved }) {
     setSaving(true); setError("");
     try {
       const payload = { ...form };
-      if (!payload.password) delete payload.password; // don't send empty password on edit
-      if (editing) {
-        await api.put("/users?id=" + editing._id, payload);
-      } else {
-        await api.post("/users", payload);
-      }
+      if (!payload.password) delete payload.password;
+      const url = editing ? `/api/users?id=${editing._id}` : "/api/users";
+      const method = editing ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type":"application/json", "x-admin-token": adminToken },
+        body: JSON.stringify(payload),
+      });
+      const result = await res.json();
+      if (!res.ok) { setError(result.error || "Save failed."); setSaving(false); return; }
       showSaved(editing ? "✅ User updated!" : "✅ User created!");
       setShowForm(false);
-      reload();
+      fetchUsers();
     } catch(e) { setError(e?.message || "Save failed."); }
     setSaving(false);
   };
 
   const handleDelete = async (id) => {
-    await api.delete("/users?id=" + id);
+    await fetch(`/api/users?id=${id}`, { method:"DELETE", headers:{ "x-admin-token": adminToken } });
     showSaved("🗑️ User deleted", "delete");
     setConfirmDelete(null);
-    reload();
+    fetchUsers();
   };
 
   const inp = { width:"100%", padding:"11px 14px", background:"rgba(255,255,255,0.07)", border:"1.5px solid rgba(255,255,255,0.1)", borderRadius:10, color:"white", fontFamily:"'DM Sans'", fontSize:14, outline:"none", boxSizing:"border-box" };
