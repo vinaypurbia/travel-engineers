@@ -3004,11 +3004,20 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   const onlineCount = bookings.filter(b => b.source !== "walkin").length;
   const walkinCount = bookings.filter(b => b.source === "walkin").length;
 
+  // Helper: detect walk-in by source field OR legacy name/phone pattern
+  const isWalkin = (b) =>
+    b.source === "walkin" ||
+    (b.customerName || "").toLowerCase() === "walk-in customer" ||
+    (b.phone || "").replace(/[^0-9]/g,"") === "0000000000";
+
+  // Corrected counts using isWalkin
+  const onlineCountReal = bookings.filter(b => !isWalkin(b)).length;
+  const walkinCountReal = bookings.filter(b => isWalkin(b)).length;
+
   // Filter + search + sort
   let filtered = bookings;
-  // Source tab filter
-  if (sourceTab === "online")  filtered = filtered.filter(b => b.source !== "walkin");
-  if (sourceTab === "walkin")  filtered = filtered.filter(b => b.source === "walkin");
+  if (sourceTab === "online")  filtered = filtered.filter(b => !isWalkin(b));
+  if (sourceTab === "walkin")  filtered = filtered.filter(b => isWalkin(b));
   // Status filter only applies under Online tab
   if (sourceTab === "online" && filter !== "all") filtered = filtered.filter(b => b.status === filter);
   if (search.trim()) {
@@ -3145,8 +3154,8 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
       <div style={{display:"flex",gap:4,marginBottom:20,background:"rgba(255,255,255,0.03)",padding:6,borderRadius:14,border:"1px solid rgba(255,255,255,0.07)"}}>
         {[
           {id:"all",    icon:"📋", label:"All Bookings", count:bookings.length,  color:"#f0c060"},
-          {id:"online", icon:"🌐", label:"Online",        count:onlineCount,      color:"#60a5fa"},
-          {id:"walkin", icon:"🏪", label:"Walk-in",       count:walkinCount,      color:"#4ade80"},
+          {id:"online", icon:"🌐", label:"Online",        count:onlineCountReal,  color:"#60a5fa"},
+          {id:"walkin", icon:"🏪", label:"Walk-in",       count:walkinCountReal,  color:"#4ade80"},
         ].map(t=>(
           <button key={t.id} onClick={()=>{ setSourceTab(t.id); setFilter("all"); }}
             style={{flex:1,padding:"12px 8px",borderRadius:10,border:"none",background:sourceTab===t.id?"rgba(255,255,255,0.08)":"transparent",cursor:"pointer",transition:"all 0.2s",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
@@ -3189,7 +3198,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           ].map(s=>(
             <button key={s.val} onClick={()=>setFilter(s.val)}
               style={{padding:"6px 14px",borderRadius:16,border:`1px solid ${filter===s.val?"#d4850a":"rgba(255,255,255,0.1)"}`,background:filter===s.val?"rgba(212,133,10,0.15)":"transparent",color:filter===s.val?"#f0c060":"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:12,fontWeight:filter===s.val?600:400,fontFamily:"'DM Sans'"}}>
-              {s.label} ({s.val==="all"?onlineCount:counts[s.val]??0})
+              {s.label} ({s.val==="all"?onlineCountReal:counts[s.val]??0})
             </button>
           ))}
         </div>
@@ -3234,8 +3243,8 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                     <span style={{fontWeight:700,fontSize:15}}>{b.customerName}</span>
                     <span style={{fontSize:11,padding:"2px 9px",borderRadius:10,background:sc.bg,border:`1px solid ${sc.border}`,color:sc.color}}>{sc.label}</span>
                     {b.vehicleName&&<span style={{fontSize:11,background:"rgba(255,255,255,0.06)",padding:"2px 8px",borderRadius:10,color:"rgba(255,255,255,0.4)"}}>🛵 {b.vehicleName}</span>}
-                    {b.source==="walkin"&&<span style={{fontSize:10,background:"rgba(212,133,10,0.15)",padding:"2px 8px",borderRadius:10,color:"#f0c060",border:"1px solid rgba(212,133,10,0.3)"}}>🏪 Walk-in</span>}
-                    {b.source!=="walkin"&&<span style={{fontSize:10,background:"rgba(96,165,250,0.1)",padding:"2px 8px",borderRadius:10,color:"#60a5fa",border:"1px solid rgba(96,165,250,0.2)"}}>🌐 Online</span>}
+                    {isWalkin(b)&&<span style={{fontSize:10,background:"rgba(212,133,10,0.15)",padding:"2px 8px",borderRadius:10,color:"#f0c060",border:"1px solid rgba(212,133,10,0.3)"}}>🏪 Walk-in</span>}
+                    {!isWalkin(b)&&<span style={{fontSize:10,background:"rgba(96,165,250,0.1)",padding:"2px 8px",borderRadius:10,color:"#60a5fa",border:"1px solid rgba(96,165,250,0.2)"}}>🌐 Online</span>}
                   </div>
                   <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",display:"flex",gap:12,flexWrap:"wrap"}}>
                     <span>📞 {b.phone}</span>
@@ -3775,8 +3784,8 @@ function StaffPanel({ staffUser, data, api, reload, onExit }) {
   }, []);
 
   return (
-    <div style={{minHeight:"100vh",background:"#f5f6fa",fontFamily:"'DM Sans',sans-serif",color:"#1a1a2e",display:"flex",position:"relative"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap'); .staff-nav-btn{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;border:none;border-radius:10px;background:transparent;cursor:pointer;font-family:'DM Sans';font-size:13.5px;font-weight:500;transition:all 0.15s;} .staff-nav-btn.active{background:linear-gradient(135deg,#d4850a,#f0c060)!important;color:#1a1a2e!important;} .staff-nav-btn:hover:not(.active){background:rgba(255,255,255,0.07);}`}</style>
+    <div style={{minHeight:"100vh",background:"#06111f",fontFamily:"'DM Sans',sans-serif",color:"white",display:"flex",position:"relative"}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap'); .staff-nav-btn{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;border:none;border-radius:10px;background:transparent;cursor:pointer;font-family:'DM Sans';font-size:13.5px;font-weight:500;transition:all 0.15s;color:rgba(255,255,255,0.55);} .staff-nav-btn.active{background:linear-gradient(135deg,#d4850a,#f0c060)!important;color:#1a1a2e!important;} .staff-nav-btn:hover:not(.active){background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.85);}`}</style>
       {toast && <div style={{position:"fixed",bottom:32,left:"50%",transform:"translateX(-50%)",zIndex:9999,background:toast.type==="error"?"#ef4444":"#16a34a",color:"white",padding:"13px 28px",borderRadius:12,fontSize:15,fontWeight:600,boxShadow:"0 8px 32px rgba(0,0,0,0.3)"}}>{toast.msg}</div>}
 
       {/* Sidebar */}
@@ -3820,15 +3829,15 @@ function StaffPanel({ staffUser, data, api, reload, onExit }) {
       </div>
 
       {/* Main content */}
-      <div style={{flex:1,overflowY:"auto"}}>
+      <div style={{flex:1,overflowY:"auto",background:"#06111f"}}>      
         {/* Top bar */}
-        <div style={{background:"white",padding:"16px 28px",borderBottom:"1px solid #e8eaf0",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+        <div style={{background:"#0d1b2e",padding:"16px 28px",borderBottom:"1px solid rgba(212,133,10,0.2)",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:"0 2px 12px rgba(0,0,0,0.3)"}}>
           <div>
             <div style={{fontWeight:700,fontSize:17,color:"#f0c060",fontFamily:"'Playfair Display'"}}>{MODULES.find(m=>m.id===activeTab)?.label||""}</div>
-            <div style={{fontSize:12,color:"rgba(0,0,0,0.35)"}}>Manage your {(MODULES.find(m=>m.id===activeTab)?.label||"").toLowerCase()}</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.3)"}}>Manage your {(MODULES.find(m=>m.id===activeTab)?.label||"").toLowerCase()}</div>
           </div>
-          <div style={{fontSize:12,color:"rgba(0,0,0,0.4)",textAlign:"right"}}>
-            <div style={{fontWeight:600,color:"#1a1a2e"}}>{staffUser.name}</div>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",textAlign:"right"}}>
+            <div style={{fontWeight:600,color:"white"}}>{staffUser.name}</div>
             <div>{staffUser.designation || "Staff"}</div>
           </div>
         </div>
