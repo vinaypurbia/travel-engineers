@@ -3322,12 +3322,26 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                         <BookingPaySummary b={b} getPricePerDay={getPricePerDay} />)}
                     </div>
                   )}
-                  {/* Record Payment button */}
-                  <div style={{gridColumn:"1/-1"}}>
-                    <button onClick={()=>setRecordPaymentModal(b)} style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
-                      💰 Record Received Payment
-                    </button>
-                  </div>
+                  {/* Record Payment button — hide when fully paid */}
+                  {(()=>{
+                    const ppd = getPricePerDay(b);
+                    const days_ = (b.checkIn&&b.checkOut)?Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)):1;
+                    const orderTotal = ppd*days_ || (b.tokenAmount*2) || 0;
+                    const isFullyPaid = orderTotal>0 && (b.receivedAmount||0)>=orderTotal;
+                    const isPaidStatus = b.paymentStatus==="paid" || b.status==="completed";
+                    if (isFullyPaid || isPaidStatus) return (
+                      <div style={{gridColumn:"1/-1"}}>
+                        <span style={{fontSize:12,padding:"6px 14px",borderRadius:8,background:"rgba(74,222,128,0.08)",border:"1px solid rgba(74,222,128,0.2)",color:"#4ade80"}}>✅ Payment Collected</span>
+                      </div>
+                    );
+                    return (
+                      <div style={{gridColumn:"1/-1"}}>
+                        <button onClick={()=>setRecordPaymentModal(b)} style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
+                          💰 Record Received Payment
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
