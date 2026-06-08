@@ -16,15 +16,22 @@ const UserSchema = new mongoose.Schema({
 
 const User = mongoose.models.User || mongoose.model("User", UserSchema);
 
-const ADMIN_PASS = process.env.ADMIN_PASS || "admin123";
+// ADMIN_SECRET is a private random string stored only in Vercel env vars.
+// It is never the same as the login password — completely decoupled.
+// Generate one at: https://generate-secret.vercel.app/32
+const ADMIN_SECRET = process.env.ADMIN_SECRET || "";
 
 function hash(str) {
   return crypto.createHash("sha256").update(str).digest("hex");
 }
 
 function isAdmin(req) {
+  if (!ADMIN_SECRET) {
+    console.error("ADMIN_SECRET env var is not set!");
+    return false;
+  }
   const auth = req.headers["x-admin-token"] || "";
-  return auth === ADMIN_PASS;
+  return auth === ADMIN_SECRET;
 }
 
 module.exports = async function handler(req, res) {
@@ -35,6 +42,18 @@ module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   const { method, query, body } = req;
+
+  // ── Admin token exchange (public, called once after admin login) ────────
+  // Frontend sends the admin login password, gets back ADMIN_SECRET.
+  // ADMIN_SECRET is what's used for all subsequent admin API calls.
+  if (method === "POST" && query.action === "admin-token") {
+    const { password } = body || {};
+    const ADMIN_PASS = process.env.ADMIN_PASS || "";
+    if (!ADMIN_PASS) return res.status(500).json({ error: "ADMIN_PASS not configured" });
+    if (!password || password !== ADMIN_PASS) return res.status(403).json({ error: "Invalid password" });
+    if (!ADMIN_SECRET) return res.status(500).json({ error: "ADMIN_SECRET not configured" });
+    return res.json({ success: true, adminToken: ADMIN_SECRET });
+  }
 
   // ── Staff login (public) ──────────────────────────────────────────────────
   if (method === "POST" && query.action === "login") {
