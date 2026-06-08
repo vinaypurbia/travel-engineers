@@ -54,17 +54,30 @@ function ImageUpload({ value, onChange, label="Image" }) {
 }
 
 // ─── Mobile-Responsive Navbar ─────────────────────────────────────────────────
-function MobileNav({ agency, activeNav, setActiveNav }) {
+function MobileNav({ agency, activeNav, setActiveNav, onAdminTap }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const tapCount = useRef(0);
+  const tapTimer = useRef(null);
   const scrollTo = (id) => {
     document.getElementById(`sec-${id}`)?.scrollIntoView({behavior:"smooth"});
     setActiveNav(id);
     setMenuOpen(false);
   };
+  const handleLogoTap = () => {
+    scrollTo("home");
+    tapCount.current += 1;
+    clearTimeout(tapTimer.current);
+    if (tapCount.current >= 5) {
+      tapCount.current = 0;
+      onAdminTap && onAdminTap();
+    } else {
+      tapTimer.current = setTimeout(() => { tapCount.current = 0; }, 2000);
+    }
+  };
   return (
     <>
       <nav style={{position:"fixed",top:0,left:0,right:0,zIndex:100,padding:"0 5%",height:70,display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(10,22,40,0.95)",backdropFilter:"blur(12px)",borderBottom:"1px solid rgba(212,133,10,0.2)"}}>
-        <div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:10}} onClick={()=>scrollTo("home")}>
+        <div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:10}} onClick={handleLogoTap}>
           {agency.logoImage
             ? <img src={agency.logoImage} alt="Travel Engineers" style={{height:48,maxWidth:160,objectFit:"contain"}} />
             : <>
@@ -512,7 +525,7 @@ export default function App() {
       `}</style>
 
       {/* NAVBAR */}
-      <MobileNav agency={agency} activeNav={activeNav} setActiveNav={setActiveNav} />
+      <MobileNav agency={agency} activeNav={activeNav} setActiveNav={setActiveNav} onAdminTap={()=>setView("login")} />
 
       {/* HERO */}
       <section id="sec-home" style={{height:"100vh",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
@@ -1506,9 +1519,12 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
-        .adm-input{width:100%;padding:10px 14px;background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.1);border-radius:8px;color:white;font-family:'DM Sans';font-size:14px;outline:none;transition:border-color 0.2s;}
-        .adm-input:focus{border-color:#d4850a;}
+        .adm-input{width:100%;padding:10px 14px;background:#0a1628;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;color:#ffffff;font-family:'DM Sans';font-size:14px;outline:none;transition:border-color 0.2s;}
+        .adm-input:focus{border-color:#d4850a;background:#0d1b2e;}
+        .adm-input option{background:#0d1b2e;color:#ffffff;}
+        select.adm-input{cursor:pointer;-webkit-appearance:none;appearance:none;}
         textarea.adm-input{resize:vertical;min-height:80px;line-height:1.6;}
+        input.adm-input::placeholder{color:rgba(255,255,255,0.25);}
         label.adm-label{display:block;font-size:11px;font-weight:600;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;}
         .adm-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;}
         select.adm-input{cursor:pointer;} select.adm-input option{background:#1a1d2e;color:#ffffff;}
@@ -2945,6 +2961,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
     return rental ? (Number(rental.price) || 0) : 0;
   };
   const [filter, setFilter]   = useState("all");
+  const [sourceTab, setSourceTab] = useState("all"); // all | online | walkin
   const [search, setSearch]   = useState("");
   const [sortDir, setSortDir] = useState("desc");
   const [expanded, setExpanded] = useState(null);
@@ -2984,9 +3001,14 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   // Counts
   const counts = { all:bookings.length, pending:0, payment_requested:0, confirmed:0, completed:0, cancelled:0 };
   bookings.forEach(b=>{ if(counts[b.status]!==undefined) counts[b.status]++; });
+  const onlineCount = bookings.filter(b => b.source !== "walkin").length;
+  const walkinCount = bookings.filter(b => b.source === "walkin").length;
 
   // Filter + search + sort
   let filtered = bookings;
+  // Source tab filter (online vs walk-in)
+  if (sourceTab === "online")  filtered = filtered.filter(b => b.source !== "walkin");
+  if (sourceTab === "walkin")  filtered = filtered.filter(b => b.source === "walkin");
   if (filter!=="all") filtered = filtered.filter(b=>b.status===filter);
   if (search.trim()) {
     const q = search.toLowerCase();
@@ -3135,6 +3157,21 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
         ))}
       </div>
 
+      {/* Source Tabs — All / Online / Walk-in */}
+      <div style={{display:"flex",gap:8,marginBottom:14}}>
+        {[
+          {id:"all",    label:"📋 All Bookings",  count:bookings.length},
+          {id:"online", label:"🌐 Online",         count:onlineCount},
+          {id:"walkin", label:"🏪 Walk-in",         count:walkinCount},
+        ].map(t=>(
+          <button key={t.id} onClick={()=>setSourceTab(t.id)}
+            style={{padding:"9px 18px",borderRadius:20,border:`1.5px solid ${sourceTab===t.id?"#d4850a":"rgba(255,255,255,0.1)"}`,background:sourceTab===t.id?"rgba(212,133,10,0.18)":"rgba(255,255,255,0.03)",color:sourceTab===t.id?"#f0c060":"rgba(255,255,255,0.45)",cursor:"pointer",fontSize:13,fontWeight:sourceTab===t.id?700:400,fontFamily:"'DM Sans'",display:"flex",alignItems:"center",gap:7}}>
+            {t.label}
+            <span style={{background:sourceTab===t.id?"rgba(212,133,10,0.3)":"rgba(255,255,255,0.08)",color:sourceTab===t.id?"#f0c060":"rgba(255,255,255,0.4)",padding:"1px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{t.count}</span>
+          </button>
+        ))}
+      </div>
+
       {/* Search + Filter */}
       <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 18px",marginBottom:16,display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
         <div style={{flex:1,minWidth:180,position:"relative"}}>
@@ -3180,6 +3217,8 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                     <span style={{fontWeight:700,fontSize:15}}>{b.customerName}</span>
                     <span style={{fontSize:11,padding:"2px 9px",borderRadius:10,background:sc.bg,border:`1px solid ${sc.border}`,color:sc.color}}>{sc.label}</span>
                     {b.vehicleName&&<span style={{fontSize:11,background:"rgba(255,255,255,0.06)",padding:"2px 8px",borderRadius:10,color:"rgba(255,255,255,0.4)"}}>🛵 {b.vehicleName}</span>}
+                    {b.source==="walkin"&&<span style={{fontSize:10,background:"rgba(212,133,10,0.15)",padding:"2px 8px",borderRadius:10,color:"#f0c060",border:"1px solid rgba(212,133,10,0.3)"}}>🏪 Walk-in</span>}
+                    {b.source!=="walkin"&&<span style={{fontSize:10,background:"rgba(96,165,250,0.1)",padding:"2px 8px",borderRadius:10,color:"#60a5fa",border:"1px solid rgba(96,165,250,0.2)"}}>🌐 Online</span>}
                   </div>
                   <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",display:"flex",gap:12,flexWrap:"wrap"}}>
                     <span>📞 {b.phone}</span>
@@ -3209,7 +3248,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                   )}
                   <select value={b.status} onChange={e=>{e.stopPropagation();updateStatus(b._id,e.target.value,b);}}
                     onClick={e=>e.stopPropagation()}
-                    style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${sc.border}`,background:sc.bg,color:sc.color,fontSize:11,cursor:"pointer",fontWeight:600}}>
+                    style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${sc.border}`,background:"#0d1b2e",color:sc.color,fontSize:11,cursor:"pointer",fontWeight:600,outline:"none"}}>
                     <option value="pending">⏳ Pending</option>
                     <option value="payment_requested">💳 Request Payment</option>
                     <option value="confirmed">✅ Confirmed</option>
