@@ -3006,10 +3006,11 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
 
   // Filter + search + sort
   let filtered = bookings;
-  // Source tab filter (online vs walk-in)
+  // Source tab filter
   if (sourceTab === "online")  filtered = filtered.filter(b => b.source !== "walkin");
   if (sourceTab === "walkin")  filtered = filtered.filter(b => b.source === "walkin");
-  if (filter!=="all") filtered = filtered.filter(b=>b.status===filter);
+  // Status filter only applies under Online tab
+  if (sourceTab === "online" && filter !== "all") filtered = filtered.filter(b => b.status === filter);
   if (search.trim()) {
     const q = search.toLowerCase();
     filtered = filtered.filter(b=>(b.customerName||"").toLowerCase().includes(q)||(b.phone||"").toLowerCase().includes(q)||(b.vehicleName||"").toLowerCase().includes(q)||(b.stayAddress||"").toLowerCase().includes(q));
@@ -3127,11 +3128,11 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   };
 
   return (
-    <div>
-      {/* Header */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
+    <div style={{fontFamily:"'DM Sans',sans-serif"}}>
+      {/* ── Header ── */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:12}}>
         <div>
-          <h2 style={{fontFamily:"'Playfair Display'",fontSize:30,marginBottom:4}}>Bookings</h2>
+          <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,marginBottom:2,color:"white"}}>Bookings</h2>
           <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>{bookings.length} total · {counts.pending} pending action</p>
         </div>
         <button onClick={()=>setShowManualModal(true)}
@@ -3140,53 +3141,69 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
         </button>
       </div>
 
-      {/* KPI Cards */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10,marginBottom:20}}>
+      {/* ── 3 Main Tabs ── */}
+      <div style={{display:"flex",gap:4,marginBottom:20,background:"rgba(255,255,255,0.03)",padding:6,borderRadius:14,border:"1px solid rgba(255,255,255,0.07)"}}>
         {[
-          {label:"Total",      value:counts.all,               color:"#f0c060"},
-          {label:"Pending",    value:counts.pending,           color:"#f0c060"},
-          {label:"💳 Payment", value:counts.payment_requested, color:"#fb923c"},
-          {label:"Confirmed",  value:counts.confirmed,         color:"#4ade80"},
-          {label:"Completed",  value:counts.completed,         color:"#60a5fa"},
-          {label:"Cancelled",  value:counts.cancelled,         color:"#ff6b6b"},
-        ].map(s=>(
-          <div key={s.label} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 16px"}}>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>{s.label}</div>
-            <div style={{fontSize:28,fontWeight:800,color:s.color,fontFamily:"'Playfair Display'"}}>{s.value}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Source Tabs — All / Online / Walk-in */}
-      <div style={{display:"flex",gap:8,marginBottom:14}}>
-        {[
-          {id:"all",    label:"📋 All Bookings",  count:bookings.length},
-          {id:"online", label:"🌐 Online",         count:onlineCount},
-          {id:"walkin", label:"🏪 Walk-in",         count:walkinCount},
+          {id:"all",    icon:"📋", label:"All Bookings", count:bookings.length,  color:"#f0c060"},
+          {id:"online", icon:"🌐", label:"Online",        count:onlineCount,      color:"#60a5fa"},
+          {id:"walkin", icon:"🏪", label:"Walk-in",       count:walkinCount,      color:"#4ade80"},
         ].map(t=>(
-          <button key={t.id} onClick={()=>setSourceTab(t.id)}
-            style={{padding:"9px 18px",borderRadius:20,border:`1.5px solid ${sourceTab===t.id?"#d4850a":"rgba(255,255,255,0.1)"}`,background:sourceTab===t.id?"rgba(212,133,10,0.18)":"rgba(255,255,255,0.03)",color:sourceTab===t.id?"#f0c060":"rgba(255,255,255,0.45)",cursor:"pointer",fontSize:13,fontWeight:sourceTab===t.id?700:400,fontFamily:"'DM Sans'",display:"flex",alignItems:"center",gap:7}}>
-            {t.label}
-            <span style={{background:sourceTab===t.id?"rgba(212,133,10,0.3)":"rgba(255,255,255,0.08)",color:sourceTab===t.id?"#f0c060":"rgba(255,255,255,0.4)",padding:"1px 8px",borderRadius:10,fontSize:11,fontWeight:700}}>{t.count}</span>
+          <button key={t.id} onClick={()=>{ setSourceTab(t.id); setFilter("all"); }}
+            style={{flex:1,padding:"12px 8px",borderRadius:10,border:"none",background:sourceTab===t.id?"rgba(255,255,255,0.08)":"transparent",cursor:"pointer",transition:"all 0.2s",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+            <span style={{fontSize:20}}>{t.icon}</span>
+            <span style={{fontSize:12,fontWeight:700,color:sourceTab===t.id?t.color:"rgba(255,255,255,0.4)",fontFamily:"'DM Sans'"}}>{t.label}</span>
+            <span style={{fontSize:18,fontWeight:800,color:sourceTab===t.id?t.color:"rgba(255,255,255,0.25)",fontFamily:"'Playfair Display'"}}>{t.count}</span>
           </button>
         ))}
       </div>
 
-      {/* Search + Filter */}
-      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 18px",marginBottom:16,display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-        <div style={{flex:1,minWidth:180,position:"relative"}}>
-          <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",opacity:0.4}}>🔍</span>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name, phone, vehicle…"
-            style={{width:"100%",paddingLeft:34,padding:"9px 14px 9px 34px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:13,outline:"none"}}/>
+      {/* ── KPI Cards (only for Online tab) ── */}
+      {sourceTab==="online" && (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8,marginBottom:16}}>
+          {[
+            {label:"Pending",    value:counts.pending,           color:"#f0c060"},
+            {label:"💳 Payment", value:counts.payment_requested, color:"#fb923c"},
+            {label:"Confirmed",  value:counts.confirmed,         color:"#4ade80"},
+            {label:"Completed",  value:counts.completed,         color:"#60a5fa"},
+            {label:"Cancelled",  value:counts.cancelled,         color:"#ff6b6b"},
+          ].map(s=>(
+            <div key={s.label} onClick={()=>setFilter(filter===s.label.replace("💳 ","").toLowerCase().replace(" ","_")?"all":s.label.replace("💳 ","").toLowerCase().replace(" ","_"))}
+              style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${filter===s.label.replace("💳 ","").toLowerCase().replace(" ","_")?"rgba(212,133,10,0.4)":"rgba(255,255,255,0.07)"}`,borderRadius:10,padding:"12px 14px",cursor:"pointer",transition:"border-color 0.2s"}}>
+              <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:6}}>{s.label}</div>
+              <div style={{fontSize:24,fontWeight:800,color:s.color,fontFamily:"'Playfair Display'"}}>{s.value}</div>
+            </div>
+          ))}
         </div>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {["all","pending","payment_requested","confirmed","completed","cancelled"].map(s=>(
-            <button key={s} onClick={()=>setFilter(s)} style={{padding:"7px 14px",borderRadius:16,border:`1px solid ${filter===s?"#d4850a":"rgba(255,255,255,0.1)"}`,background:filter===s?"rgba(212,133,10,0.15)":"transparent",color:filter===s?"#f0c060":"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:12,fontWeight:filter===s?600:400}}>
-              {s==="payment_requested"?"💳 Payment Req":s.charAt(0).toUpperCase()+s.slice(1)} ({counts[s]??counts.all})
+      )}
+
+      {/* ── Status filter pills (Online only) ── */}
+      {sourceTab==="online" && (
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+          {[
+            {val:"all",               label:"All"},
+            {val:"pending",           label:"⏳ Pending"},
+            {val:"payment_requested", label:"💳 Payment Req"},
+            {val:"confirmed",         label:"✅ Confirmed"},
+            {val:"completed",         label:"🏁 Completed"},
+            {val:"cancelled",         label:"❌ Cancelled"},
+          ].map(s=>(
+            <button key={s.val} onClick={()=>setFilter(s.val)}
+              style={{padding:"6px 14px",borderRadius:16,border:`1px solid ${filter===s.val?"#d4850a":"rgba(255,255,255,0.1)"}`,background:filter===s.val?"rgba(212,133,10,0.15)":"transparent",color:filter===s.val?"#f0c060":"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:12,fontWeight:filter===s.val?600:400,fontFamily:"'DM Sans'"}}>
+              {s.label} ({s.val==="all"?onlineCount:counts[s.val]??0})
             </button>
           ))}
         </div>
-        <button onClick={()=>setSortDir(d=>d==="desc"?"asc":"desc")} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.5)",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:12}}>
+      )}
+
+      {/* ── Search + Sort ── */}
+      <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center"}}>
+        <div style={{flex:1,position:"relative"}}>
+          <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",opacity:0.4,pointerEvents:"none"}}>🔍</span>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name, phone, vehicle…"
+            style={{width:"100%",boxSizing:"border-box",paddingLeft:36,paddingRight:14,paddingTop:9,paddingBottom:9,background:"#0a1628",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:13,outline:"none"}}/>
+        </div>
+        <button onClick={()=>setSortDir(d=>d==="desc"?"asc":"desc")}
+          style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.5)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,whiteSpace:"nowrap",fontFamily:"'DM Sans'"}}>
           Date {sortDir==="desc"?"↓":"↑"}
         </button>
       </div>
