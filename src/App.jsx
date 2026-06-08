@@ -3632,10 +3632,10 @@ const MODULES = [
 
 // ─── StaffLoginModal ──────────────────────────────────────────────────────────
 function StaffLoginModal({ agency, onLogin, onClose }) {
-  const [username, setUsername] = React.useState("");
-  const [password, setPassword] = React.useState("");
-  const [error, setError] = React.useState("");
-  const [loading, setLoading] = React.useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const agencyName = agency?.name || "Travel Engineers";
   const heroImage  = agency?.heroImage || "";
 
@@ -3699,15 +3699,15 @@ function StaffLoginModal({ agency, onLogin, onClose }) {
 
 // ─── StaffPanel ───────────────────────────────────────────────────────────────
 function StaffPanel({ staffUser, data, api, reload, onExit }) {
-  const [activeTab, setActiveTab] = React.useState(() => staffUser.permissions[0] || "bookings");
-  const [sidebarOpen, setSidebarOpen] = React.useState(true);
-  const [toast, setToast] = React.useState(null);
+  const [activeTab, setActiveTab] = useState(() => staffUser.permissions[0] || "bookings");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [toast, setToast] = useState(null);
   const showSaved = (msg="✅ Saved!", type="success") => { setToast({msg,type}); setTimeout(()=>setToast(null),2500); };
 
   const allowedTabs = MODULES.filter(m => staffUser.permissions.includes(m.id));
 
   // If current tab not allowed, snap to first allowed
-  React.useEffect(() => {
+  useEffect(() => {
     if (!staffUser.permissions.includes(activeTab)) {
       setActiveTab(staffUser.permissions[0] || "bookings");
     }
@@ -3789,15 +3789,15 @@ function StaffPanel({ staffUser, data, api, reload, onExit }) {
 
 // ─── UsersEditor (Admin only) ─────────────────────────────────────────────────
 function UsersEditor({ data, api, reload, showSaved }) {
-  const [users, setUsers] = React.useState(data.users || []);
-  const [showForm, setShowForm] = React.useState(false);
-  const [editing, setEditing] = React.useState(null); // null = new, obj = edit
-  const [form, setForm] = React.useState({ username:"", password:"", name:"", designation:"", permissions:["bookings"], active:true });
-  const [saving, setSaving] = React.useState(false);
-  const [error, setError] = React.useState("");
-  const [confirmDelete, setConfirmDelete] = React.useState(null);
+  const [users, setUsers] = useState(data.users || []);
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null); // null = new, obj = edit
+  const [form, setForm] = useState({ username:"", password:"", name:"", designation:"", permissions:["bookings"], active:true });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
-  React.useEffect(() => { setUsers(data.users || []); }, [data.users]);
+  useEffect(() => { setUsers(data.users || []); }, [data.users]);
 
   const openNew = () => {
     setEditing(null);
