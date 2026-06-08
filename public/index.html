@@ -2,10 +2,86 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Travel Agency</title>
+
+    <!-- ── PWA / App Meta ─────────────────────────────── -->
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <meta name="theme-color" content="#d4850a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Travel Engineers" />
+    <meta name="application-name" content="Travel Engineers" />
+    <meta name="msapplication-TileColor" content="#060e1a" />
+    <meta name="msapplication-TileImage" content="%PUBLIC_URL%/icons/icon-144x144.png" />
+
+    <!-- ── Viewport & SEO ────────────────────────────── -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="Travel Engineers — Vehicle rentals, villa stays, tours & taxi. Paving Your Holidays." />
+    <meta name="keywords" content="vehicle rental, scooter rental, bike rental, villa stay, tours, taxi, travel" />
+
+    <!-- ── Open Graph ────────────────────────────────── -->
+    <meta property="og:title" content="Travel Engineers" />
+    <meta property="og:description" content="Vehicle rentals, villa stays, tours & taxi. Paving Your Holidays." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="%PUBLIC_URL%/icons/icon-512x512.png" />
+
+    <!-- ── Apple Touch Icons ─────────────────────────── -->
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/icons/icon-192x192.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="%PUBLIC_URL%/icons/icon-152x152.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="%PUBLIC_URL%/icons/icon-192x192.png" />
+
+    <!-- ── Favicon ───────────────────────────────────── -->
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="%PUBLIC_URL%/icons/icon-96x96.png" />
+
+    <!-- ── Apple Splash Screens ─────────────────────── -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <title>Travel Engineers</title>
   </head>
   <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
+
+    <!-- ── Service Worker Registration ──────────────── -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker
+            .register('%PUBLIC_URL%/service-worker.js')
+            .then(function (reg) {
+              console.log('[SW] Registered, scope:', reg.scope);
+
+              // Check for updates every 60s when app is open
+              setInterval(() => reg.update(), 60000);
+
+              // When a new SW is waiting, prompt reload
+              reg.addEventListener('updatefound', () => {
+                const newWorker = reg.installing;
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    // New version available — show subtle update banner
+                    const banner = document.createElement('div');
+                    banner.innerHTML = `
+                      <div style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:99999;
+                        background:#0d1b2e;border:1px solid rgba(240,192,96,0.3);border-radius:14px;
+                        padding:14px 20px;display:flex;align-items:center;gap:14px;
+                        font-family:'DM Sans',sans-serif;box-shadow:0 8px 32px rgba(0,0,0,0.4);white-space:nowrap">
+                        <span style="color:rgba(255,255,255,0.7);font-size:14px">🆕 Update available</span>
+                        <button onclick="window.location.reload()" style="background:linear-gradient(135deg,#d4850a,#f0c060);
+                          border:none;border-radius:8px;padding:7px 16px;color:#1a1a2e;font-weight:700;
+                          font-size:13px;cursor:pointer;font-family:inherit">Reload</button>
+                      </div>`;
+                    document.body.appendChild(banner);
+                  }
+                });
+              });
+            })
+            .catch(function (err) {
+              console.warn('[SW] Registration failed:', err);
+            });
+        });
+      }
+    </script>
   </body>
 </html>
