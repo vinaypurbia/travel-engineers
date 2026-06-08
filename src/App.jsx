@@ -3890,7 +3890,7 @@ function UsersEditor({ data, api, reload, showSaved }) {
                   ) : null;
                 })}
               </div>
-              <div style={{display:"flex",gap:8"}}>
+              <div style={{display:"flex",gap:8}}>
                 <button onClick={()=>openEdit(u)}
                   style={{flex:1,padding:"9px",background:"rgba(212,133,10,0.08)",border:"1px solid rgba(212,133,10,0.2)",borderRadius:9,color:"#d4850a",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:"'DM Sans'"}}>
                   ✏️ Edit
