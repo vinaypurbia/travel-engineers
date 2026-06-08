@@ -365,6 +365,11 @@ export default function App() {
   const [activeNav, setActiveNav] = useState("home");
   const [filterType, setFilterType] = useState("all");
   const [adminTab, setAdminTab] = useState("dashboard");
+  // Staff login state
+  const [staffUser, setStaffUser] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem("staffUser") || "null"); } catch { return null; }
+  });
+  const [staffLoginOpen, setStaffLoginOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const [toast, setToast] = useState(null); // { msg, type: "success"|"error"|"delete" }
   const showToast = (msg, type="success") => { setToast({ msg, type }); setTimeout(() => setToast(null), 2500); };
@@ -384,7 +389,7 @@ export default function App() {
   const loadAllData = async () => {
     const startTime = Date.now();
     try {
-      const [agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings] = await Promise.all([
+      const [agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings, users] = await Promise.all([
         safeGet("/agency", {name:"",tagline:"",heroSubtitle:"",phone:"",email:"",address:"",whatsapp:"",heroImage:""}),
         safeGet("/rentals", []),
         safeGet("/villa", {name:"",tagline:"",description:"",price:"",period:"/night",checkIn:"",checkOut:"",minStay:"",maxGuests:"",image:"",amenities:[],rooms:[]}),
@@ -394,8 +399,9 @@ export default function App() {
         safeGet("/bookings", []),
         safeGet("/tours", []),
         safeGet("/tours?bookings=1", []),
+        safeGet("/users", []),
       ]);
-      setData({ agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings });
+      setData({ agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings, users });
     } catch (err) {
       console.error("API failed:", err);
     }
@@ -447,6 +453,22 @@ export default function App() {
     }} onBack={() => setView("home")} />;
 
   if (view === "pay") return <PayPage />;
+
+  if (view === "staffPanel" && staffUser) return (
+    <StaffPanel
+      staffUser={staffUser}
+      data={data}
+      api={api}
+      reload={loadAllData}
+      onExit={() => {
+        setStaffUser(null);
+        sessionStorage.removeItem("staffUser");
+        setView("home");
+        loadAllData();
+      }}
+    />
+  );
+
   if (view === "admin") return (
     <>
       <AdminPanel data={data} api={api} reload={loadAllData} saved={saved} showSaved={showSaved} onExit={() => { setView("home"); loadAllData(); }} adminTab={adminTab} setAdminTab={setAdminTab} />
@@ -711,12 +733,33 @@ export default function App() {
         </div>
       </section>
 
-      <footer style={{background:"#060e1a",padding:"30px 5%",textAlign:"center",borderTop:"1px solid rgba(240,192,96,0.1)"}}>
+      <footer style={{background:"#060e1a",padding:"30px 5%",textAlign:"center",borderTop:"1px solid rgba(240,192,60,0.1)"}}>
         <div style={{fontFamily:"'Playfair Display'",fontSize:20,color:"#f0c060",marginBottom:8}}>{agency.name}</div>
-        <div style={{fontFamily:"'DM Sans'",fontSize:12,color:"rgba(255,255,255,0.3)",letterSpacing:2}}>
-          © {new Date().getFullYear()} · <span style={{cursor:"pointer",color:"rgba(240,192,96,0.4)"}} onClick={()=>setView("login")}>Admin</span>
+        <div style={{fontFamily:"'DM Sans'",fontSize:12,color:"rgba(255,255,255,0.3)",letterSpacing:2,display:"flex",alignItems:"center",justifyContent:"center",gap:16,flexWrap:"wrap"}}>
+          <span>© {new Date().getFullYear()}</span>
+          <span style={{color:"rgba(255,255,255,0.1)"}}>·</span>
+          <span style={{cursor:"pointer",color:"rgba(240,192,96,0.35)"}} onClick={()=>setView("login")}>Admin</span>
+          <span style={{color:"rgba(255,255,255,0.1)"}}>·</span>
+          <button onClick={()=>setStaffLoginOpen(true)}
+            style={{background:"rgba(212,133,10,0.1)",border:"1px solid rgba(212,133,10,0.25)",color:"rgba(240,192,96,0.7)",padding:"5px 14px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans'",letterSpacing:"1px",display:"inline-flex",alignItems:"center",gap:6}}>
+            🔐 Staff Login
+          </button>
         </div>
       </footer>
+
+      {/* Staff Login Modal */}
+      {staffLoginOpen && (
+        <StaffLoginModal
+          agency={agency}
+          onLogin={(user) => {
+            setStaffUser(user);
+            sessionStorage.setItem("staffUser", JSON.stringify(user));
+            setStaffLoginOpen(false);
+            setView("staffPanel");
+          }}
+          onClose={() => setStaffLoginOpen(false)}
+        />
+      )}
 
       {/* ── Booking Modal ── */}
       {bookingVehicle && (
@@ -1444,6 +1487,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
     {id:"tours",       label:"Tours & Taxi", icon:"🗺", badge: (data.tourBookings||[]).filter(b=>b.status==="pending").length},
     {id:"accounting",  label:"Accounting",   icon:"💰"},
     {id:"bookings",    label:"Bookings",     icon:"📋", badge: (data.bookings||[]).filter(b=>b.status==="pending").length},
+    {id:"users",       label:"Users",        icon:"👤"},
   ];
   const goTo = (id) => { setAdminTab(id); reload(); };
   return (
@@ -1519,6 +1563,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
               {adminTab==="accounting"   &&<AccountingEditor   data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
               {adminTab==="bookings"     &&<BookingsEditor     data={data} api={api} reload={reload} showSaved={showSavedLocal} rentals={data.rentals||[]}/>}
               {adminTab==="tours"        &&<ToursEditor        data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
+              {adminTab==="users"        &&<UsersEditor        data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
             </div>
           )}
         </div>
@@ -1678,7 +1723,7 @@ function RentalsEditor({ data, api, reload, showSaved }) {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(null);
   const [adding, setAdding] = useState(false);
-  const blank = {type:"scooty",name:"",category:"Scooty",price:"",period:"/day",tag:"",description:"",features:[""],image:"",available:true};
+  const blank = {type:"scooty",name:"",vehicleNo:"",category:"Scooty",price:"",period:"/day",tag:"",description:"",features:[""],image:"",available:true};
   const startEdit = (r) => { setForm({...r,features:[...(r.features||[])]}); setEditId(r._id); setAdding(false); };
   const startAdd = () => { setForm({...blank}); setEditId(null); setAdding(true); };
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -1700,8 +1745,8 @@ function RentalsEditor({ data, api, reload, showSaved }) {
         <div className="adm-card" style={{marginBottom:28,border:"1px solid rgba(212,133,10,0.3)"}}>
           <h3 style={{marginBottom:20,color:"#f0c060"}}>{adding?"Add New Vehicle":"Edit Vehicle"}</h3>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
-            {[["Vehicle Name","name"],["Price","price"],["Period","period"],["Tag (optional)","tag"]].map(([l,k])=>(
-              <div key={k}><label className="adm-label">{l}</label><input className="adm-input" value={form[k]||""} onChange={e=>set(k,e.target.value)}/></div>
+            {[["Vehicle Name","name"],["Vehicle No.","vehicleNo"],["Price","price"],["Period","period"],["Tag (optional)","tag"]].map(([l,k])=>(
+              <div key={k}><label className="adm-label">{l}</label><input className="adm-input" value={form[k]||""} onChange={e=>set(k,e.target.value)} placeholder={k==="vehicleNo"?"e.g. 9654":""}/></div>
             ))}
             <div><label className="adm-label">Type</label>
               <select className="adm-input" value={form.type} onChange={e=>set("type",e.target.value)}>
@@ -1739,6 +1784,7 @@ function RentalsEditor({ data, api, reload, showSaved }) {
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:4,flexWrap:"wrap"}}>
                 <span style={{fontWeight:600,fontSize:15}}>{r.name}</span>
+                {r.vehicleNo&&<span style={{fontSize:11,background:"rgba(212,133,10,0.15)",padding:"2px 8px",borderRadius:10,color:"#f0c060",fontWeight:600}}>#{r.vehicleNo}</span>}
                 <span style={{fontSize:11,background:"rgba(255,255,255,0.08)",padding:"2px 8px",borderRadius:10,color:"rgba(255,255,255,0.5)"}}>{r.type}</span>
                 <span style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:r.available?"rgba(74,222,128,0.1)":"rgba(255,80,80,0.1)",color:r.available?"#4ade80":"#ff6b6b"}}>{r.available?"Available":"Unavailable"}</span>
               </div>
@@ -3562,6 +3608,397 @@ function PayPage() {
           ← Back to Travel Engineers
         </a>
       </div>
+    </div>
+  );
+}
+
+// ─── MODULES list (mirrors backend) ──────────────────────────────────────────
+const MODULES = [
+  { id:"dashboard",    label:"Dashboard",    icon:"⊞" },
+  { id:"agency",       label:"Agency Info",  icon:"🏢" },
+  { id:"rentals",      label:"Rentals",      icon:"🛵" },
+  { id:"villa",        label:"Villa",        icon:"🏡" },
+  { id:"testimonials", label:"Reviews",      icon:"⭐" },
+  { id:"inventory",    label:"Inventory",    icon:"📦" },
+  { id:"tours",        label:"Tours & Taxi", icon:"🗺" },
+  { id:"accounting",   label:"Accounting",   icon:"💰" },
+  { id:"bookings",     label:"Bookings",     icon:"📋" },
+];
+
+// ─── StaffLoginModal ──────────────────────────────────────────────────────────
+function StaffLoginModal({ agency, onLogin, onClose }) {
+  const [username, setUsername] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [error, setError] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const agencyName = agency?.name || "Travel Engineers";
+  const heroImage  = agency?.heroImage || "";
+
+  const handleLogin = async () => {
+    if (!username || !password) { setError("Please enter both fields."); return; }
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/users?action=login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim().toLowerCase(), password }),
+      });
+      const data = await res.json();
+      if (data.success) { onLogin(data.user); }
+      else { setError(data.error || "Invalid credentials"); }
+    } catch { setError("Connection error. Try again."); }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif"}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');`}</style>
+      {/* Backdrop */}
+      <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(6,14,26,0.85)",backdropFilter:"blur(6px)"}} />
+      {/* Card */}
+      <div style={{position:"relative",width:"100%",maxWidth:400,margin:"0 16px",background:"#0d1b2e",borderRadius:20,border:"1px solid rgba(240,192,96,0.15)",overflow:"hidden",boxShadow:"0 32px 80px rgba(0,0,0,0.6)"}}>
+        {/* Header band */}
+        <div style={{background:"linear-gradient(135deg,#0a1628,#1a2a40)",padding:"32px 36px 28px",position:"relative",overflow:"hidden",borderBottom:"1px solid rgba(240,192,96,0.08)"}}>
+          {heroImage && <img src={heroImage} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",opacity:0.12}} onError={e=>e.target.style.display="none"} />}
+          <div style={{position:"relative"}}>
+            <div style={{width:44,height:44,background:"rgba(212,133,10,0.15)",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:16,fontSize:20}}>🔐</div>
+            <div style={{fontFamily:"'Playfair Display'",fontSize:22,color:"white",marginBottom:4}}>{agencyName}</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",letterSpacing:"1.5px",textTransform:"uppercase"}}>Staff Portal</div>
+          </div>
+          <button onClick={onClose} style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,0.06)",border:"none",color:"rgba(255,255,255,0.5)",width:32,height:32,borderRadius:8,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+        </div>
+        {/* Form */}
+        <div style={{padding:"28px 36px 32px"}}>
+          <div style={{marginBottom:16}}>
+            <label style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"1.5px",display:"block",marginBottom:8}}>Username</label>
+            <input value={username} onChange={e=>setUsername(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+              placeholder="your.username" autoComplete="username"
+              style={{width:"100%",padding:"13px 16px",background:"rgba(255,255,255,0.05)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:10,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",boxSizing:"border-box"}} />
+          </div>
+          <div style={{marginBottom:20}}>
+            <label style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"1.5px",display:"block",marginBottom:8}}>Password</label>
+            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+              placeholder="••••••••" autoComplete="current-password"
+              style={{width:"100%",padding:"13px 16px",background:"rgba(255,255,255,0.05)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:10,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",boxSizing:"border-box"}} />
+          </div>
+          {error && <div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"10px 14px",color:"#f87171",fontSize:13,marginBottom:16}}>{error}</div>}
+          <button onClick={handleLogin} disabled={loading}
+            style={{width:"100%",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"14px",borderRadius:12,fontWeight:700,fontSize:15,cursor:"pointer",fontFamily:"'DM Sans'",opacity:loading?0.7:1}}>
+            {loading ? "Signing in…" : "Sign In →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── StaffPanel ───────────────────────────────────────────────────────────────
+function StaffPanel({ staffUser, data, api, reload, onExit }) {
+  const [activeTab, setActiveTab] = React.useState(() => staffUser.permissions[0] || "bookings");
+  const [sidebarOpen, setSidebarOpen] = React.useState(true);
+  const [toast, setToast] = React.useState(null);
+  const showSaved = (msg="✅ Saved!", type="success") => { setToast({msg,type}); setTimeout(()=>setToast(null),2500); };
+
+  const allowedTabs = MODULES.filter(m => staffUser.permissions.includes(m.id));
+
+  // If current tab not allowed, snap to first allowed
+  React.useEffect(() => {
+    if (!staffUser.permissions.includes(activeTab)) {
+      setActiveTab(staffUser.permissions[0] || "bookings");
+    }
+  }, []);
+
+  return (
+    <div style={{minHeight:"100vh",background:"#f5f6fa",fontFamily:"'DM Sans',sans-serif",color:"#1a1a2e",display:"flex",position:"relative"}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap'); .staff-nav-btn{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;border:none;border-radius:10px;background:transparent;cursor:pointer;font-family:'DM Sans';font-size:13.5px;font-weight:500;transition:all 0.15s;} .staff-nav-btn.active{background:linear-gradient(135deg,#d4850a,#f0c060)!important;color:#1a1a2e!important;} .staff-nav-btn:hover:not(.active){background:rgba(255,255,255,0.07);}`}</style>
+      {toast && <div style={{position:"fixed",bottom:32,left:"50%",transform:"translateX(-50%)",zIndex:9999,background:toast.type==="error"?"#ef4444":"#16a34a",color:"white",padding:"13px 28px",borderRadius:12,fontSize:15,fontWeight:600,boxShadow:"0 8px 32px rgba(0,0,0,0.3)"}}>{toast.msg}</div>}
+
+      {/* Sidebar */}
+      <div style={{width:sidebarOpen?220:64,minHeight:"100vh",background:"#0d1b2e",transition:"width 0.2s",display:"flex",flexDirection:"column",padding:"20px 12px",gap:4,flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 6px",marginBottom:12,justifyContent:sidebarOpen?"flex-start":"center"}}>
+          <button onClick={()=>setSidebarOpen(v=>!v)} style={{background:"rgba(255,255,255,0.06)",border:"none",color:"rgba(255,255,255,0.5)",width:32,height:32,borderRadius:8,cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            {sidebarOpen?"◀":"▶"}
+          </button>
+          {sidebarOpen && (
+            <div>
+              <div style={{fontWeight:700,fontSize:13,color:"#f0c060",lineHeight:1.2}}>Staff Panel</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>{staffUser.name}</div>
+            </div>
+          )}
+        </div>
+
+        {allowedTabs.map(t=>(
+          <button key={t.id} className={"staff-nav-btn"+(activeTab===t.id?" active":"")}
+            style={{color:activeTab===t.id?"#1a1a2e":"rgba(255,255,255,0.55)",justifyContent:sidebarOpen?"flex-start":"center"}}
+            onClick={()=>{ setActiveTab(t.id); reload(); }}>
+            <span style={{fontSize:16}}>{t.icon}</span>
+            {sidebarOpen && <span>{t.label}</span>}
+          </button>
+        ))}
+
+        <div style={{flex:1}} />
+        {/* User info + sign out */}
+        <div style={{borderTop:"1px solid rgba(255,255,255,0.08)",paddingTop:12}}>
+          {sidebarOpen && (
+            <div style={{padding:"8px 10px",marginBottom:8}}>
+              <div style={{fontSize:13,fontWeight:600,color:"white"}}>{staffUser.name}</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.35)"}}>{staffUser.designation || "Staff"}</div>
+            </div>
+          )}
+          <button className="staff-nav-btn" onClick={onExit}
+            style={{color:"rgba(255,100,100,0.7)",justifyContent:sidebarOpen?"flex-start":"center"}}>
+            <span style={{fontSize:16}}>🚪</span>
+            {sidebarOpen && <span>Sign Out</span>}
+          </button>
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div style={{flex:1,overflowY:"auto"}}>
+        {/* Top bar */}
+        <div style={{background:"white",padding:"16px 28px",borderBottom:"1px solid #e8eaf0",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+          <div>
+            <div style={{fontWeight:700,fontSize:17,color:"#f0c060",fontFamily:"'Playfair Display'"}}>{MODULES.find(m=>m.id===activeTab)?.label||""}</div>
+            <div style={{fontSize:12,color:"rgba(0,0,0,0.35)"}}>Manage your {(MODULES.find(m=>m.id===activeTab)?.label||"").toLowerCase()}</div>
+          </div>
+          <div style={{fontSize:12,color:"rgba(0,0,0,0.4)",textAlign:"right"}}>
+            <div style={{fontWeight:600,color:"#1a1a2e"}}>{staffUser.name}</div>
+            <div>{staffUser.designation || "Staff"}</div>
+          </div>
+        </div>
+        <div style={{padding:"0"}}>
+          {activeTab==="dashboard"    && <AdminDashboard data={data} goTo={setActiveTab} />}
+          {activeTab==="agency"       && <AgencyEditor       data={data} api={api} reload={reload} showSaved={showSaved}/>}
+          {activeTab==="rentals"      && <RentalsEditor      data={data} api={api} reload={reload} showSaved={showSaved}/>}
+          {activeTab==="villa"        && <VillaEditor        data={data} api={api} reload={reload} showSaved={showSaved}/>}
+          {activeTab==="testimonials" && <TestimonialsEditor data={data} api={api} reload={reload} showSaved={showSaved}/>}
+          {activeTab==="inventory"    && <InventoryEditor    data={data} api={api} reload={reload} showSaved={showSaved}/>}
+          {activeTab==="accounting"   && <AccountingEditor   data={data} api={api} reload={reload} showSaved={showSaved}/>}
+          {activeTab==="bookings"     && <BookingsEditor     data={data} api={api} reload={reload} showSaved={showSaved} rentals={data.rentals||[]}/>}
+          {activeTab==="tours"        && <ToursEditor        data={data} api={api} reload={reload} showSaved={showSaved}/>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── UsersEditor (Admin only) ─────────────────────────────────────────────────
+function UsersEditor({ data, api, reload, showSaved }) {
+  const [users, setUsers] = React.useState(data.users || []);
+  const [showForm, setShowForm] = React.useState(false);
+  const [editing, setEditing] = React.useState(null); // null = new, obj = edit
+  const [form, setForm] = React.useState({ username:"", password:"", name:"", designation:"", permissions:["bookings"], active:true });
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const [confirmDelete, setConfirmDelete] = React.useState(null);
+
+  React.useEffect(() => { setUsers(data.users || []); }, [data.users]);
+
+  const openNew = () => {
+    setEditing(null);
+    setForm({ username:"", password:"", name:"", designation:"", permissions:["bookings"], active:true });
+    setError("");
+    setShowForm(true);
+  };
+
+  const openEdit = (u) => {
+    setEditing(u);
+    setForm({ username:u.username, password:"", name:u.name, designation:u.designation||"", permissions:u.permissions||["bookings"], active:u.active!==false });
+    setError("");
+    setShowForm(true);
+  };
+
+  const togglePerm = (id) => {
+    setForm(f => ({
+      ...f,
+      permissions: f.permissions.includes(id) ? f.permissions.filter(p=>p!==id) : [...f.permissions, id]
+    }));
+  };
+
+  const handleSave = async () => {
+    if (!form.name.trim() || !form.username.trim()) { setError("Name and username are required."); return; }
+    if (!editing && !form.password) { setError("Password is required for new users."); return; }
+    if (form.permissions.length === 0) { setError("Select at least one permission."); return; }
+    setSaving(true); setError("");
+    try {
+      const payload = { ...form };
+      if (!payload.password) delete payload.password; // don't send empty password on edit
+      if (editing) {
+        await api.put("/users?id=" + editing._id, payload);
+      } else {
+        await api.post("/users", payload);
+      }
+      showSaved(editing ? "✅ User updated!" : "✅ User created!");
+      setShowForm(false);
+      reload();
+    } catch(e) { setError(e?.message || "Save failed."); }
+    setSaving(false);
+  };
+
+  const handleDelete = async (id) => {
+    await api.delete("/users?id=" + id);
+    showSaved("🗑️ User deleted", "delete");
+    setConfirmDelete(null);
+    reload();
+  };
+
+  const inp = { width:"100%", padding:"11px 14px", background:"rgba(255,255,255,0.07)", border:"1.5px solid rgba(255,255,255,0.1)", borderRadius:10, color:"white", fontFamily:"'DM Sans'", fontSize:14, outline:"none", boxSizing:"border-box" };
+
+  return (
+    <div style={{padding:"28px",fontFamily:"'DM Sans',sans-serif",minHeight:"80vh",background:"#f5f6fa"}}>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
+        <div>
+          <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,color:"#1a1a2e",margin:0}}>User Management</h2>
+          <p style={{fontSize:13,color:"rgba(0,0,0,0.4)",margin:"4px 0 0"}}>{users.length} staff {users.length===1?"member":"members"}</p>
+        </div>
+        <button onClick={openNew}
+          style={{padding:"11px 22px",background:"linear-gradient(135deg,#d4850a,#f0c060)",border:"none",borderRadius:12,color:"white",fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
+          + Add User
+        </button>
+      </div>
+
+      {/* Users grid */}
+      {users.length === 0 ? (
+        <div style={{textAlign:"center",padding:"80px 20px",color:"rgba(0,0,0,0.3)"}}>
+          <div style={{fontSize:48,marginBottom:16}}>👤</div>
+          <div style={{fontSize:18,fontWeight:600,marginBottom:8}}>No staff users yet</div>
+          <div style={{fontSize:14}}>Add users to give them access to specific modules</div>
+        </div>
+      ) : (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:16}}>
+          {users.map(u => (
+            <div key={u._id} style={{background:"white",borderRadius:16,padding:"20px 22px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)",border:`1px solid ${u.active===false?"rgba(239,68,68,0.15)":"rgba(0,0,0,0.06)"}`,position:"relative"}}>
+              {u.active===false && (
+                <span style={{position:"absolute",top:14,right:14,background:"rgba(239,68,68,0.1)",color:"#ef4444",fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:20,letterSpacing:"0.5px"}}>INACTIVE</span>
+              )}
+              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
+                <div style={{width:44,height:44,borderRadius:12,background:"linear-gradient(135deg,#d4850a22,#f0c06022)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>👤</div>
+                <div>
+                  <div style={{fontWeight:700,fontSize:15,color:"#1a1a2e"}}>{u.name}</div>
+                  <div style={{fontSize:12,color:"rgba(0,0,0,0.4)"}}>{u.designation || "Staff"} · @{u.username}</div>
+                </div>
+              </div>
+              {/* Permissions */}
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16}}>
+                {(u.permissions||[]).map(p => {
+                  const mod = MODULES.find(m=>m.id===p);
+                  return mod ? (
+                    <span key={p} style={{background:"rgba(212,133,10,0.1)",color:"#d4850a",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:20,display:"inline-flex",alignItems:"center",gap:4}}>
+                      {mod.icon} {mod.label}
+                    </span>
+                  ) : null;
+                })}
+              </div>
+              <div style={{display:"flex",gap:8"}}>
+                <button onClick={()=>openEdit(u)}
+                  style={{flex:1,padding:"9px",background:"rgba(212,133,10,0.08)",border:"1px solid rgba(212,133,10,0.2)",borderRadius:9,color:"#d4850a",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:"'DM Sans'"}}>
+                  ✏️ Edit
+                </button>
+                <button onClick={()=>setConfirmDelete(u)}
+                  style={{padding:"9px 14px",background:"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.15)",borderRadius:9,color:"#ef4444",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:"'DM Sans'"}}>
+                  🗑️
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add/Edit Drawer */}
+      {showForm && (
+        <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif"}}>
+          <div onClick={()=>setShowForm(false)} style={{position:"absolute",inset:0,background:"rgba(6,14,26,0.7)",backdropFilter:"blur(4px)"}} />
+          <div style={{position:"relative",width:"100%",maxWidth:520,margin:"0 16px",background:"#0d1b2e",borderRadius:20,border:"1px solid rgba(240,192,96,0.12)",overflow:"hidden",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 32px 80px rgba(0,0,0,0.5)"}}>
+            {/* Modal header */}
+            <div style={{padding:"24px 28px 20px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div>
+                <div style={{fontFamily:"'Playfair Display'",fontSize:20,color:"white"}}>{editing?"Edit User":"Add Staff User"}</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginTop:3}}>{editing?"Update details and permissions":"Create a new staff login"}</div>
+              </div>
+              <button onClick={()=>setShowForm(false)} style={{background:"rgba(255,255,255,0.06)",border:"none",color:"rgba(255,255,255,0.5)",width:32,height:32,borderRadius:8,cursor:"pointer",fontSize:16}}>✕</button>
+            </div>
+            {/* Form body */}
+            <div style={{padding:"24px 28px"}}>
+              {/* Row: name + designation */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+                <div>
+                  <label style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"1.5px",display:"block",marginBottom:7}}>Full Name *</label>
+                  <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Riya Sharma" style={inp} />
+                </div>
+                <div>
+                  <label style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"1.5px",display:"block",marginBottom:7}}>Designation</label>
+                  <input value={form.designation} onChange={e=>setForm(f=>({...f,designation:e.target.value}))} placeholder="Booking Agent" style={inp} />
+                </div>
+              </div>
+              {/* Username */}
+              <div style={{marginBottom:14}}>
+                <label style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"1.5px",display:"block",marginBottom:7}}>Username *</label>
+                <input value={form.username} onChange={e=>setForm(f=>({...f,username:e.target.value.toLowerCase().replace(/\s/g,"")}))} placeholder="riya.sharma" style={inp} />
+              </div>
+              {/* Password */}
+              <div style={{marginBottom:20}}>
+                <label style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"1.5px",display:"block",marginBottom:7}}>
+                  Password {editing && <span style={{color:"rgba(255,255,255,0.2)",fontWeight:400,textTransform:"none",letterSpacing:0}}>(leave blank to keep current)</span>}
+                </label>
+                <input type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} placeholder={editing?"••••••••  (unchanged)":"Set a password"} style={inp} />
+              </div>
+              {/* Permissions */}
+              <div style={{marginBottom:20}}>
+                <label style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"1.5px",display:"block",marginBottom:12}}>Module Permissions *</label>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  {MODULES.map(m => {
+                    const checked = form.permissions.includes(m.id);
+                    return (
+                      <button key={m.id} onClick={()=>togglePerm(m.id)}
+                        style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:10,border:`1.5px solid ${checked?"#d4850a":"rgba(255,255,255,0.08)"}`,background:checked?"rgba(212,133,10,0.12)":"rgba(255,255,255,0.03)",cursor:"pointer",textAlign:"left",fontFamily:"'DM Sans'"}}>
+                        <span style={{fontSize:16}}>{m.icon}</span>
+                        <span style={{fontSize:13,fontWeight:checked?600:400,color:checked?"#f0c060":"rgba(255,255,255,0.5)"}}>{m.label}</span>
+                        {checked && <span style={{marginLeft:"auto",color:"#d4850a",fontSize:16}}>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* Active toggle */}
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,padding:"12px 16px",background:"rgba(255,255,255,0.04)",borderRadius:10,border:"1px solid rgba(255,255,255,0.07)"}}>
+                <button onClick={()=>setForm(f=>({...f,active:!f.active}))}
+                  style={{width:44,height:24,borderRadius:12,background:form.active?"#d4850a":"rgba(255,255,255,0.15)",border:"none",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+                  <div style={{position:"absolute",top:3,left:form.active?22:3,width:18,height:18,borderRadius:"50%",background:"white",transition:"left 0.2s"}}/>
+                </button>
+                <div>
+                  <div style={{fontSize:13,fontWeight:600,color:"white"}}>Account Active</div>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,0.35)"}}>Inactive users cannot log in</div>
+                </div>
+              </div>
+              {error && <div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:8,padding:"10px 14px",color:"#f87171",fontSize:13,marginBottom:16}}>{error}</div>}
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>setShowForm(false)} style={{flex:1,padding:"13px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,color:"rgba(255,255,255,0.6)",fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:"'DM Sans'"}}>Cancel</button>
+                <button onClick={handleSave} disabled={saving}
+                  style={{flex:2,padding:"13px",background:"linear-gradient(135deg,#d4850a,#f0c060)",border:"none",borderRadius:12,color:"#1a1a2e",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"'DM Sans'",opacity:saving?0.7:1}}>
+                  {saving?"Saving…":(editing?"Update User":"Create User")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirm */}
+      {confirmDelete && (
+        <div style={{position:"fixed",inset:0,zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div onClick={()=>setConfirmDelete(null)} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)"}} />
+          <div style={{position:"relative",background:"#0d1b2e",borderRadius:16,padding:"28px 32px",maxWidth:380,width:"100%",margin:"0 16px",border:"1px solid rgba(239,68,68,0.2)",textAlign:"center"}}>
+            <div style={{fontSize:40,marginBottom:12}}>⚠️</div>
+            <div style={{fontFamily:"'Playfair Display'",fontSize:20,color:"white",marginBottom:8}}>Delete User?</div>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.45)",marginBottom:24}}>Remove <strong style={{color:"white"}}>{confirmDelete.name}</strong> (@{confirmDelete.username})? This cannot be undone.</div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setConfirmDelete(null)} style={{flex:1,padding:"12px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"rgba(255,255,255,0.6)",fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans'",fontSize:14}}>Cancel</button>
+              <button onClick={()=>handleDelete(confirmDelete._id)} style={{flex:1,padding:"12px",background:"#ef4444",border:"none",borderRadius:10,color:"white",fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans'",fontSize:14}}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
