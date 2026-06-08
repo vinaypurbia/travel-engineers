@@ -389,7 +389,7 @@ export default function App() {
   const loadAllData = async () => {
     const startTime = Date.now();
     try {
-      const [agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings, users] = await Promise.all([
+      const [agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings] = await Promise.all([
         safeGet("/agency", {name:"",tagline:"",heroSubtitle:"",phone:"",email:"",address:"",whatsapp:"",heroImage:""}),
         safeGet("/rentals", []),
         safeGet("/villa", {name:"",tagline:"",description:"",price:"",period:"/night",checkIn:"",checkOut:"",minStay:"",maxGuests:"",image:"",amenities:[],rooms:[]}),
@@ -399,9 +399,9 @@ export default function App() {
         safeGet("/bookings", []),
         safeGet("/tours", []),
         safeGet("/tours?bookings=1", []),
-        safeGet("/users", []),
       ]);
-      setData({ agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings, users });
+      // Note: users are loaded separately in UsersEditor with admin token auth
+      setData({ agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings, users: [] });
     } catch (err) {
       console.error("API failed:", err);
     }
