@@ -25,17 +25,38 @@ const ID_TYPES = ["Aadhaar", "PAN", "Passport", "Driving License", "Voter ID", "
 // Shared input / label styles (matches App.jsx dark admin theme)
 const inp = {
   width: "100%", padding: "10px 14px",
-  background: "rgba(255,255,255,0.06)",
+  background: "#0d1b2e",
   border: "1.5px solid rgba(255,255,255,0.1)",
   borderRadius: 8, color: "white",
   fontFamily: "'DM Sans', sans-serif", fontSize: 14,
   outline: "none", boxSizing: "border-box",
+};
+// Select-specific overrides: solid bg + custom arrow so system chrome doesn't bleed through
+const inpSel = {
+  ...inp,
+  cursor: "pointer",
+  appearance: "none",
+  WebkitAppearance: "none",
+  backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23f0c060' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 12px center",
+  paddingRight: 32,
 };
 const lbl = {
   display: "block", fontSize: 11, fontWeight: 600,
   color: "rgba(255,255,255,0.4)", textTransform: "uppercase",
   letterSpacing: 2, marginBottom: 6,
 };
+
+// Injected once per page to make <option> elements readable inside dark selects.
+// Inline styles on <option> are ignored by most browsers; only CSS works.
+const DARK_SELECT_STYLE = `
+  .te-dark-sel option,
+  .te-dark-sel optgroup {
+    background: #0d1b2e !important;
+    color: #ffffff !important;
+  }
+`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Image compression utility
@@ -110,6 +131,7 @@ function IdFormFields({ form, setForm }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      <style>{DARK_SELECT_STYLE}</style>
       <div style={{ gridColumn: "1/-1" }}>
         <label style={lbl}>Customer Full Name</label>
         <input style={inp} value={form.customerName || ""} onChange={e => set("customerName", e.target.value)} placeholder="As printed on document" />
@@ -124,7 +146,7 @@ function IdFormFields({ form, setForm }) {
       </div>
       <div>
         <label style={lbl}>ID Type</label>
-        <select style={{ ...inp, cursor: "pointer" }} value={form.idType || ""} onChange={e => set("idType", e.target.value)}>
+        <select className="te-dark-sel" style={inpSel} value={form.idType || ""} onChange={e => set("idType", e.target.value)}>
           <option value="">— Select —</option>
           {ID_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
@@ -139,7 +161,7 @@ function IdFormFields({ form, setForm }) {
       </div>
       <div>
         <label style={lbl}>Gender</label>
-        <select style={{ ...inp, cursor: "pointer" }} value={form.gender || ""} onChange={e => set("gender", e.target.value)}>
+        <select className="te-dark-sel" style={inpSel} value={form.gender || ""} onChange={e => set("gender", e.target.value)}>
           <option value="">— Select —</option>
           <option value="Male">Male</option>
           <option value="Female">Female</option>
@@ -666,8 +688,21 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
     setSaving(true);
     try {
       const result = await apiCall.post("/bookings", { ...form, pricePerDay: priceNum, source: "walkin" });
-      if (result.success) { if (onCreated) onCreated(result.booking); onClose(); }
-      else setError("Something went wrong. Try again.");
+      if (result.success) {
+        // Normalise the returned booking — some API responses omit fields like `source`.
+        // Fall back to the form data so onCreated always receives a usable object.
+        const returnedBooking = result.booking || result.data || {};
+        const resolvedBooking = {
+          ...form,
+          pricePerDay: priceNum,
+          source: "walkin",
+          ...returnedBooking,
+          // Always enforce source so isWalkin() works even if the API strips it
+          source: "walkin",
+        };
+        if (onCreated) onCreated(resolvedBooking);
+        onClose();
+      } else setError("Something went wrong. Try again.");
     } catch (err) {
       setError(err.message || "Save failed.");
     }
@@ -724,7 +759,7 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
               {/* Vehicle */}
               <div style={{ marginBottom: 14 }}>
                 <label style={lbl}>Vehicle *</label>
-                <select style={{ ...inp, cursor: "pointer" }} value={form.vehicleId} onChange={e => selectVehicle(e.target.value)}>
+                <select className="te-dark-sel" style={inpSel} value={form.vehicleId} onChange={e => selectVehicle(e.target.value)}>
                   <option value="">— Select from available vehicles —</option>
                   {available.map(r => <option key={r._id} value={r._id}>{r.name} — {r.price}{r.period}</option>)}
                   <option value="__custom__">Other (type manually)</option>
@@ -816,7 +851,7 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                     <div>
                       <label style={lbl}>ID Type</label>
-                      <select style={{ ...inp, cursor: "pointer" }} value={form.idType} onChange={e => set("idType", e.target.value)}>
+                      <select className="te-dark-sel" style={inpSel} value={form.idType} onChange={e => set("idType", e.target.value)}>
                         <option value="">— Select —</option>
                         {ID_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
