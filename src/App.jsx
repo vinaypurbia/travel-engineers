@@ -3129,7 +3129,11 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
   const today = new Date().toISOString().slice(0,10);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState("");
-  const available = (rentals||[]).filter(r=>r.available);
+  const allRentals = rentals||[];
+  const available  = allRentals.filter(r=>r.available);
+  // Current booking's vehicle — may be unavailable, still show it
+  const currentVehicle = booking.vehicleId
+    ? allRentals.find(r=>r._id===booking.vehicleId) : null;
 
   const [form, setForm] = useState({
     customerName: booking.customerName||"",
@@ -3158,7 +3162,7 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
   const selectVehicle = (vid) => {
     if (!vid) { set("vehicleId",""); set("vehicleName",""); return; }
     if (vid==="__custom__") { set("vehicleId","__custom__"); set("vehicleName",""); return; }
-    const r = available.find(r=>r._id===vid);
+    const r = allRentals.find(r=>r._id===vid);
     if (r) {
       const price = r.price ? Number(String(r.price).replace(/[^0-9.]/g,"")) : 0;
       setForm(f=>({...f, vehicleId:vid, vehicleName:r.name, pricePerDay: price||f.pricePerDay }));
@@ -3224,12 +3228,20 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
             <label style={lb}>Vehicle *</label>
             <select className="te-dark-sel-edit" style={fiS} value={form.vehicleId||""} onChange={e=>selectVehicle(e.target.value)}>
               <option value="">— Select vehicle —</option>
+              {/* Current vehicle first if it's not in available list */}
+              {currentVehicle && !currentVehicle.available && (
+                <option key={currentVehicle._id} value={currentVehicle._id}>{currentVehicle.name} (currently unavailable)</option>
+              )}
               {available.map(r=><option key={r._id} value={r._id}>{r.name} — {r.price}{r.period||""}</option>)}
               <option value="__custom__">Other (type manually)</option>
             </select>
           </div>
-          {(form.vehicleId==="__custom__"||(!form.vehicleId&&form.vehicleName)) && (
+          {(form.vehicleId==="__custom__") && (
             <div><label style={lb}>Vehicle Name (manual)</label><input style={fi} value={form.vehicleName} onChange={e=>set("vehicleName",e.target.value)} placeholder="e.g. Honda Activa, Innova Crysta"/></div>
+          )}
+          {/* Always show current vehicle name as read-only hint below the select */}
+          {form.vehicleName && form.vehicleId !== "__custom__" && (
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginTop:-8}}>Selected: <span style={{color:"#f0c060"}}>{form.vehicleName}</span></div>
           )}
 
           {/* Dates + price */}
@@ -3595,7 +3607,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                     <option value="cancelled" style={{background:"#0d1b2e",color:"white"}}>❌ Cancelled</option>
                   </select>
                   <button onClick={e=>{e.stopPropagation();setEditBooking(b);}} title="Edit booking details"
-                    style={{background:"rgba(212,133,10,0.1)",border:"1px solid rgba(212,133,10,0.3)",color:"#f0c060",padding:"6px 10px",borderRadius:7,cursor:"pointer",fontSize:13}}>✏️</button>
+                    style={{background:"rgba(212,133,10,0.1)",border:"1px solid rgba(212,133,10,0.3)",color:"#f0c060",padding:"6px 10px",borderRadius:7,cursor:"pointer",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>✏️ Edit</button>
                   <button onClick={e=>{e.stopPropagation();del(b._id);}} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.15)",color:"#ff6b6b",padding:"6px 10px",borderRadius:7,cursor:"pointer"}}>🗑</button>
                   <span style={{fontSize:12,color:"rgba(255,255,255,0.2)",userSelect:"none"}}>{isExpanded?"▲":"▼"}</span>
                 </div>
@@ -3813,7 +3825,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                   linkedBookingId: String(booking?._id||""),
                   paymentStatus: "paid",
                   paymentMethod: "cash",
-                  date: booking?.checkIn || new Date().toISOString(),
+                  date: new Date().toISOString(),
                   notes: `Walk-in booking. Vehicle: ${booking?.vehicleName} | Amount: ₹${amt}`
                 });
               }
