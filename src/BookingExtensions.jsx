@@ -538,7 +538,7 @@ export function CustomerIdPanel({ booking, onUpdated }) {
           {mode === "view" && (
             <>
               <button onClick={() => setMode("scan")} style={{ background: "rgba(96,165,250,0.12)", border: "1px solid rgba(96,165,250,0.3)", color: "#60a5fa", padding: "5px 12px", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>📷 Scan ID</button>
-              <button onClick={() => setMode("manual")} style={{ background: "rgba(212,133,10,0.12)", border: "1px solid rgba(212,133,10,0.3)", color: "#f0c060", padding: "5px 12px", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>✏️ Edit</button>
+              <button onClick={() => setMode("manual")} style={{ background: "rgba(212,133,10,0.12)", border: "1px solid rgba(212,133,10,0.3)", color: "#f0c060", padding: "5px 12px", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>✏️ Edit ID</button>
             </>
           )}
           {mode !== "view" && (
