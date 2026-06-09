@@ -3123,6 +3123,162 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
   );
 }
 
+// ─── EditBookingModal ────────────────────────────────────────────────────────
+// Lets admin edit vehicle, dates, price, address, notes on any booking
+function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
+  const today = new Date().toISOString().slice(0,10);
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState("");
+  const available = (rentals||[]).filter(r=>r.available);
+
+  const [form, setForm] = useState({
+    customerName: booking.customerName||"",
+    phone:        booking.phone||"",
+    email:        booking.email||"",
+    vehicleId:    booking.vehicleId||"",
+    vehicleName:  booking.vehicleName||"",
+    checkIn:      booking.checkIn  ? booking.checkIn.slice(0,10)  : "",
+    checkOut:     booking.checkOut ? booking.checkOut.slice(0,10) : "",
+    pricePerDay:  booking.pricePerDay||"",
+    stayAddress:  booking.stayAddress||"",
+    notes:        booking.notes||"",
+    paymentMethod: booking.paymentMethod||"cash",
+  });
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const isWalkin = booking.source==="walkin"||
+    (booking.customerName||"").toLowerCase()==="walk-in customer"||
+    (booking.phone||"").replace(/[^0-9]/g,"")==="0000000000";
+
+  const days = form.checkIn&&form.checkOut
+    ? Math.max(0,Math.round((new Date(form.checkOut)-new Date(form.checkIn))/864e5)) : 0;
+  const ppd   = Number(form.pricePerDay)||0;
+  const total = ppd*days;
+
+  const selectVehicle = (vid) => {
+    if (!vid) { set("vehicleId",""); set("vehicleName",""); return; }
+    if (vid==="__custom__") { set("vehicleId","__custom__"); set("vehicleName",""); return; }
+    const r = available.find(r=>r._id===vid);
+    if (r) {
+      const price = r.price ? Number(String(r.price).replace(/[^0-9.]/g,"")) : 0;
+      setForm(f=>({...f, vehicleId:vid, vehicleName:r.name, pricePerDay: price||f.pricePerDay }));
+    }
+  };
+
+  const save = async () => {
+    if (!form.customerName.trim()) { setError("Customer name required."); return; }
+    if (!form.vehicleName.trim())  { setError("Vehicle is required."); return; }
+    if (!form.checkIn)             { setError("Check-in date required."); return; }
+    if (!form.checkOut)            { setError("Check-out date required."); return; }
+    if (new Date(form.checkOut)<=new Date(form.checkIn)) { setError("Check-out must be after check-in."); return; }
+    setError(""); setSaving(true);
+    try {
+      await api.put(`/bookings?id=${booking._id}`, {
+        ...booking,
+        customerName:  form.customerName,
+        phone:         form.phone,
+        email:         form.email||null,
+        vehicleId:     form.vehicleId==="__custom__"?"":form.vehicleId,
+        vehicleName:   form.vehicleName,
+        checkIn:       form.checkIn,
+        checkOut:      form.checkOut,
+        pricePerDay:   ppd||null,
+        stayAddress:   form.stayAddress||null,
+        notes:         form.notes||null,
+        paymentMethod: form.paymentMethod||null,
+      });
+      await onSaved();
+    } catch(e) { setError(e.message||"Save failed."); }
+    setSaving(false);
+  };
+
+  const fi  = {width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",boxSizing:"border-box"};
+  const fiS = {...fi,cursor:"pointer",appearance:"none",WebkitAppearance:"none",backgroundImage:"url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23f0c060' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")",backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center",paddingRight:32};
+  const lb  = {display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6};
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.8)",backdropFilter:"blur(4px)"}} onClick={onClose}/>
+      <div style={{position:"relative",background:"#0d1b2e",border:"1px solid rgba(212,133,10,0.3)",borderRadius:20,width:"100%",maxWidth:580,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.7)"}}>
+        {/* Header */}
+        <div style={{padding:"18px 24px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,background:"#0d1b2e",zIndex:10}}>
+          <div>
+            <div style={{fontFamily:"'Playfair Display'",fontSize:18,fontWeight:700,color:"#f0c060"}}>✏️ Edit Booking</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:2}}>{booking.customerName} · {booking.vehicleName||"—"}</div>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.06)",border:"none",color:"rgba(255,255,255,0.4)",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+        </div>
+
+        <div style={{padding:"22px 24px 28px",display:"flex",flexDirection:"column",gap:16}}>
+          <style>{`.te-dark-sel-edit option,.te-dark-sel-edit optgroup{background:#0d1b2e!important;color:#fff!important;}`}</style>
+
+          {/* Customer */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            <div style={{gridColumn:"1/-1"}}><label style={lb}>Customer Name *</label><input style={fi} value={form.customerName} onChange={e=>set("customerName",e.target.value)}/></div>
+            <div><label style={lb}>Phone *</label><input style={fi} value={form.phone} onChange={e=>set("phone",e.target.value)} type="tel"/></div>
+            <div><label style={lb}>Email</label><input style={fi} value={form.email} onChange={e=>set("email",e.target.value)} type="email" placeholder="Optional"/></div>
+          </div>
+
+          {/* Vehicle */}
+          <div>
+            <label style={lb}>Vehicle *</label>
+            <select className="te-dark-sel-edit" style={fiS} value={form.vehicleId||""} onChange={e=>selectVehicle(e.target.value)}>
+              <option value="">— Select vehicle —</option>
+              {available.map(r=><option key={r._id} value={r._id}>{r.name} — {r.price}{r.period||""}</option>)}
+              <option value="__custom__">Other (type manually)</option>
+            </select>
+          </div>
+          {(form.vehicleId==="__custom__"||(!form.vehicleId&&form.vehicleName)) && (
+            <div><label style={lb}>Vehicle Name (manual)</label><input style={fi} value={form.vehicleName} onChange={e=>set("vehicleName",e.target.value)} placeholder="e.g. Honda Activa, Innova Crysta"/></div>
+          )}
+
+          {/* Dates + price */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            <div><label style={lb}>Check-in *</label><input type="date" style={{...fi,colorScheme:"dark"}} value={form.checkIn} onChange={e=>set("checkIn",e.target.value)}/></div>
+            <div><label style={lb}>Check-out *</label><input type="date" style={{...fi,colorScheme:"dark"}} value={form.checkOut} min={form.checkIn||today} onChange={e=>set("checkOut",e.target.value)}/></div>
+            <div><label style={lb}>Price per Day (₹)</label><input type="number" style={fi} value={form.pricePerDay} onChange={e=>set("pricePerDay",e.target.value)} placeholder="0"/></div>
+            <div style={{display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
+              {days>0&&ppd>0&&(
+                <div style={{background:"rgba(212,133,10,0.08)",border:"1px solid rgba(212,133,10,0.2)",borderRadius:8,padding:"10px 14px"}}>
+                  <span style={{color:"rgba(255,255,255,0.4)",fontSize:12}}>{days}d × ₹{ppd.toLocaleString("en-IN")} = </span>
+                  <span style={{color:"#f0c060",fontWeight:700,fontSize:17}}>₹{total.toLocaleString("en-IN")}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Address + Notes */}
+          <div><label style={lb}>Hotel / Stay Address</label><input style={fi} value={form.stayAddress} onChange={e=>set("stayAddress",e.target.value)} placeholder="Hotel name, area"/></div>
+          <div><label style={lb}>Notes</label><textarea rows={2} style={{...fi,resize:"vertical",lineHeight:1.6}} value={form.notes} onChange={e=>set("notes",e.target.value)}/></div>
+
+          {/* Payment method — walk-in only */}
+          {isWalkin && (
+            <div>
+              <label style={lb}>Payment Method</label>
+              <select className="te-dark-sel-edit" style={fiS} value={form.paymentMethod} onChange={e=>set("paymentMethod",e.target.value)}>
+                <option value="cash">💵 Cash</option>
+                <option value="upi">📱 UPI</option>
+                <option value="card">💳 Card</option>
+                <option value="bank_transfer">🏦 Bank Transfer</option>
+                <option value="other">💰 Other</option>
+              </select>
+            </div>
+          )}
+
+          {error&&<div style={{padding:"10px 14px",borderRadius:8,background:"rgba(255,100,100,0.08)",border:"1px solid rgba(255,100,100,0.2)",color:"#ff6b6b",fontSize:13}}>❌ {error}</div>}
+
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={onClose} style={{flex:1,padding:"12px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"rgba(255,255,255,0.5)",fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans'"}}>Cancel</button>
+            <button onClick={save} disabled={saving} style={{flex:2,padding:"12px",background:"linear-gradient(135deg,#d4850a,#f0c060)",border:"none",borderRadius:10,color:"#1a1a2e",fontWeight:700,fontSize:14,cursor:saving?"not-allowed":"pointer",opacity:saving?0.7:1,fontFamily:"'DM Sans'"}}>
+              {saving?"Saving…":"💾 Save Changes"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Bookings Editor (admin tab) ─────────────────────────────────────────────
 const STATUS_CONFIG = {
   pending:           { color:"#f0c060", bg:"rgba(240,192,96,0.12)",  border:"rgba(240,192,96,0.3)",  label:"⏳ Pending",            dot:"#f0c060" },
@@ -3154,6 +3310,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   const [paymentModal, setPaymentModal] = useState(null);
   const [recordPaymentModal, setRecordPaymentModal] = useState(null); // { booking, suggestedAmount }
   const [showManualModal, setShowManualModal] = useState(false);
+  const [editBooking, setEditBooking] = useState(null); // booking being edited
 
   // Auto-refresh every 20 seconds so new bookings appear without page reload
   useEffect(() => {
@@ -3437,6 +3594,8 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                     <option value="completed" style={{background:"#0d1b2e",color:"white"}}>🏁 Completed</option>
                     <option value="cancelled" style={{background:"#0d1b2e",color:"white"}}>❌ Cancelled</option>
                   </select>
+                  <button onClick={e=>{e.stopPropagation();setEditBooking(b);}} title="Edit booking details"
+                    style={{background:"rgba(212,133,10,0.1)",border:"1px solid rgba(212,133,10,0.3)",color:"#f0c060",padding:"6px 10px",borderRadius:7,cursor:"pointer",fontSize:13}}>✏️</button>
                   <button onClick={e=>{e.stopPropagation();del(b._id);}} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.15)",color:"#ff6b6b",padding:"6px 10px",borderRadius:7,cursor:"pointer"}}>🗑</button>
                   <span style={{fontSize:12,color:"rgba(255,255,255,0.2)",userSelect:"none"}}>{isExpanded?"▲":"▼"}</span>
                 </div>
@@ -3466,19 +3625,47 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                       <div style={{fontSize:13,color:"rgba(255,255,255,0.8)"}}>{b.notes}</div>
                     </div>
                   )}
-                  {/* Payment summary */}
-                  {(b.payOnArrival || b.tokenAmount > 0 || b.receivedAmount > 0) && (
-                    <div style={{gridColumn:"1/-1",background:"rgba(240,192,96,0.06)",border:"1px solid rgba(240,192,96,0.15)",borderRadius:10,padding:"12px 16px"}}>
-                      <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>Payment Summary</div>
-                      {b.payOnArrival ? (
-                        <div style={{display:"flex",alignItems:"center",gap:10}}>
-                          <span style={{fontSize:13,padding:"4px 12px",borderRadius:20,background:"rgba(99,102,241,0.15)",border:"1px solid rgba(99,102,241,0.35)",color:"#a5b4fc",fontWeight:600}}>🤝 Pay on Arrival</span>
-                          <span style={{fontSize:12,color:"rgba(255,255,255,0.35)"}}>Full amount due at pickup / delivery</span>
+                  {/* Payment summary — walk-in shows cash/method summary; online shows token flow */}
+                  {(() => {
+                    const bDays2 = (b.checkIn&&b.checkOut)?Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)):1;
+                    const ppd2   = getPricePerDay(b);
+                    const total2 = ppd2>0 ? ppd2*bDays2 : 0;
+                    const recv2  = b.receivedAmount||0;
+                    const remain2 = total2>0 ? Math.max(0,total2-recv2) : 0;
+                    const payStatus = recv2===0 ? "unpaid" : (total2>0 && recv2>=total2) ? "paid" : "partial";
+                    const payStatusCfg = {
+                      unpaid:  { label:"💸 Unpaid",       color:"#ff6b6b", bg:"rgba(255,107,107,0.12)", border:"rgba(255,107,107,0.3)" },
+                      partial: { label:"🔶 Partly Paid",  color:"#f0c060", bg:"rgba(240,192,96,0.12)",  border:"rgba(240,192,96,0.3)"  },
+                      paid:    { label:"✅ Fully Paid",   color:"#4ade80", bg:"rgba(74,222,128,0.12)",  border:"rgba(74,222,128,0.3)"  },
+                    }[payStatus];
+                    const methodLabel = { cash:"💵 Cash", upi:"📱 UPI", card:"💳 Card", bank_transfer:"🏦 Bank Transfer", other:"💰 Other" };
+                    if (isWalkin(b) && (total2>0||recv2>0)) return (
+                      <div style={{gridColumn:"1/-1",background:"rgba(212,133,10,0.05)",border:"1px solid rgba(212,133,10,0.18)",borderRadius:10,padding:"14px 16px"}}>
+                        <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>💰 Walk-in Payment</div>
+                        <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"flex-start"}}>
+                          {total2>0&&<div><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:3}}>Total</div><div style={{fontSize:18,fontWeight:800,color:"#f0c060",fontFamily:"'Playfair Display'"}}>₹{total2.toLocaleString("en-IN")}</div></div>}
+                          {recv2>0&&<div><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:3}}>Received</div><div style={{fontSize:18,fontWeight:800,color:"#4ade80",fontFamily:"'Playfair Display'"}}>₹{recv2.toLocaleString("en-IN")}</div></div>}
+                          {remain2>0&&<div><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:3}}>Remaining</div><div style={{fontSize:18,fontWeight:800,color:"#ff6b6b",fontFamily:"'Playfair Display'"}}>₹{remain2.toLocaleString("en-IN")}</div></div>}
+                          <div style={{display:"flex",flexDirection:"column",gap:6,marginLeft:"auto"}}>
+                            <span style={{fontSize:12,padding:"4px 12px",borderRadius:20,background:payStatusCfg.bg,border:`1px solid ${payStatusCfg.border}`,color:payStatusCfg.color,fontWeight:700}}>{payStatusCfg.label}</span>
+                            {b.paymentMethod&&<span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.5)",textAlign:"center"}}>{methodLabel[b.paymentMethod]||b.paymentMethod}</span>}
+                          </div>
                         </div>
-                      ) : (
-                        <BookingPaySummary b={b} getPricePerDay={getPricePerDay} />)}
-                    </div>
-                  )}
+                      </div>
+                    );
+                    if (!isWalkin(b) && (b.payOnArrival||b.tokenAmount>0||recv2>0)) return (
+                      <div style={{gridColumn:"1/-1",background:"rgba(240,192,96,0.06)",border:"1px solid rgba(240,192,96,0.15)",borderRadius:10,padding:"12px 16px"}}>
+                        <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>Payment Summary</div>
+                        {b.payOnArrival ? (
+                          <div style={{display:"flex",alignItems:"center",gap:10}}>
+                            <span style={{fontSize:13,padding:"4px 12px",borderRadius:20,background:"rgba(99,102,241,0.15)",border:"1px solid rgba(99,102,241,0.35)",color:"#a5b4fc",fontWeight:600}}>🤝 Pay on Arrival</span>
+                            <span style={{fontSize:12,color:"rgba(255,255,255,0.35)"}}>Full amount due at pickup / delivery</span>
+                          </div>
+                        ) : (<BookingPaySummary b={b} getPricePerDay={getPricePerDay} />)}
+                      </div>
+                    );
+                    return null;
+                  })()}
                   {/* Record Payment button */}
                   {/* ── Customer ID Panel — scan/view customer ID ── */}
                   <CustomerIdPanel booking={b} onUpdated={() => reload()} />
@@ -3591,6 +3778,17 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
         />
       )}
 
+      {/* ── Edit Booking Modal ── */}
+      {editBooking && (
+        <EditBookingModal
+          booking={editBooking}
+          rentals={data.rentals||rentals||[]}
+          api={api}
+          onClose={()=>setEditBooking(null)}
+          onSaved={async()=>{ setEditBooking(null); await reload(); }}
+        />
+      )}
+
       {/* Walk-in / Manual Booking Modal */}
       {showManualModal && (
         <ManualBookingModal
@@ -3600,7 +3798,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
             setShowManualModal(false);
             // Post accounting entry for the cash collected
             try {
-              const ppd = booking?.pricePerDay || booking?.tokenAmount*2 || 0;
+              const ppd = Number(booking?.pricePerDay) || 0;
               const bDays = (booking?.checkIn && booking?.checkOut)
                 ? Math.max(1, Math.round((new Date(booking.checkOut)-new Date(booking.checkIn))/864e5))
                 : 1;
@@ -3620,7 +3818,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                 });
               }
             } catch(e) { console.warn("Accounting entry failed:", e); }
-            reload();
+            await reload();
           }}
         />
       )}
