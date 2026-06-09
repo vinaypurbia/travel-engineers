@@ -4061,7 +4061,7 @@ function StaffPanel({ staffUser, data, api, reload, onExit }) {
             </div>
           </div>
           <div style={{padding:"28px 24px",maxWidth:1200}}>
-            {activeTab==="dashboard"   && <DashboardEditor   data={data} api={api} reload={reload} showSaved={showSaved} goTo={setActiveTab}/>}
+            {activeTab==="dashboard"   && <AdminDashboard    data={data} goTo={setActiveTab}/>}
             {activeTab==="bookings"    && <BookingsEditor     data={data} api={api} reload={reload} showSaved={showSaved}/>}
             {activeTab==="accounting"  && <AccountingEditor   data={data} api={api} reload={reload} showSaved={showSaved}/>}
             {activeTab==="reviews"     && <ReviewsEditor      data={data} api={api} reload={reload} showSaved={showSaved}/>}
