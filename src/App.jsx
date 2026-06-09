@@ -54,30 +54,17 @@ function ImageUpload({ value, onChange, label="Image" }) {
 }
 
 // ─── Mobile-Responsive Navbar ─────────────────────────────────────────────────
-function MobileNav({ agency, activeNav, setActiveNav, onAdminTap }) {
+function MobileNav({ agency, activeNav, setActiveNav }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const tapCount = useRef(0);
-  const tapTimer = useRef(null);
   const scrollTo = (id) => {
     document.getElementById(`sec-${id}`)?.scrollIntoView({behavior:"smooth"});
     setActiveNav(id);
     setMenuOpen(false);
   };
-  const handleLogoTap = () => {
-    scrollTo("home");
-    tapCount.current += 1;
-    clearTimeout(tapTimer.current);
-    if (tapCount.current >= 5) {
-      tapCount.current = 0;
-      onAdminTap && onAdminTap();
-    } else {
-      tapTimer.current = setTimeout(() => { tapCount.current = 0; }, 2000);
-    }
-  };
   return (
     <>
       <nav style={{position:"fixed",top:0,left:0,right:0,zIndex:100,padding:"0 5%",height:70,display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(10,22,40,0.95)",backdropFilter:"blur(12px)",borderBottom:"1px solid rgba(212,133,10,0.2)"}}>
-        <div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:10}} onClick={handleLogoTap}>
+        <div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:10}} onClick={()=>scrollTo("home")}>
           {agency.logoImage
             ? <img src={agency.logoImage} alt="Travel Engineers" style={{height:48,maxWidth:160,objectFit:"contain"}} />
             : <>
@@ -402,7 +389,7 @@ export default function App() {
   const loadAllData = async () => {
     const startTime = Date.now();
     try {
-      const [agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings] = await Promise.all([
+      const [agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings, users] = await Promise.all([
         safeGet("/agency", {name:"",tagline:"",heroSubtitle:"",phone:"",email:"",address:"",whatsapp:"",heroImage:""}),
         safeGet("/rentals", []),
         safeGet("/villa", {name:"",tagline:"",description:"",price:"",period:"/night",checkIn:"",checkOut:"",minStay:"",maxGuests:"",image:"",amenities:[],rooms:[]}),
@@ -412,9 +399,9 @@ export default function App() {
         safeGet("/bookings", []),
         safeGet("/tours", []),
         safeGet("/tours?bookings=1", []),
+        safeGet("/users", []),
       ]);
-      // Note: users are loaded separately in UsersEditor with admin token auth
-      setData({ agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings, users: [] });
+      setData({ agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings, users });
     } catch (err) {
       console.error("API failed:", err);
     }
@@ -460,14 +447,7 @@ export default function App() {
     onLogin={async () => {
       try {
         const res = await api.post("/auth", { password: loginInput });
-        if (res.success) {
-          // Exchange login password for ADMIN_SECRET (never store the password itself)
-          try {
-            const tokenRes = await api.post("/users?action=admin-token", { password: loginInput });
-            if (tokenRes.adminToken) sessionStorage.setItem("adminToken", tokenRes.adminToken);
-          } catch { /* token exchange failed, users module won't work */ }
-          setView("admin"); setLoginError(""); setLoginInput("");
-        }
+        if (res.success) { setView("admin"); setLoginError(""); setLoginInput(""); sessionStorage.setItem("adminToken", loginInput); }
         else setLoginError("Wrong password!");
       } catch { setLoginError("Error connecting. Try again."); }
     }} onBack={() => setView("home")} />;
@@ -525,7 +505,7 @@ export default function App() {
       `}</style>
 
       {/* NAVBAR */}
-      <MobileNav agency={agency} activeNav={activeNav} setActiveNav={setActiveNav} onAdminTap={()=>setView("login")} />
+      <MobileNav agency={agency} activeNav={activeNav} setActiveNav={setActiveNav} />
 
       {/* HERO */}
       <section id="sec-home" style={{height:"100vh",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
@@ -757,6 +737,8 @@ export default function App() {
         <div style={{fontFamily:"'Playfair Display'",fontSize:20,color:"#f0c060",marginBottom:8}}>{agency.name}</div>
         <div style={{fontFamily:"'DM Sans'",fontSize:12,color:"rgba(255,255,255,0.3)",letterSpacing:2,display:"flex",alignItems:"center",justifyContent:"center",gap:16,flexWrap:"wrap"}}>
           <span>© {new Date().getFullYear()}</span>
+          <span style={{color:"rgba(255,255,255,0.1)"}}>·</span>
+          <span style={{cursor:"pointer",color:"rgba(240,192,96,0.35)"}} onClick={()=>setView("login")}>Admin</span>
           <span style={{color:"rgba(255,255,255,0.1)"}}>·</span>
           <button onClick={()=>setStaffLoginOpen(true)}
             style={{background:"rgba(212,133,10,0.1)",border:"1px solid rgba(212,133,10,0.25)",color:"rgba(240,192,96,0.7)",padding:"5px 14px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"'DM Sans'",letterSpacing:"1px",display:"inline-flex",alignItems:"center",gap:6}}>
@@ -1043,7 +1025,7 @@ function TourBookingModal({ tour, agency, api, onClose }) {
   const [status, setStatus] = useState(null);
   const [result, setResult] = useState(null);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const inp = {width:"100%",padding:"12px 14px",border:"1.5px solid #e8e8e8",borderRadius:10,fontFamily:"'DM Sans'",fontSize:14,outline:"none",color:"#1a1a2e",background:"white",boxSizing:"border-box"};
+  const inp = {width:"100%",padding:"12px 14px",border:"1.5px solid rgba(212,133,10,0.25)",borderRadius:10,fontFamily:"'DM Sans'",fontSize:14,outline:"none",color:"#1a1a2e",background:"white",boxSizing:"border-box"};
   const lbl = {display:"block",fontFamily:"'DM Sans'",fontSize:11,fontWeight:600,color:"#999",textTransform:"uppercase",letterSpacing:2,marginBottom:6};
   const submit = async () => {
     if (!form.customerName.trim()||!form.phone.trim()) { alert("Please fill name and phone."); return; }
@@ -1092,8 +1074,8 @@ function TourBookingModal({ tour, agency, api, onClose }) {
               <div><label style={lbl}>Email</label><input value={form.email} onChange={e=>set("email",e.target.value)} placeholder="Optional" style={inp}/></div>
               {tour.pickupPoints&&tour.pickupPoints.length>0&&(
                 <div><label style={lbl}>Pickup Point</label>
-                  <select value={form.pickupPoint} onChange={e=>set("pickupPoint",e.target.value)} style={inp}>
-                    <option value="">Select pickup...</option>
+                  <select value={form.pickupPoint} onChange={e=>set("pickupPoint",e.target.value)} style={{...inp,appearance:"none",WebkitAppearance:"none",backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23d4850a' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center",paddingRight:32}}>
+                    <option value="">Select pickup point…</option>
                     {tour.pickupPoints.map((p,i)=><option key={i} value={p}>{p}</option>)}
                   </select>
                 </div>
@@ -1519,15 +1501,18 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
-        .adm-input{width:100%;padding:10px 14px;background:#0a1628;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;color:#ffffff;font-family:'DM Sans';font-size:14px;outline:none;transition:border-color 0.2s;}
-        .adm-input:focus{border-color:#d4850a;background:#0d1b2e;}
-        .adm-input option{background:#0d1b2e;color:#ffffff;}
-        select.adm-input{cursor:pointer;-webkit-appearance:none;appearance:none;}
+        .adm-input{width:100%;padding:10px 14px;background:#0d1b2e;border:1.5px solid rgba(255,255,255,0.12);border-radius:8px;color:#ffffff;font-family:'DM Sans';font-size:14px;outline:none;transition:border-color 0.2s;}
+        .adm-input:focus{border-color:#d4850a;background:#0f2035;}
+        .adm-input::placeholder{color:rgba(255,255,255,0.25);}
         textarea.adm-input{resize:vertical;min-height:80px;line-height:1.6;}
-        input.adm-input::placeholder{color:rgba(255,255,255,0.25);}
+        select.adm-input{cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23f0c060' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;}
+        select.adm-input option{background:#0d1b2e;color:#ffffff;}
+        select.adm-input optgroup{background:#081425;color:#f0c060;font-weight:700;}
+        input[type="date"].adm-input{color-scheme:dark;}
+        input[type="number"].adm-input::-webkit-inner-spin-button{opacity:0.5;}
         label.adm-label{display:block;font-size:11px;font-weight:600;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;}
         .adm-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;}
-        select.adm-input{cursor:pointer;} select.adm-input option{background:#1a1d2e;color:#ffffff;}
+        select.adm-input{cursor:pointer;} 
         .adm-stat{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:18px 20px;}
         .tags-nav-btn{width:100%;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;font-family:'DM Sans';font-size:14px;font-weight:500;transition:all 0.15s;text-align:left;}
         .tags-nav-btn:hover{background:rgba(212,133,10,0.12);}
@@ -2308,10 +2293,10 @@ function InventoryEditor({ data, api, reload, showSaved }) {
                     </span>
                   ) : (
                     <select value={item.status} onChange={e=>updateStatus(item,e.target.value)}
-                      style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${ss.border}`,background:ss.bg,color:ss.color,fontSize:11,cursor:"pointer",fontWeight:600}}>
-                      <option value="available">✅ Available</option>
-                      <option value="booked">📅 Booked</option>
-                      <option value="maintenance">🔧 Maintenance</option>
+                      style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${ss.border}`,background:"#0d1b2e",color:ss.color,fontSize:11,cursor:"pointer",fontWeight:600,outline:"none",appearance:"none",WebkitAppearance:"none",paddingRight:22,backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23f0c060' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",backgroundRepeat:"no-repeat",backgroundPosition:"right 5px center"}}>
+                      <option value="available" style={{background:"#0d1b2e",color:"white"}}>✅ Available</option>
+                      <option value="booked" style={{background:"#0d1b2e",color:"white"}}>📅 Booked</option>
+                      <option value="maintenance" style={{background:"#0d1b2e",color:"white"}}>🔧 Maintenance</option>
                     </select>
                   )}
                   <button onClick={()=>startEdit(item)} style={{background:"rgba(212,133,10,0.12)",border:"1px solid rgba(212,133,10,0.25)",color:"#f0c060",padding:"6px 12px",borderRadius:7,cursor:"pointer",fontSize:12}}>Edit</button>
@@ -2368,14 +2353,64 @@ const INCOME_CATEGORIES = [
   { value:"other_income",     label:"➕ Other income" },
 ];
 const EXPENSE_CATEGORIES = [
-  { value:"maintenance",  label:"🔧 Maintenance" },
-  { value:"utilities",    label:"💡 Utilities" },
-  { value:"staff",        label:"👷 Staff / wages" },
-  { value:"supplies",     label:"📦 Supplies" },
-  { value:"marketing",    label:"📢 Marketing" },
-  { value:"other_expense",label:"➖ Other expense" },
+  // Vehicles
+  { value:"vehicle_service",     label:"🔧 Vehicle Service / Repair",    group:"🛵 Vehicles" },
+  { value:"vehicle_fuel",        label:"⛽ Fuel",                         group:"🛵 Vehicles" },
+  { value:"vehicle_insurance",   label:"🛡️ Vehicle Insurance",           group:"🛵 Vehicles" },
+  { value:"vehicle_registration",label:"📋 RC / Registration / Tax",      group:"🛵 Vehicles" },
+  { value:"vehicle_purchase",    label:"🛒 Vehicle Purchase",             group:"🛵 Vehicles" },
+  { value:"vehicle_tyres",       label:"🔵 Tyres / Tubes",                group:"🛵 Vehicles" },
+  { value:"vehicle_cleaning",    label:"🧽 Vehicle Cleaning / Detailing", group:"🛵 Vehicles" },
+  // Villa & Property
+  { value:"villa_civil",         label:"🏗️ Civil / Construction Work",   group:"🏡 Villa & Property" },
+  { value:"villa_electrical",    label:"⚡ Electrical Repairs",           group:"🏡 Villa & Property" },
+  { value:"villa_plumbing",      label:"🚿 Plumbing Repairs",             group:"🏡 Villa & Property" },
+  { value:"villa_furniture",     label:"🪑 Furniture / Fixtures",         group:"🏡 Villa & Property" },
+  { value:"villa_housekeeping",  label:"🧹 Housekeeping / Cleaning",      group:"🏡 Villa & Property" },
+  { value:"villa_amenities",     label:"🏊 Amenities Upkeep",             group:"🏡 Villa & Property" },
+  { value:"villa_rent",          label:"🏠 Property Rent / Lease",        group:"🏡 Villa & Property" },
+  // Staff
+  { value:"staff_salary",        label:"👷 Staff Salaries",               group:"👥 Staff" },
+  { value:"staff_commission",    label:"💸 Driver / Guide Commission",    group:"👥 Staff" },
+  { value:"staff_bonus",         label:"🎁 Bonus / Incentive",            group:"👥 Staff" },
+  { value:"staff_travel",        label:"🚌 Staff Travel / Conveyance",    group:"👥 Staff" },
+  // Office & Ops
+  { value:"office_rent",         label:"🏢 Office Rent",                  group:"🏢 Office & Ops" },
+  { value:"utilities",           label:"💡 Electricity / Water / Gas",    group:"🏢 Office & Ops" },
+  { value:"internet_phone",      label:"📡 Internet / Phone Bills",       group:"🏢 Office & Ops" },
+  { value:"supplies",            label:"📦 Office / Cleaning Supplies",   group:"🏢 Office & Ops" },
+  { value:"software",            label:"💻 Software / Subscriptions",     group:"🏢 Office & Ops" },
+  // Marketing
+  { value:"marketing_ads",       label:"📢 Online Ads / Promotions",      group:"📣 Marketing" },
+  { value:"marketing_print",     label:"🖨️ Printing / Banners",          group:"📣 Marketing" },
+  { value:"marketing_gifts",     label:"🎀 Customer Gifts / Hampers",     group:"📣 Marketing" },
+  // Tours & Hotel
+  { value:"hotel_stay",          label:"🏨 Hotel Stay (for tours)",       group:"🗺️ Tours & Hotel" },
+  { value:"meal_expense",        label:"🍽️ Meals / Refreshments",        group:"🗺️ Tours & Hotel" },
+  { value:"entry_tickets",       label:"🎟️ Entry Tickets / Permits",     group:"🗺️ Tours & Hotel" },
+  { value:"toll_parking",        label:"🛣️ Toll / Parking",              group:"🗺️ Tours & Hotel" },
+  // Finance
+  { value:"bank_charges",        label:"🏦 Bank / Payment Charges",       group:"💳 Finance" },
+  { value:"tax_govt",            label:"🧾 GST / Tax / Govt Fees",        group:"💳 Finance" },
+  { value:"loan_emi",            label:"📅 Loan EMI / Interest",          group:"💳 Finance" },
+  // Other
+  { value:"other_expense",       label:"➖ Other Expense",                group:"📂 Other" },
 ];
-const PAYMENT_METHODS = ["cash","upi","bank_transfer","card","other"];
+
+// Asset types — tag every expense to a specific asset
+const EXPENSE_ASSETS = [
+  { value:"",        label:"— No specific asset —" },
+  { value:"villa",   label:"🏡 Villa" },
+  { value:"scooty",  label:"🛵 Scooty / Activa" },
+  { value:"bike",    label:"🏍️ Bike" },
+  { value:"car",     label:"🚗 Car" },
+  { value:"bus",     label:"🚌 Bus / Tempo Traveller" },
+  { value:"hotel",   label:"🏨 Hotel / Property" },
+  { value:"office",  label:"🏢 Office" },
+  { value:"general", label:"🏛️ General / Agency" },
+];
+
+const PAYMENT_METHODS = ["cash","upi","bank_transfer","card","cheque","other"];
 
 // Tiny SVG donut chart
 function DonutChart({ segments, size=90 }) {
@@ -2414,12 +2449,14 @@ function AccountingEditor({ data, api, reload, showSaved }) {
   const [editId, setEditId]       = useState(null);
   const [sortDir, setSortDir]     = useState("desc");
 
-  const blankForm = { type:"income", category:"vehicle_rental", amount:"", date:today, description:"", clientName:"", agencyName:"", paymentStatus:"paid", paymentMethod:"cash", notes:"" };
+  const blankForm = { type:"income", category:"vehicle_rental", amount:"", date:today, description:"", clientName:"", agencyName:"", paymentStatus:"paid", paymentMethod:"cash", notes:"", vendorName:"", assetTag:"", assetName:"", receiptUrl:"" };
   const [form, setForm] = useState({...blankForm});
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
   const allCats = [...INCOME_CATEGORIES,...EXPENSE_CATEGORIES];
   const categoryLabel = (cat) => allCats.find(c=>c.value===cat)?.label || cat;
+  const categoryGroup = (cat) => allCats.find(c=>c.value===cat)?.group || "";
+  const expenseGroups = EXPENSE_CATEGORIES.reduce((acc,c)=>{ if(!acc[c.group])acc[c.group]=[]; acc[c.group].push(c); return acc; },{});
   const fmt = (n) => `₹${Number(n||0).toLocaleString("en-IN")}`;
 
   // Preset date ranges
@@ -2510,7 +2547,6 @@ function AccountingEditor({ data, api, reload, showSaved }) {
   };
 
   const profitColor = filteredProfit>=0?"#4ade80":"#ff6b6b";
-  const categories  = form.type==="income"?INCOME_CATEGORIES:EXPENSE_CATEGORIES;
 
   return (
     <div>
@@ -2643,17 +2679,48 @@ function AccountingEditor({ data, api, reload, showSaved }) {
             </div>
           )}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+            {/* Category — grouped dropdown for expenses */}
             <div>
               <label className="adm-label">Category</label>
-              <select className="adm-input" value={form.category} onChange={e=>set("category",e.target.value)}>
-                {categories.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
+              {form.type==="expense" ? (
+                <select className="adm-input" value={form.category} onChange={e=>set("category",e.target.value)}>
+                  {Object.entries(expenseGroups).map(([group,cats])=>(
+                    <optgroup key={group} label={group}>
+                      {cats.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              ) : (
+                <select className="adm-input" value={form.category} onChange={e=>set("category",e.target.value)}>
+                  {INCOME_CATEGORIES.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+              )}
             </div>
             <div><label className="adm-label">Amount (₹) *</label><input className="adm-input" type="number" value={form.amount} onChange={e=>set("amount",e.target.value)} placeholder="5000"/></div>
             <div><label className="adm-label">Date</label><input className="adm-input" type="date" value={form.date} onChange={e=>set("date",e.target.value)}/></div>
-            <div><label className="adm-label">Client name</label><input className="adm-input" value={form.clientName||""} onChange={e=>set("clientName",e.target.value)} placeholder="Priya Sharma"/></div>
-            {form.category==="agency_commission"&&(
+            {/* Expense: Vendor | Income: Client */}
+            {form.type==="expense" ? (
+              <div><label className="adm-label">Vendor / Paid To</label><input className="adm-input" value={form.vendorName||""} onChange={e=>set("vendorName",e.target.value)} placeholder="e.g. Raju Garage, Sharma Electricals"/></div>
+            ) : (
+              <div><label className="adm-label">Client name</label><input className="adm-input" value={form.clientName||""} onChange={e=>set("clientName",e.target.value)} placeholder="Priya Sharma"/></div>
+            )}
+            {/* Expense: Asset tag */}
+            {form.type==="expense" && (
+              <div>
+                <label className="adm-label">Asset / Property</label>
+                <select className="adm-input" value={form.assetTag||""} onChange={e=>set("assetTag",e.target.value)}>
+                  {EXPENSE_ASSETS.map(a=><option key={a.value} value={a.value}>{a.label}</option>)}
+                </select>
+              </div>
+            )}
+            {form.type==="expense" && form.assetTag && (
+              <div><label className="adm-label">Asset Name / Number</label><input className="adm-input" value={form.assetName||""} onChange={e=>set("assetName",e.target.value)} placeholder="e.g. Activa RJ14AB1234, Villa Room 2"/></div>
+            )}
+            {form.type==="income" && form.category==="agency_commission" && (
               <div><label className="adm-label">Agency name</label><input className="adm-input" value={form.agencyName||""} onChange={e=>set("agencyName",e.target.value)} placeholder="Make My Trip"/></div>
+            )}
+            {form.type==="income" && form.category!=="agency_commission" && (
+              <div style={{display:"none"}}/>
             )}
             <div>
               <label className="adm-label">Payment method</label>
@@ -2669,8 +2736,29 @@ function AccountingEditor({ data, api, reload, showSaved }) {
                 <option value="partial">🔶 Partial</option>
               </select>
             </div>
-            <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Description</label><input className="adm-input" value={form.description||""} onChange={e=>set("description",e.target.value)} placeholder="e.g. Honda Activa rental — 3 days"/></div>
-            <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Notes (internal)</label><textarea className="adm-input" value={form.notes||""} onChange={e=>set("notes",e.target.value)} rows={2}/></div>
+            <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Description</label><input className="adm-input" value={form.description||""} onChange={e=>set("description",e.target.value)} placeholder={form.type==="expense"?"e.g. Engine oil + filter change — Activa RJ14AB1234":"e.g. Honda Activa rental — 3 days"}/></div>
+            {/* Receipt upload — expenses only */}
+            {form.type==="expense" && (
+              <div style={{gridColumn:"1 / -1"}}>
+                <label className="adm-label">Receipt / Bill Photo (optional)</label>
+                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                  <input className="adm-input" value={form.receiptUrl||""} onChange={e=>set("receiptUrl",e.target.value)} placeholder="Paste URL or upload" style={{flex:1}}/>
+                  <label style={{background:"rgba(212,133,10,0.15)",border:"1px solid rgba(212,133,10,0.4)",color:"#f0c060",padding:"10px 14px",borderRadius:8,cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+                    <Icon name="upload" size={14}/> Upload
+                    <input type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
+                      const file=e.target.files[0]; if(!file) return;
+                      try { const r=await api.upload(file); if(r.url) set("receiptUrl",r.url); } catch(err){alert("Upload failed");}
+                    }}/>
+                  </label>
+                </div>
+                {form.receiptUrl && (
+                  <a href={form.receiptUrl} target="_blank" rel="noreferrer">
+                    <img src={form.receiptUrl} alt="Receipt" style={{marginTop:8,height:80,objectFit:"cover",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer"}} onError={e=>e.target.style.display="none"}/>
+                  </a>
+                )}
+              </div>
+            )}
+            <div style={{gridColumn:"1 / -1"}}><label className="adm-label">Notes (internal)</label><textarea className="adm-input" value={form.notes||""} onChange={e=>set("notes",e.target.value)} rows={2} placeholder={form.type==="expense"?"Work done, warranty, next service due…":"Additional notes…"}/></div>
           </div>
           <div style={{display:"flex",gap:10}}>
             <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 28px",borderRadius:8,fontWeight:700,cursor:"pointer"}}>Save Transaction</button>
@@ -2678,6 +2766,38 @@ function AccountingEditor({ data, api, reload, showSaved }) {
           </div>
         </div>
       )}
+
+      {/* ── Asset-wise Expense Breakdown (shown when Expenses tab is active) ── */}
+      {filterCat==="expense" && filtered.length>0 && (() => {
+        const byAsset = {};
+        filtered.forEach(tx => {
+          const key = tx.assetTag || "general";
+          if (!byAsset[key]) byAsset[key] = 0;
+          byAsset[key] += tx.amount;
+        });
+        const assetTotal = Object.values(byAsset).reduce((s,v)=>s+v,0)||1;
+        return (
+          <div style={{background:"rgba(255,100,100,0.04)",border:"1px solid rgba(255,100,100,0.15)",borderRadius:12,padding:"16px 20px",marginBottom:16}}>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>Expense breakdown by asset · {fmt(assetTotal)} total</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:10}}>
+              {Object.entries(byAsset).sort((a,b)=>b[1]-a[1]).map(([key,val])=>{
+                const asset = EXPENSE_ASSETS.find(a=>a.value===key);
+                const pct = Math.round((val/assetTotal)*100);
+                return (
+                  <div key={key} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{fontSize:12,color:"rgba(255,255,255,0.45)",marginBottom:6}}>{asset?.label||"🏛️ General"}</div>
+                    <div style={{fontSize:17,fontWeight:700,color:"#ff6b6b",marginBottom:6}}>₹{val.toLocaleString("en-IN")}</div>
+                    <div style={{height:4,background:"rgba(255,255,255,0.06)",borderRadius:4,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:`${pct}%`,background:"rgba(255,100,100,0.55)",borderRadius:4}}/>
+                    </div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.2)",marginTop:4}}>{pct}% of period</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Ledger Filter Bar ── */}
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center",justifyContent:"space-between"}}>
@@ -2721,14 +2841,24 @@ function AccountingEditor({ data, api, reload, showSaved }) {
                   <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"transparent",border:`1px solid ${paidColor}33`,color:paidColor}}>{tx.paymentStatus}</span>
                 </div>
                 <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",display:"flex",gap:10,flexWrap:"wrap"}}>
+                  {tx.vendorName&&<span>🏪 {tx.vendorName}</span>}
                   {tx.clientName&&<span>👤 {tx.clientName}</span>}
                   {tx.agencyName&&<span>🤝 {tx.agencyName}</span>}
+                  {tx.assetTag&&<span style={{color:"rgba(212,133,10,0.8)"}}>{EXPENSE_ASSETS.find(a=>a.value===tx.assetTag)?.label||tx.assetTag}{tx.assetName?` · ${tx.assetName}`:""}</span>}
                   {tx.paymentMethod&&<span>{tx.paymentMethod.replace(/_/g," ")}</span>}
                   <span>{tx.date?new Date(tx.date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}):""}</span>
                 </div>
               </div>
               <div style={{textAlign:"right",flexShrink:0}}>
+                {tx.receiptUrl && (
+                  <a href={tx.receiptUrl} target="_blank" rel="noreferrer" title="View receipt/bill">
+                    <img src={tx.receiptUrl} alt="receipt" style={{width:38,height:38,objectFit:"cover",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",display:"block",marginBottom:4,marginLeft:"auto"}} onError={e=>e.target.style.display="none"}/>
+                  </a>
+                )}
                 <div style={{fontSize:18,fontWeight:700,color:isIncome?"#4ade80":"#ff6b6b",fontFamily:"'Playfair Display'"}}>{isIncome?"+":"-"}{fmt(tx.amount)}</div>
+                {!isIncome && categoryGroup(tx.category) && (
+                  <div style={{fontSize:9,color:"rgba(212,133,10,0.55)",marginTop:2,letterSpacing:0.5}}>{categoryGroup(tx.category)}</div>
+                )}
                 <div style={{display:"flex",gap:6,marginTop:6,justifyContent:"flex-end"}}>
                   <button onClick={()=>startEdit(tx)} style={{background:"rgba(212,133,10,0.12)",border:"1px solid rgba(212,133,10,0.25)",color:"#f0c060",padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:11}}>Edit</button>
                   <button onClick={()=>del(tx._id)} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.15)",color:"#ff6b6b",padding:"4px 8px",borderRadius:6,cursor:"pointer"}}><Icon name="trash" size={12}/></button>
@@ -2883,41 +3013,91 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
           <div style={{padding:"20px 24px 24px"}}>
             <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:16}}>Booking details</div>
 
-            <div style={{display:"grid",gap:14}}>
-              <div>
-                <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Your name *</label>
-                <input value={form.customerName} onChange={e=>set("customerName",e.target.value)} placeholder="Priya Sharma"
-                  style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none"}}/>
-              </div>
-              <div>
-                <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Phone number (WhatsApp) *</label>
-                <input value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="+965 XXXX XXXX or +91 XXXXX XXXXX" type="tel"
-                  style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none"}}/>
-                <div style={{fontSize:11,color:"rgba(255,255,255,0.25)",marginTop:4}}>Always include your country code e.g. +965 for Kuwait, +91 for India</div>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                <div>
-                  <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Check-in *</label>
-                  <input type="date" value={form.checkIn} min={today} onChange={e=>set("checkIn",e.target.value)}
-                    style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",colorScheme:"dark"}}/>
+            {/* reusable field styles */}
+            {(()=>{
+              const fi = {width:"100%",padding:"10px 14px",background:"#0d1b2e",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:8,color:"#ffffff",fontFamily:"'DM Sans'",fontSize:14,outline:"none",boxSizing:"border-box",colorScheme:"dark"};
+              const fiSel = {...fi,appearance:"none",WebkitAppearance:"none",backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23f0c060' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center",paddingRight:32};
+              const lbl2 = {display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6};
+              return (
+                <div style={{display:"grid",gap:14}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div>
+                      <label style={lbl2}>Your name *</label>
+                      <input value={form.customerName} onChange={e=>set("customerName",e.target.value)} placeholder="Full name" style={fi}/>
+                    </div>
+                    <div>
+                      <label style={lbl2}>Phone (WhatsApp) *</label>
+                      <input value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="+965 / +91 with country code" type="tel" style={fi}/>
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div>
+                      <label style={lbl2}>Check-in *</label>
+                      <input type="date" value={form.checkIn} min={today} onChange={e=>set("checkIn",e.target.value)} style={fi}/>
+                    </div>
+                    <div>
+                      <label style={lbl2}>Check-out *</label>
+                      <input type="date" value={form.checkOut} min={form.checkIn||today} onChange={e=>set("checkOut",e.target.value)} style={fi}/>
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div>
+                      <label style={lbl2}>Nationality</label>
+                      <select value={["Indian","Kuwaiti","Saudi","Emirati","Bahraini","Qatari","Omani","British","American","German","French","Australian","Canadian","Russian","Chinese","Japanese","Filipino","Pakistani","Bangladeshi","Nepali","Sri Lankan",""].includes(form.nationality||"")?(form.nationality||""):"__other__"} onChange={e=>set("nationality",e.target.value==="__other__"?"":e.target.value)} style={fiSel}>
+                        <option value="">Select nationality…</option>
+                        {["Indian","Kuwaiti","Saudi","Emirati","Bahraini","Qatari","Omani","British","American","German","French","Australian","Canadian","Russian","Chinese","Japanese","Filipino","Pakistani","Bangladeshi","Nepali","Sri Lankan"].map(n=><option key={n} value={n}>{n}</option>)}
+                        <option value="__other__">Other (type below)</option>
+                      </select>
+                      {!["Indian","Kuwaiti","Saudi","Emirati","Bahraini","Qatari","Omani","British","American","German","French","Australian","Canadian","Russian","Chinese","Japanese","Filipino","Pakistani","Bangladeshi","Nepali","Sri Lankan",""].includes(form.nationality||"") && (
+                        <input value={form.nationality||""} onChange={e=>set("nationality",e.target.value)} placeholder="Type your nationality…" style={{...fi,marginTop:6}}/>
+                      )}
+                    </div>
+                    <div>
+                      <label style={lbl2}>ID Type</label>
+                      <select value={["passport","driving_license","national_id","civil_id","voter_id",""].includes(form.idType||"")?(form.idType||""):"__other__"} onChange={e=>set("idType",e.target.value==="__other__"?"":e.target.value)} style={fiSel}>
+                        <option value="">Select ID type…</option>
+                        <option value="passport">Passport</option>
+                        <option value="driving_license">Driving Licence</option>
+                        <option value="national_id">National ID / Aadhar</option>
+                        <option value="civil_id">Civil ID (Kuwait)</option>
+                        <option value="voter_id">Voter ID</option>
+                        <option value="__other__">Other (type below)</option>
+                      </select>
+                      {!["passport","driving_license","national_id","civil_id","voter_id",""].includes(form.idType||"") && (
+                        <input value={form.idType||""} onChange={e=>set("idType",e.target.value)} placeholder="Describe your ID…" style={{...fi,marginTop:6}}/>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div>
+                      <label style={lbl2}>Purpose of Visit</label>
+                      <select value={["tourism","honeymoon","family_trip","business","wedding","adventure",""].includes(form.purpose||"")?(form.purpose||""):"__other__"} onChange={e=>set("purpose",e.target.value==="__other__"?"":e.target.value)} style={fiSel}>
+                        <option value="">Select purpose…</option>
+                        <option value="tourism">Tourism / Sightseeing</option>
+                        <option value="honeymoon">Honeymoon</option>
+                        <option value="family_trip">Family Trip</option>
+                        <option value="business">Business</option>
+                        <option value="wedding">Wedding / Event</option>
+                        <option value="adventure">Adventure / Trek</option>
+                        <option value="__other__">Other (type below)</option>
+                      </select>
+                      {!["tourism","honeymoon","family_trip","business","wedding","adventure",""].includes(form.purpose||"") && (
+                        <input value={form.purpose||""} onChange={e=>set("purpose",e.target.value)} placeholder="Describe your purpose…" style={{...fi,marginTop:6}}/>
+                      )}
+                    </div>
+                    <div>
+                      <label style={lbl2}>Hotel / Stay area *</label>
+                      <input value={form.stayAddress} onChange={e=>set("stayAddress",e.target.value)} placeholder="Hotel name, area" style={fi}/>
+                    </div>
+                  </div>
+                  <div>
+                    <label style={lbl2}>Notes (optional)</label>
+                    <textarea value={form.notes} onChange={e=>set("notes",e.target.value)} placeholder="Any special requests…" rows={2}
+                      style={{...fi,resize:"vertical"}}/>
+                  </div>
                 </div>
-                <div>
-                  <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Check-out *</label>
-                  <input type="date" value={form.checkOut} min={form.checkIn||today} onChange={e=>set("checkOut",e.target.value)}
-                    style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",colorScheme:"dark"}}/>
-                </div>
-              </div>
-              <div>
-                <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Hotel / Stay address *</label>
-                <input value={form.stayAddress} onChange={e=>set("stayAddress",e.target.value)} placeholder="Hotel name, area, Udaipur"
-                  style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none"}}/>
-              </div>
-              <div>
-                <label style={{display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Notes (optional)</label>
-                <textarea value={form.notes} onChange={e=>set("notes",e.target.value)} placeholder="Any special requests…" rows={2}
-                  style={{width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",resize:"vertical"}}/>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Price summary */}
             {days>0&&priceNum>0&&(
@@ -2964,6 +3144,12 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   const [sourceTab, setSourceTab] = useState("all"); // all | online | walkin
   const [search, setSearch]   = useState("");
   const [sortDir, setSortDir] = useState("desc");
+
+  // Detect walk-in by source field OR legacy name/phone pattern
+  const isWalkin = (b) =>
+    b.source === "walkin" ||
+    (b.customerName || "").toLowerCase() === "walk-in customer" ||
+    (b.phone || "").replace(/[^0-9]/g,"") === "0000000000";
   const [expanded, setExpanded] = useState(null);
   const [paymentModal, setPaymentModal] = useState(null);
   const [recordPaymentModal, setRecordPaymentModal] = useState(null); // { booking, suggestedAmount }
@@ -3001,25 +3187,16 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   // Counts
   const counts = { all:bookings.length, pending:0, payment_requested:0, confirmed:0, completed:0, cancelled:0 };
   bookings.forEach(b=>{ if(counts[b.status]!==undefined) counts[b.status]++; });
-  const onlineCount = bookings.filter(b => b.source !== "walkin").length;
-  const walkinCount = bookings.filter(b => b.source === "walkin").length;
 
-  // Helper: detect walk-in by source field OR legacy name/phone pattern
-  const isWalkin = (b) =>
-    b.source === "walkin" ||
-    (b.customerName || "").toLowerCase() === "walk-in customer" ||
-    (b.phone || "").replace(/[^0-9]/g,"") === "0000000000";
-
-  // Corrected counts using isWalkin
   const onlineCountReal = bookings.filter(b => !isWalkin(b)).length;
   const walkinCountReal = bookings.filter(b => isWalkin(b)).length;
 
   // Filter + search + sort
   let filtered = bookings;
-  if (sourceTab === "online")  filtered = filtered.filter(b => !isWalkin(b));
-  if (sourceTab === "walkin")  filtered = filtered.filter(b => isWalkin(b));
-  // Status filter only applies under Online tab
-  if (sourceTab === "online" && filter !== "all") filtered = filtered.filter(b => b.status === filter);
+  if (sourceTab === "online") filtered = filtered.filter(b => !isWalkin(b));
+  if (sourceTab === "walkin") filtered = filtered.filter(b => isWalkin(b));
+  if (sourceTab === "online" && filter !== "all") filtered = filtered.filter(b=>b.status===filter);
+  else if (sourceTab !== "online" && filter !== "all") filtered = filtered.filter(b=>b.status===filter);
   if (search.trim()) {
     const q = search.toLowerCase();
     filtered = filtered.filter(b=>(b.customerName||"").toLowerCase().includes(q)||(b.phone||"").toLowerCase().includes(q)||(b.vehicleName||"").toLowerCase().includes(q)||(b.stayAddress||"").toLowerCase().includes(q));
@@ -3137,11 +3314,11 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   };
 
   return (
-    <div style={{fontFamily:"'DM Sans',sans-serif"}}>
-      {/* ── Header ── */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:12}}>
+    <div>
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
         <div>
-          <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,marginBottom:2,color:"white"}}>Bookings</h2>
+          <h2 style={{fontFamily:"'Playfair Display'",fontSize:30,marginBottom:4}}>Bookings</h2>
           <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>{bookings.length} total · {counts.pending} pending action</p>
         </div>
         <button onClick={()=>setShowManualModal(true)}
@@ -3150,8 +3327,8 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
         </button>
       </div>
 
-      {/* ── 3 Main Tabs ── */}
-      <div style={{display:"flex",gap:4,marginBottom:20,background:"rgba(255,255,255,0.03)",padding:6,borderRadius:14,border:"1px solid rgba(255,255,255,0.07)"}}>
+      {/* Source Tabs */}
+      <div style={{display:"flex",gap:4,marginBottom:16,background:"rgba(255,255,255,0.03)",padding:6,borderRadius:14,border:"1px solid rgba(255,255,255,0.07)"}}>
         {[
           {id:"all",    icon:"📋", label:"All Bookings", count:bookings.length,  color:"#f0c060"},
           {id:"online", icon:"🌐", label:"Online",        count:onlineCountReal,  color:"#60a5fa"},
@@ -3166,50 +3343,29 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
         ))}
       </div>
 
-      {/* ── KPI Cards (only for Online tab) ── */}
-      {sourceTab==="online" && (
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8,marginBottom:16}}>
-          {[
-            {label:"Pending",    value:counts.pending,           color:"#f0c060"},
-            {label:"💳 Payment", value:counts.payment_requested, color:"#fb923c"},
-            {label:"Confirmed",  value:counts.confirmed,         color:"#4ade80"},
-            {label:"Completed",  value:counts.completed,         color:"#60a5fa"},
-            {label:"Cancelled",  value:counts.cancelled,         color:"#ff6b6b"},
-          ].map(s=>(
-            <div key={s.label} onClick={()=>setFilter(filter===s.label.replace("💳 ","").toLowerCase().replace(" ","_")?"all":s.label.replace("💳 ","").toLowerCase().replace(" ","_"))}
-              style={{background:"rgba(255,255,255,0.04)",border:`1px solid ${filter===s.label.replace("💳 ","").toLowerCase().replace(" ","_")?"rgba(212,133,10,0.4)":"rgba(255,255,255,0.07)"}`,borderRadius:10,padding:"12px 14px",cursor:"pointer",transition:"border-color 0.2s"}}>
-              <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:6}}>{s.label}</div>
-              <div style={{fontSize:24,fontWeight:800,color:s.color,fontFamily:"'Playfair Display'"}}>{s.value}</div>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Status filter pills */}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+        {[
+          {val:"all",               label:"All"},
+          {val:"pending",           label:"⏳ Pending"},
+          {val:"payment_requested", label:"💳 Payment Req"},
+          {val:"confirmed",         label:"✅ Confirmed"},
+          {val:"completed",         label:"🏁 Completed"},
+          {val:"cancelled",         label:"❌ Cancelled"},
+        ].map(s=>(
+          <button key={s.val} onClick={()=>setFilter(s.val)}
+            style={{padding:"6px 14px",borderRadius:16,border:`1px solid ${filter===s.val?"#d4850a":"rgba(255,255,255,0.1)"}`,background:filter===s.val?"rgba(212,133,10,0.15)":"transparent",color:filter===s.val?"#f0c060":"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:12,fontWeight:filter===s.val?600:400,fontFamily:"'DM Sans'"}}>
+            {s.label} ({s.val==="all"?filtered.length:counts[s.val]??0})
+          </button>
+        ))}
+      </div>
 
-      {/* ── Status filter pills (Online only) ── */}
-      {sourceTab==="online" && (
-        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
-          {[
-            {val:"all",               label:"All"},
-            {val:"pending",           label:"⏳ Pending"},
-            {val:"payment_requested", label:"💳 Payment Req"},
-            {val:"confirmed",         label:"✅ Confirmed"},
-            {val:"completed",         label:"🏁 Completed"},
-            {val:"cancelled",         label:"❌ Cancelled"},
-          ].map(s=>(
-            <button key={s.val} onClick={()=>setFilter(s.val)}
-              style={{padding:"6px 14px",borderRadius:16,border:`1px solid ${filter===s.val?"#d4850a":"rgba(255,255,255,0.1)"}`,background:filter===s.val?"rgba(212,133,10,0.15)":"transparent",color:filter===s.val?"#f0c060":"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:12,fontWeight:filter===s.val?600:400,fontFamily:"'DM Sans'"}}>
-              {s.label} ({s.val==="all"?onlineCountReal:counts[s.val]??0})
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* ── Search + Sort ── */}
+      {/* Search + Sort */}
       <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center"}}>
         <div style={{flex:1,position:"relative"}}>
           <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",opacity:0.4,pointerEvents:"none"}}>🔍</span>
           <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name, phone, vehicle…"
-            style={{width:"100%",boxSizing:"border-box",paddingLeft:36,paddingRight:14,paddingTop:9,paddingBottom:9,background:"#0a1628",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:13,outline:"none"}}/>
+            style={{width:"100%",boxSizing:"border-box",paddingLeft:36,paddingRight:14,paddingTop:9,paddingBottom:9,background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:13,outline:"none"}}/>
         </div>
         <button onClick={()=>setSortDir(d=>d==="desc"?"asc":"desc")}
           style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.5)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,whiteSpace:"nowrap",fontFamily:"'DM Sans'"}}>
@@ -3274,12 +3430,12 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                   )}
                   <select value={b.status} onChange={e=>{e.stopPropagation();updateStatus(b._id,e.target.value,b);}}
                     onClick={e=>e.stopPropagation()}
-                    style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${sc.border}`,background:"#0d1b2e",color:sc.color,fontSize:11,cursor:"pointer",fontWeight:600,outline:"none"}}>
-                    <option value="pending">⏳ Pending</option>
-                    <option value="payment_requested">💳 Request Payment</option>
-                    <option value="confirmed">✅ Confirmed</option>
-                    <option value="completed">🏁 Completed</option>
-                    <option value="cancelled">❌ Cancelled</option>
+                    style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${sc.border}`,background:"#0d1b2e",color:sc.color,fontSize:11,cursor:"pointer",fontWeight:600,outline:"none",appearance:"none",WebkitAppearance:"none",paddingRight:24,backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23f0c060' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",backgroundRepeat:"no-repeat",backgroundPosition:"right 6px center"}}>
+                    <option value="pending" style={{background:"#0d1b2e",color:"white"}}>⏳ Pending</option>
+                    <option value="payment_requested" style={{background:"#0d1b2e",color:"white"}}>💳 Request Payment</option>
+                    <option value="confirmed" style={{background:"#0d1b2e",color:"white"}}>✅ Confirmed</option>
+                    <option value="completed" style={{background:"#0d1b2e",color:"white"}}>🏁 Completed</option>
+                    <option value="cancelled" style={{background:"#0d1b2e",color:"white"}}>❌ Cancelled</option>
                   </select>
                   <button onClick={e=>{e.stopPropagation();del(b._id);}} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.15)",color:"#ff6b6b",padding:"6px 10px",borderRadius:7,cursor:"pointer"}}>🗑</button>
                   <span style={{fontSize:12,color:"rgba(255,255,255,0.2)",userSelect:"none"}}>{isExpanded?"▲":"▼"}</span>
@@ -3297,6 +3453,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                     ["Duration", d?`${d} day${d!==1?"s":""}` :"—"],
                     ["Stay Address", b.stayAddress||"—"],
                     ["Booked on", b.createdAt?new Date(b.createdAt).toLocaleString("en-IN"):"—"],
+                    ["Source", isWalkin(b)?"🏪 Walk-in (Admin)":"🌐 Online"],
                   ].map(([l,v])=>(
                     <div key={l}>
                       <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:3}}>{l}</div>
@@ -3322,26 +3479,14 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                         <BookingPaySummary b={b} getPricePerDay={getPricePerDay} />)}
                     </div>
                   )}
-                  {/* Record Payment button — hide when fully paid */}
-                  {(()=>{
-                    const ppd = getPricePerDay(b);
-                    const days_ = (b.checkIn&&b.checkOut)?Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)):1;
-                    const orderTotal = ppd*days_ || (b.tokenAmount*2) || 0;
-                    const isFullyPaid = orderTotal>0 && (b.receivedAmount||0)>=orderTotal;
-                    const isPaidStatus = b.paymentStatus==="paid" || b.status==="completed";
-                    if (isFullyPaid || isPaidStatus) return (
-                      <div style={{gridColumn:"1/-1"}}>
-                        <span style={{fontSize:12,padding:"6px 14px",borderRadius:8,background:"rgba(74,222,128,0.08)",border:"1px solid rgba(74,222,128,0.2)",color:"#4ade80"}}>✅ Payment Collected</span>
-                      </div>
-                    );
-                    return (
-                      <div style={{gridColumn:"1/-1"}}>
-                        <button onClick={()=>setRecordPaymentModal(b)} style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
-                          💰 Record Received Payment
-                        </button>
-                      </div>
-                    );
-                  })()}
+                  {/* Record Payment button */}
+                  {/* ── Customer ID Panel — scan/view customer ID ── */}
+                  <CustomerIdPanel booking={b} onUpdated={() => reload()} />
+                  <div style={{gridColumn:"1/-1"}}>
+                    <button onClick={()=>setRecordPaymentModal(b)} style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
+                      💰 Record Received Payment
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -3451,7 +3596,32 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
         <ManualBookingModal
           rentals={data.rentals || rentals || []}
           onClose={()=>setShowManualModal(false)}
-          onCreated={()=>{ setShowManualModal(false); reload(); }}
+          onCreated={async (booking)=>{
+            setShowManualModal(false);
+            // Post accounting entry for the cash collected
+            try {
+              const ppd = booking?.pricePerDay || booking?.tokenAmount*2 || 0;
+              const bDays = (booking?.checkIn && booking?.checkOut)
+                ? Math.max(1, Math.round((new Date(booking.checkOut)-new Date(booking.checkIn))/864e5))
+                : 1;
+              const amt = ppd * bDays;
+              if (amt > 0) {
+                await api.post("/accounting", {
+                  type: "income",
+                  category: "vehicle_rental",
+                  amount: amt,
+                  description: `Walk-in rental — ${booking?.vehicleName||"vehicle"} / ${booking?.customerName||"Walk-in Customer"}`,
+                  clientName: booking?.customerName || "Walk-in Customer",
+                  linkedBookingId: String(booking?._id||""),
+                  paymentStatus: "paid",
+                  paymentMethod: "cash",
+                  date: booking?.checkIn || new Date().toISOString(),
+                  notes: `Walk-in booking. Vehicle: ${booking?.vehicleName} | Amount: ₹${amt}`
+                });
+              }
+            } catch(e) { console.warn("Accounting entry failed:", e); }
+            reload();
+          }}
         />
       )}
     </div>
@@ -3783,8 +3953,14 @@ function StaffLoginModal({ agency, onLogin, onClose }) {
 
 // ─── StaffPanel ───────────────────────────────────────────────────────────────
 function StaffPanel({ staffUser, data, api, reload, onExit }) {
-  const [activeTab, setActiveTab] = useState(() => staffUser.permissions[0] || "bookings");
+  const [activeTab, setActiveTab] = useState(() => {
+    // Default to dashboard if permitted, else first allowed module
+    if (staffUser.permissions.includes("dashboard")) return "dashboard";
+    return staffUser.permissions[0] || "bookings";
+  });
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const toast_ref = useState(null);
   const [toast, setToast] = useState(null);
   const showSaved = (msg="✅ Saved!", type="success") => { setToast({msg,type}); setTimeout(()=>setToast(null),2500); };
 
@@ -3793,83 +3969,114 @@ function StaffPanel({ staffUser, data, api, reload, onExit }) {
   // If current tab not allowed, snap to first allowed
   useEffect(() => {
     if (!staffUser.permissions.includes(activeTab)) {
-      setActiveTab(staffUser.permissions[0] || "bookings");
+      setActiveTab(staffUser.permissions.includes("dashboard") ? "dashboard" : staffUser.permissions[0] || "bookings");
     }
   }, []);
 
   return (
-    <div style={{minHeight:"100vh",background:"#06111f",fontFamily:"'DM Sans',sans-serif",color:"white",display:"flex",position:"relative"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap'); .staff-nav-btn{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;border:none;border-radius:10px;background:transparent;cursor:pointer;font-family:'DM Sans';font-size:13.5px;font-weight:500;transition:all 0.15s;color:rgba(255,255,255,0.55);} .staff-nav-btn.active{background:linear-gradient(135deg,#d4850a,#f0c060)!important;color:#1a1a2e!important;} .staff-nav-btn:hover:not(.active){background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.85);}`}</style>
+    <div style={{minHeight:"100vh",background:"#06111f",fontFamily:"'DM Sans',sans-serif",color:"white",display:"flex",position:"relative",flexDirection:"column"}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
+        .staff-nav-btn{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;border:none;border-radius:10px;background:transparent;cursor:pointer;font-family:'DM Sans';font-size:13.5px;font-weight:500;transition:all 0.15s;color:rgba(255,255,255,0.55);}
+        .staff-nav-btn.active{background:linear-gradient(135deg,#d4850a,#f0c060)!important;color:#1a1a2e!important;}
+        .staff-nav-btn:hover:not(.active){background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.85);}
+        @media(max-width:768px){
+          .staff-layout{flex-direction:column!important;}
+          .staff-sidebar{display:none!important;}
+          .staff-sidebar.mobile-open{display:flex!important;position:fixed;inset:0;z-index:200;width:100%!important;height:100%;background:#0d1b2e;}
+          .staff-main{width:100%!important;}
+          .staff-topbar{padding:0 16px!important;}
+          .mobile-menu-btn{display:flex!important;}
+        }
+      `}</style>
       {toast && <div style={{position:"fixed",bottom:32,left:"50%",transform:"translateX(-50%)",zIndex:9999,background:toast.type==="error"?"#ef4444":"#16a34a",color:"white",padding:"13px 28px",borderRadius:12,fontSize:15,fontWeight:600,boxShadow:"0 8px 32px rgba(0,0,0,0.3)"}}>{toast.msg}</div>}
 
-      {/* Sidebar */}
-      <div style={{width:sidebarOpen?220:64,minHeight:"100vh",background:"#0d1b2e",transition:"width 0.2s",display:"flex",flexDirection:"column",padding:"20px 12px",gap:4,flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 6px",marginBottom:12,justifyContent:sidebarOpen?"flex-start":"center"}}>
-          <button onClick={()=>setSidebarOpen(v=>!v)} style={{background:"rgba(255,255,255,0.06)",border:"none",color:"rgba(255,255,255,0.5)",width:32,height:32,borderRadius:8,cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            {sidebarOpen?"◀":"▶"}
-          </button>
-          {sidebarOpen && (
-            <div>
-              <div style={{fontWeight:700,fontSize:13,color:"#f0c060",lineHeight:1.2}}>Staff Panel</div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>{staffUser.name}</div>
-            </div>
-          )}
-        </div>
+      <div className="staff-layout" style={{display:"flex",flex:1,minHeight:"100vh"}}>
+        {/* Sidebar */}
+        <div className={`staff-sidebar${mobileMenuOpen?" mobile-open":""}`}
+          style={{width:sidebarOpen?220:64,minHeight:"100vh",background:"#0d1b2e",transition:"width 0.2s",display:"flex",flexDirection:"column",padding:"20px 12px",gap:4,flexShrink:0,position:"sticky",top:0,height:"100vh",overflowY:"auto"}}>
 
-        {allowedTabs.map(t=>(
-          <button key={t.id} className={"staff-nav-btn"+(activeTab===t.id?" active":"")}
-            style={{color:activeTab===t.id?"#1a1a2e":"rgba(255,255,255,0.55)",justifyContent:sidebarOpen?"flex-start":"center"}}
-            onClick={()=>{ setActiveTab(t.id); reload(); }}>
-            <span style={{fontSize:16}}>{t.icon}</span>
-            {sidebarOpen && <span>{t.label}</span>}
-          </button>
-        ))}
-
-        <div style={{flex:1}} />
-        {/* User info + sign out */}
-        <div style={{borderTop:"1px solid rgba(255,255,255,0.08)",paddingTop:12}}>
-          {sidebarOpen && (
-            <div style={{padding:"8px 10px",marginBottom:8}}>
-              <div style={{fontSize:13,fontWeight:600,color:"white"}}>{staffUser.name}</div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.35)"}}>{staffUser.designation || "Staff"}</div>
-            </div>
-          )}
-          <button className="staff-nav-btn" onClick={onExit}
-            style={{color:"rgba(255,100,100,0.7)",justifyContent:sidebarOpen?"flex-start":"center"}}>
-            <span style={{fontSize:16}}>🚪</span>
-            {sidebarOpen && <span>Sign Out</span>}
-          </button>
-        </div>
-      </div>
-
-      {/* Main content */}
-      <div style={{flex:1,overflowY:"auto",background:"#06111f"}}>      
-        {/* Top bar */}
-        <div style={{background:"#0d1b2e",padding:"16px 28px",borderBottom:"1px solid rgba(212,133,10,0.2)",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:"0 2px 12px rgba(0,0,0,0.3)"}}>
-          <div>
-            <div style={{fontWeight:700,fontSize:17,color:"#f0c060",fontFamily:"'Playfair Display'"}}>{MODULES.find(m=>m.id===activeTab)?.label||""}</div>
-            <div style={{fontSize:12,color:"rgba(255,255,255,0.3)"}}>Manage your {(MODULES.find(m=>m.id===activeTab)?.label||"").toLowerCase()}</div>
+          {/* Top: logo/name */}
+          <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 6px",marginBottom:12,justifyContent:sidebarOpen?"flex-start":"center"}}>
+            {sidebarOpen && (
+              <div>
+                <div style={{fontWeight:700,fontSize:13,color:"#f0c060",lineHeight:1.2}}>Staff Panel</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>{staffUser.name}</div>
+              </div>
+            )}
+            {/* Mobile close button */}
+            {mobileMenuOpen && (
+              <button onClick={()=>setMobileMenuOpen(false)} style={{marginLeft:"auto",background:"rgba(255,255,255,0.06)",border:"none",color:"rgba(255,255,255,0.5)",width:32,height:32,borderRadius:8,cursor:"pointer",fontSize:16}}>✕</button>
+            )}
           </div>
-          <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",textAlign:"right"}}>
-            <div style={{fontWeight:600,color:"white"}}>{staffUser.name}</div>
-            <div>{staffUser.designation || "Staff"}</div>
+
+          {/* Nav items */}
+          <nav style={{flex:1}}>
+            {allowedTabs.map(t=>(
+              <button key={t.id} className={"staff-nav-btn"+(activeTab===t.id?" active":"")}
+                style={{color:activeTab===t.id?"#1a1a2e":"rgba(255,255,255,0.55)",justifyContent:sidebarOpen?"flex-start":"center"}}
+                onClick={()=>{ setActiveTab(t.id); reload(); setMobileMenuOpen(false); }}>
+                <span style={{fontSize:16}}>{t.icon}</span>
+                {sidebarOpen && <span>{t.label}</span>}
+              </button>
+            ))}
+          </nav>
+
+          {/* Bottom: user info + sign out + collapse toggle */}
+          <div style={{borderTop:"1px solid rgba(255,255,255,0.08)",paddingTop:12,display:"flex",flexDirection:"column",gap:4}}>
+            {sidebarOpen && (
+              <div style={{padding:"8px 10px",marginBottom:4}}>
+                <div style={{fontSize:13,fontWeight:600,color:"white"}}>{staffUser.name}</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.35)"}}>{staffUser.designation || "Staff"}</div>
+              </div>
+            )}
+            <button className="staff-nav-btn" onClick={onExit}
+              style={{color:"rgba(255,100,100,0.7)",justifyContent:sidebarOpen?"flex-start":"center"}}>
+              <span style={{fontSize:16}}>🚪</span>
+              {sidebarOpen && <span>Sign Out</span>}
+            </button>
+            {/* Collapse/expand toggle at bottom */}
+            <button onClick={()=>setSidebarOpen(v=>!v)}
+              style={{alignSelf:"center",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.4)",width:32,height:28,borderRadius:8,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",marginTop:4}}>
+              {sidebarOpen?"◀":"▶"}
+            </button>
           </div>
         </div>
-        <div style={{padding:"0"}}>
-          {activeTab==="dashboard"    && <AdminDashboard data={data} goTo={setActiveTab} />}
-          {activeTab==="agency"       && <AgencyEditor       data={data} api={api} reload={reload} showSaved={showSaved}/>}
-          {activeTab==="rentals"      && <RentalsEditor      data={data} api={api} reload={reload} showSaved={showSaved}/>}
-          {activeTab==="villa"        && <VillaEditor        data={data} api={api} reload={reload} showSaved={showSaved}/>}
-          {activeTab==="testimonials" && <TestimonialsEditor data={data} api={api} reload={reload} showSaved={showSaved}/>}
-          {activeTab==="inventory"    && <InventoryEditor    data={data} api={api} reload={reload} showSaved={showSaved}/>}
-          {activeTab==="accounting"   && <AccountingEditor   data={data} api={api} reload={reload} showSaved={showSaved}/>}
-          {activeTab==="bookings"     && <BookingsEditor     data={data} api={api} reload={reload} showSaved={showSaved} rentals={data.rentals||[]}/>}
-          {activeTab==="tours"        && <ToursEditor        data={data} api={api} reload={reload} showSaved={showSaved}/>}
+
+        {/* Main content */}
+        <div className="staff-main" style={{flex:1,overflowY:"auto",background:"#06111f",minWidth:0}}>
+          {/* Top bar */}
+          <div className="staff-topbar" style={{background:"#0d1b2e",padding:"0 28px",borderBottom:"1px solid rgba(212,133,10,0.2)",height:64,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:"0 2px 12px rgba(0,0,0,0.3)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:12}}>
+              {/* Mobile hamburger */}
+              <button onClick={()=>setMobileMenuOpen(true)} style={{display:"none",background:"rgba(255,255,255,0.06)",border:"none",color:"rgba(255,255,255,0.5)",width:36,height:36,borderRadius:8,cursor:"pointer",fontSize:18,alignItems:"center",justifyContent:"center"}}
+                className="mobile-menu-btn">☰</button>
+              <div>
+                <div style={{fontWeight:700,fontSize:17,color:"#f0c060",fontFamily:"'Playfair Display'"}}>{MODULES.find(m=>m.id===activeTab)?.label||""}</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.3)"}}>Manage your {(MODULES.find(m=>m.id===activeTab)?.label||"").toLowerCase()}</div>
+              </div>
+            </div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",textAlign:"right"}}>
+              <div style={{fontWeight:600,color:"white"}}>{staffUser.name}</div>
+              <div style={{color:"rgba(255,255,255,0.3)"}}>{staffUser.designation||"Staff"}</div>
+            </div>
+          </div>
+          <div style={{padding:"28px 24px",maxWidth:1200}}>
+            {activeTab==="dashboard"   && <DashboardEditor   data={data} api={api} reload={reload} showSaved={showSaved} goTo={setActiveTab}/>}
+            {activeTab==="bookings"    && <BookingsEditor     data={data} api={api} reload={reload} showSaved={showSaved}/>}
+            {activeTab==="accounting"  && <AccountingEditor   data={data} api={api} reload={reload} showSaved={showSaved}/>}
+            {activeTab==="reviews"     && <ReviewsEditor      data={data} api={api} reload={reload} showSaved={showSaved}/>}
+            {activeTab==="inventory"   && <InventoryEditor    data={data} api={api} reload={reload} showSaved={showSaved}/>}
+            {activeTab==="rentals"     && <RentalsEditor      data={data} api={api} reload={reload} showSaved={showSaved}/>}
+            {activeTab==="villa"       && <VillaEditor        data={data} api={api} reload={reload} showSaved={showSaved}/>}
+            {activeTab==="tours"       && <ToursEditor        data={data} api={api} reload={reload} showSaved={showSaved}/>}
+            {activeTab==="agency"      && <AgencyEditor       data={data} api={api} reload={reload} showSaved={showSaved}/>}
+          </div>
         </div>
       </div>
     </div>
   );
 }
+
 
 // ─── UsersEditor (Admin only) ─────────────────────────────────────────────────
 function UsersEditor({ data, api, reload, showSaved }) {
