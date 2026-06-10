@@ -3215,12 +3215,12 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
     stayAddress:  booking.stayAddress||"",
     notes:        booking.notes||"",
     paymentMethod: booking.paymentMethod||"cash",
+    source: booking.source||"online",
   });
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
-  const isWalkin = booking.source==="walkin"||
-    (booking.customerName||"").toLowerCase()==="walk-in customer"||
-    (booking.phone||"").replace(/[^0-9]/g,"")==="0000000000";
+  // Derived from form so it updates live when the user toggles Source
+  const isWalkin = form.source === "walkin";
 
   const days = form.checkIn&&form.checkOut
     ? Math.max(0,Math.round((new Date(form.checkOut)-new Date(form.checkIn))/864e5)) : 0;
@@ -3258,6 +3258,7 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
         stayAddress:   form.stayAddress||null,
         notes:         form.notes||null,
         paymentMethod: form.paymentMethod||null,
+        source:        form.source||"online",
       });
       await onSaved();
     } catch(e) { setError(e.message||"Save failed."); }
@@ -3330,6 +3331,26 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
           {/* Address + Notes */}
           <div><label style={lb}>Hotel / Stay Address</label><input style={fi} value={form.stayAddress} onChange={e=>set("stayAddress",e.target.value)} placeholder="Hotel name, area"/></div>
           <div><label style={lb}>Notes</label><textarea rows={2} style={{...fi,resize:"vertical",lineHeight:1.6}} value={form.notes} onChange={e=>set("notes",e.target.value)}/></div>
+
+          {/* Source toggle */}
+          <div>
+            <label style={lb}>Booking Source</label>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              {[
+                {val:"online", icon:"🌐", label:"Online",   desc:"Customer booked via website"},
+                {val:"walkin", icon:"🏪", label:"Walk-in",  desc:"In-person / admin entry"},
+              ].map(opt=>(
+                <button key={opt.val} type="button" onClick={()=>set("source",opt.val)}
+                  style={{padding:"10px 14px",borderRadius:10,border:`1.5px solid ${form.source===opt.val?(opt.val==="walkin"?"rgba(74,222,128,0.5)":"rgba(96,165,250,0.5)"):"rgba(255,255,255,0.1)"}`,
+                    background:form.source===opt.val?(opt.val==="walkin"?"rgba(74,222,128,0.08)":"rgba(96,165,250,0.08)"):"rgba(255,255,255,0.03)",
+                    cursor:"pointer",textAlign:"left",transition:"all 0.2s"}}>
+                  <div style={{fontSize:16,marginBottom:2}}>{opt.icon}</div>
+                  <div style={{fontSize:13,fontWeight:700,color:form.source===opt.val?(opt.val==="walkin"?"#4ade80":"#60a5fa"):"rgba(255,255,255,0.5)"}}>{opt.label}</div>
+                  <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:1}}>{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Payment method — walk-in only */}
           {isWalkin && (
