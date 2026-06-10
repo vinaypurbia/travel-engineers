@@ -59,6 +59,36 @@ module.exports = async (req, res) => {
       return res.json(tx);
     }
 
+    // ── DELETE ?dedup=true — remove duplicate accounting entries per booking ──
+    // Keeps only the LATEST entry per linkedBookingId, deletes the rest
+    if (req.method === "DELETE" && req.query?.dedup === "true") {
+      const all = await Transaction.find({
+        linkedBookingId: { $exists: true, $ne: "" }
+      }).sort({ createdAt: -1 }).lean();
+
+      // Group by linkedBookingId
+      const seen = new Set();
+      const toDelete = [];
+      for (const tx of all) {
+        const key = String(tx.linkedBookingId);
+        if (seen.has(key)) {
+          toDelete.push(tx._id);
+        } else {
+          seen.add(key);
+        }
+      }
+
+      if (toDelete.length > 0) {
+        await Transaction.deleteMany({ _id: { $in: toDelete } });
+      }
+
+      return res.json({
+        success: true,
+        deleted: toDelete.length,
+        message: `${toDelete.length} duplicate accounting entries removed.`,
+      });
+    }
+
     res.status(405).json({ error: "Method not allowed" });
   } catch (err) {
     console.error("Accounting error:", err);
