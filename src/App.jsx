@@ -3123,6 +3123,74 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
   );
 }
 
+// ── MigrationButton — reusable base for fix_sources + regen_accounting ──────
+function MigrationButton({ label, runningLabel, doneLabel, title, onRun, onDone, confirmMsg }) {
+  const [state, setState] = useState("idle");
+  const [result, setResult] = useState(null);
+
+  const run = async () => {
+    if (confirmMsg && !window.confirm(confirmMsg)) return;
+    setState("running");
+    try {
+      const res = await onRun();
+      setResult(res);
+      setState("done");
+      setTimeout(() => { setState("idle"); setResult(null); if (onDone) onDone(); }, 4000);
+    } catch(e) {
+      setResult({ message: e.message });
+      setState("error");
+      setTimeout(() => setState("idle"), 4000);
+    }
+  };
+
+  const cfg = {
+    idle:    { label,         bg:"rgba(255,255,255,0.06)", border:"rgba(255,255,255,0.12)", color:"rgba(255,255,255,0.5)" },
+    running: { label:runningLabel||"⏳ Running…", bg:"rgba(255,255,255,0.04)", border:"rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.3)" },
+    done:    { label:doneLabel||"✅ Done!",        bg:"rgba(74,222,128,0.1)",   border:"rgba(74,222,128,0.3)",   color:"#4ade80" },
+    error:   { label:"❌ Failed",                  bg:"rgba(255,100,100,0.1)",  border:"rgba(255,100,100,0.3)",  color:"#ff6b6b" },
+  }[state];
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+      <button onClick={run} disabled={state==="running"} title={title}
+        style={{padding:"10px 16px",background:cfg.bg,border:`1px solid ${cfg.border}`,borderRadius:10,color:cfg.color,fontWeight:600,fontSize:13,cursor:state==="running"?"not-allowed":"pointer",whiteSpace:"nowrap",transition:"all 0.3s"}}>
+        {cfg.label}
+      </button>
+      {result?.message && (
+        <div style={{fontSize:11,color:state==="error"?"#ff6b6b":"rgba(255,255,255,0.4)",textAlign:"right",maxWidth:240,lineHeight:1.4}}>
+          {result.message}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── FixSourcesButton ──────────────────────────────────────────────────────────
+function FixSourcesButton({ api, onDone }) {
+  return (
+    <MigrationButton
+      label="🔧 Fix Sources"
+      title="Stamp source:walkin/online on all existing bookings"
+      confirmMsg={"Scan all bookings and stamp source:walkin or source:online\nbased on phone, name, notes and status patterns.\n\nAlready-tagged bookings are skipped. Safe to run multiple times.\n\nContinue?"}
+      onRun={() => api.post("/bookings?fix_sources=true", {})}
+      onDone={onDone}
+    />
+  );
+}
+
+// ── RegenAccountingButton ─────────────────────────────────────────────────────
+function RegenAccountingButton({ api, onDone }) {
+  return (
+    <MigrationButton
+      label="📒 Regen Accounting"
+      title="Create missing accounting entries for all walk-in bookings"
+      confirmMsg={"Create accounting entries for all walk-in bookings that don't have one yet.\n\nBookings already in accounting are skipped.\nBookings with no price data are skipped.\n\nRun AFTER Fix Sources.\n\nContinue?"}
+      onRun={() => api.post("/bookings?regen_accounting=true", {})}
+      onDone={onDone}
+    />
+  );
+}
+
 // ─── EditBookingModal ────────────────────────────────────────────────────────
 // Lets admin edit vehicle, dates, price, address, notes on any booking
 function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
@@ -3490,10 +3558,14 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           <h2 style={{fontFamily:"'Playfair Display'",fontSize:30,marginBottom:4}}>Bookings</h2>
           <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>{bookings.length} total · {counts.pending} pending action</p>
         </div>
-        <button onClick={()=>setShowManualModal(true)}
-          style={{padding:"10px 20px",background:"linear-gradient(135deg,#d4850a,#f0c060)",border:"none",borderRadius:10,color:"white",fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",gap:8,whiteSpace:"nowrap"}}>
-          🏪 Walk-in Booking
-        </button>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-start"}}>
+          <button onClick={()=>setShowManualModal(true)}
+            style={{padding:"10px 20px",background:"linear-gradient(135deg,#d4850a,#f0c060)",border:"none",borderRadius:10,color:"white",fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",gap:8,whiteSpace:"nowrap"}}>
+            🏪 Walk-in Booking
+          </button>
+          <FixSourcesButton api={api} onDone={reload} />
+          <RegenAccountingButton api={api} onDone={reload} />
+        </div>
       </div>
 
       {/* Source Tabs */}
