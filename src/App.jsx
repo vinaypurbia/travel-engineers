@@ -3790,7 +3790,12 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                     // Only walk-in bookings get the "Edit Payment" treatment when fully paid
                     // Online bookings always show the green Record Payment button (their token flow is unchanged)
                     const walkin = isWalkin(b);
-                    const fullyPaid = walkin && btotal>0 && brecv>=btotal;
+                    // Fully paid if: total is set and received >= total
+                    // OR: no price set but some amount was received (legacy imports with no pricePerDay)
+                    const fullyPaid = walkin && (
+                      (btotal>0 && brecv>=btotal) ||
+                      (btotal===0 && brecv>0)
+                    );
                     const btnLabel = fullyPaid ? "✏️ Edit Payment" : "💰 Record Received Payment";
                     const btnStyle = fullyPaid
                       ? {background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.4)"}
