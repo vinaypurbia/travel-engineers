@@ -2561,6 +2561,7 @@ function AccountingEditor({ data, api, reload, showSaved }) {
           <button onClick={()=>startAdd("income")} style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Income</button>
           <button onClick={()=>startAdd("expense")} style={{background:"rgba(255,100,100,0.15)",border:"1px solid rgba(255,100,100,0.3)",color:"#ff6b6b",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Expense</button>
           <button onClick={async()=>{ if(!window.confirm("Remove accounting entries linked to deleted bookings?")) return; const r=await api.delete("/bookings?cleanup=accounting"); alert(r.message||"Done"); await reload(); }} style={{background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.4)",border:"1px solid rgba(255,255,255,0.1)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>Clean Orphaned</button>
+          <button onClick={async()=>{ if(!window.confirm("Remove duplicate accounting entries?\nKeeps only the latest entry per booking.")) return; const r=await api.delete("/accounting?dedup=true"); alert(r.message||"Done"); await reload(); }} style={{background:"rgba(255,100,100,0.08)",color:"rgba(255,150,150,0.7)",border:"1px solid rgba(255,100,100,0.2)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>🧹 Clean Duplicates</button>
         </div>
       </div>
 
@@ -3918,30 +3919,10 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
         <ManualBookingModal
           rentals={data.rentals || rentals || []}
           onClose={()=>setShowManualModal(false)}
-          onCreated={async (booking)=>{
+          onCreated={async ()=>{
             setShowManualModal(false);
-            // Post accounting entry for the cash collected
-            try {
-              const ppd = Number(booking?.pricePerDay) || 0;
-              const bDays = (booking?.checkIn && booking?.checkOut)
-                ? Math.max(1, Math.round((new Date(booking.checkOut)-new Date(booking.checkIn))/864e5))
-                : 1;
-              const amt = ppd * bDays;
-              if (amt > 0) {
-                await api.post("/accounting", {
-                  type: "income",
-                  category: "vehicle_rental",
-                  amount: amt,
-                  description: `Walk-in rental — ${booking?.vehicleName||"vehicle"} / ${booking?.customerName||"Walk-in Customer"}`,
-                  clientName: booking?.customerName || "Walk-in Customer",
-                  linkedBookingId: String(booking?._id||""),
-                  paymentStatus: "paid",
-                  paymentMethod: "cash",
-                  date: new Date().toISOString(),
-                  notes: `Walk-in booking. Vehicle: ${booking?.vehicleName} | Amount: ₹${amt}`
-                });
-              }
-            } catch(e) { console.warn("Accounting entry failed:", e); }
+            // Accounting is recorded when payment is received via "Record Received Payment"
+            // Do NOT post here to avoid duplicate entries
             await reload();
           }}
         />
