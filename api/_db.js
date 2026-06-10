@@ -142,6 +142,7 @@ const transactionSchema = new mongoose.Schema({
 const bookingSchema = new mongoose.Schema({
   customerName: { type: String, required: true },
   phone:        { type: String, required: true },
+  email:        { type: String, default: null },
   vehicleName:  { type: String, default: "" },
   vehicleId:    { type: mongoose.Schema.Types.ObjectId, ref: "Rental", default: null },
   checkIn:      { type: Date, default: null },
@@ -153,10 +154,21 @@ const bookingSchema = new mongoose.Schema({
     enum: ["pending", "payment_requested", "confirmed", "cancelled", "completed"],
     default: "pending",
   },
-  tokenAmount:    { type: Number, default: 0 }, // advance amount requested
-  receivedAmount: { type: Number, default: 0 }, // amount actually received from customer
-  payOnArrival:   { type: Boolean, default: false }, // customer approved to pay full amount at pickup/delivery
-  createdAt: { type: Date, default: Date.now },
+  source:         { type: String, default: "online" },  // "online" | "walkin"
+  pricePerDay:    { type: Number, default: 0 },
+  tokenAmount:    { type: Number, default: 0 },
+  receivedAmount: { type: Number, default: 0 },
+  payOnArrival:   { type: Boolean, default: false },
+  paymentMethod:  { type: String, default: null },      // cash | upi | card | bank_transfer
+  // Customer ID / KYC fields
+  idType:      { type: String, default: null },
+  idNumber:    { type: String, default: null },
+  idImageUrl:  { type: String, default: null },
+  nationality: { type: String, default: null },
+  dateOfBirth: { type: Date,   default: null },
+  gender:      { type: String, default: null },
+  address:     { type: String, default: null },
+  createdAt:   { type: Date, default: Date.now },
 });
 
 module.exports = {
