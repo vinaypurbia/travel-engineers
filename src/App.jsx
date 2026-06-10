@@ -3196,7 +3196,7 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
     setSaving(false);
   };
 
-  const fi  = {width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",boxSizing:"border-box"};
+  const fi  = {width:"100%",padding:"10px 14px",background:"#0d1b2e",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",boxSizing:"border-box"};
   const fiS = {...fi,cursor:"pointer",appearance:"none",WebkitAppearance:"none",backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23f0c060' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center",paddingRight:32};
   const lb  = {display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6};
 
@@ -3808,9 +3808,11 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           onClose={()=>setShowManualModal(false)}
           onCreated={async (booking)=>{
             setShowManualModal(false);
-            // Post accounting entry for the cash collected
             try {
-              const ppd = Number(booking?.pricePerDay) || 0;
+              const rental = (data.rentals||[]).find(r => String(r._id) === String(booking?.vehicleId));
+              const ppd = booking?.pricePerDay > 0 ? Number(booking.pricePerDay)
+                        : rental ? Number(rental.price||0)
+                        : (booking?.tokenAmount||0)*2;
               const bDays = (booking?.checkIn && booking?.checkOut)
                 ? Math.max(1, Math.round((new Date(booking.checkOut)-new Date(booking.checkIn))/864e5))
                 : 1;
@@ -3820,16 +3822,16 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                   type: "income",
                   category: "vehicle_rental",
                   amount: amt,
-                  description: `Walk-in rental — ${booking?.vehicleName||"vehicle"} / ${booking?.customerName||"Walk-in Customer"}`,
+                  description: `Walk-in cash — ${booking?.vehicleName||"vehicle"} / ${booking?.customerName||"Walk-in Customer"}`,
                   clientName: booking?.customerName || "Walk-in Customer",
                   linkedBookingId: String(booking?._id||""),
                   paymentStatus: "paid",
-                  paymentMethod: "cash",
-                  date: new Date().toISOString(),
-                  notes: `Walk-in booking. Vehicle: ${booking?.vehicleName} | Amount: ₹${amt}`
+                  paymentMethod: booking?.paymentMethod || "cash",
+                  date: booking?.checkIn || new Date().toISOString(),
+                  notes: `Walk-in booking. Vehicle: ${booking?.vehicleName} | ₹${ppd}/day × ${bDays}d = ₹${amt}`
                 });
               }
-            } catch(e) { console.warn("Accounting entry failed:", e); }
+            } catch(e) { console.warn("Walk-in accounting failed:", e); }
             await reload();
           }}
         />
