@@ -352,6 +352,96 @@ module.exports = async (req, res) => {
       }
     }
 
+    // ── POST ?fix_sources=true — one-time migration: stamp source on all bookings ──
+    if (req.method === "POST" && req.query?.fix_sources === "true") {
+      const all = await Booking.find({}).lean();
+      let fixed = 0, skipped = 0;
+      for (const b of all) {
+        // Already has a valid source — skip
+        if (b.source === "walkin" || b.source === "online") { skipped++; continue; }
+
+        // Detect walk-in by known patterns:
+        // 1. phone is all zeros (placeholder used by walk-in form)
+        // 2. customerName is literally "Walk-in Customer"
+        // 3. notes contain "Register import" or "Walk-in" (legacy imports)
+        // 4. status was set to "confirmed" at creation (walk-ins skip pending)
+        //    AND no tokenAmount was requested (online bookings always set a token)
+        const phone   = (b.phone || "").replace(/\D/g, "");
+        const name    = (b.customerName || "").toLowerCase().trim();
+        const notes   = (b.notes || "").toLowerCase();
+        const isWalkin =
+          phone === "0000000000" ||
+          name  === "walk-in customer" ||
+          notes.includes("register import") ||
+          notes.includes("walk-in") ||
+          (b.status === "confirmed" && !b.tokenAmount);
+
+        await Booking.findByIdAndUpdate(b._id, {
+          source: isWalkin ? "walkin" : "online",
+        });
+        fixed++;
+      }
+      return res.json({
+        success: true,
+        message: `Done. ${fixed} bookings updated, ${skipped} already had source set.`,
+        fixed, skipped, total: all.length,
+      });
+    }
+
+    // ── POST ?regen_accounting=true — create missing accounting entries for walk-ins ──
+    if (req.method === "POST" && req.query?.regen_accounting === "true") {
+      const { connectDB: _, Transaction } = require("./_db");
+
+      // Get all walk-in bookings
+      const walkins = await Booking.find({ source: "walkin" }).lean();
+
+      // Get all existing accounting entries that are linked to a booking
+      const existing = await Transaction.find({
+        linkedBookingId: { $exists: true, $ne: "" }
+      }, "linkedBookingId").lean();
+      const existingIds = new Set(existing.map(e => String(e.linkedBookingId)));
+
+      let created = 0, skipped = 0, noAmount = 0;
+
+      for (const b of walkins) {
+        const bid = String(b._id);
+
+        // Skip if accounting entry already exists for this booking
+        if (existingIds.has(bid)) { skipped++; continue; }
+
+        // Calculate amount
+        const ppd  = Number(b.pricePerDay) || 0;
+        const days = (b.checkIn && b.checkOut)
+          ? Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5))
+          : 1;
+        const amt  = ppd * days;
+
+        // Skip if we have no price info at all
+        if (amt <= 0) { noAmount++; continue; }
+
+        await Transaction.create({
+          type:            "income",
+          category:        "vehicle_rental",
+          amount:          amt,
+          currency:        "INR",
+          date:            b.createdAt || new Date(),
+          description:     `Walk-in rental — ${b.vehicleName || "vehicle"} / ${b.customerName || "Walk-in Customer"}`,
+          clientName:      b.customerName || "Walk-in Customer",
+          linkedBookingId: bid,
+          paymentStatus:   b.receivedAmount >= amt ? "paid" : b.receivedAmount > 0 ? "partial" : "pending",
+          paymentMethod:   b.paymentMethod || "cash",
+          notes:           `Auto-generated. Vehicle: ${b.vehicleName || "—"} | ₹${ppd}/day × ${days} day${days!==1?"s":""}`,
+        });
+        created++;
+      }
+
+      return res.json({
+        success: true,
+        message: `Done. ${created} entries created, ${skipped} already existed, ${noAmount} skipped (no price data).`,
+        created, skipped, noAmount, total: walkins.length,
+      });
+    }
+
     if (req.method === "GET") {
       const bookings = await Booking.find().sort({ createdAt: -1 });
       return res.json(bookings);
