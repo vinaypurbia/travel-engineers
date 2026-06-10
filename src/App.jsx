@@ -3301,7 +3301,7 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
               {currentVehicle && !currentVehicle.available && (
                 <option key={currentVehicle._id} value={currentVehicle._id}>{currentVehicle.name} (currently unavailable)</option>
               )}
-              {available.map(r=><option key={r._id} value={r._id}>{r.name} — {r.price}{r.period||""}</option>)}
+              {available.map(r=><option key={r._id} value={r._id}>{r.name}{r.tag?` (${r.tag})`:""} — {r.price}{r.period||""}</option>)}
               <option value="__custom__">Other (type manually)</option>
             </select>
           </div>
@@ -3316,7 +3316,7 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
           {/* Dates + price */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
             <div><label style={lb}>Check-in *</label><input type="date" style={{...fi,colorScheme:"dark"}} value={form.checkIn} onChange={e=>set("checkIn",e.target.value)}/></div>
-            <div><label style={lb}>Check-out *</label><input type="date" style={{...fi,colorScheme:"dark"}} value={form.checkOut} min={form.checkIn||today} onChange={e=>set("checkOut",e.target.value)}/></div>
+            <div><label style={lb}>Check-out *</label><input type="date" style={{...fi,colorScheme:"dark"}} value={form.checkOut} min={form.checkIn||""} onChange={e=>set("checkOut",e.target.value)}/></div>
             <div><label style={lb}>Price per Day (₹)</label><input type="number" style={fi} value={form.pricePerDay} onChange={e=>set("pricePerDay",e.target.value)} placeholder="0"/></div>
             <div style={{display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
               {days>0&&ppd>0&&(
