@@ -36,6 +36,7 @@ const rentalSchema = new mongoose.Schema({
   price:     String,
   period:    { type: String, default: "/day" },
   tag:       String,
+  vehicleNo: { type: String, default: "" },  // registration / fleet number
   description: String,
   features:  [String],
   image:     String,
