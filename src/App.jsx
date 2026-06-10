@@ -3737,7 +3737,12 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                     const total2 = ppd2>0 ? ppd2*bDays2 : 0;
                     const recv2  = b.receivedAmount||0;
                     const remain2 = total2>0 ? Math.max(0,total2-recv2) : 0;
-                    const payStatus = recv2===0 ? "unpaid" : (total2>0 && recv2>=total2) ? "paid" : "partial";
+                    // If no pricePerDay set: recv>0 means paid, recv=0 means unpaid (can't calc partial)
+                    const payStatus = recv2===0
+                      ? "unpaid"
+                      : total2===0
+                        ? "paid"                          // received something, no price set — assume paid
+                        : recv2>=total2 ? "paid" : "partial";
                     const payStatusCfg = {
                       unpaid:  { label:"💸 Unpaid",       color:"#ff6b6b", bg:"rgba(255,107,107,0.12)", border:"rgba(255,107,107,0.3)" },
                       partial: { label:"🔶 Partly Paid",  color:"#f0c060", bg:"rgba(240,192,96,0.12)",  border:"rgba(240,192,96,0.3)"  },
@@ -3748,7 +3753,10 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                       <div style={{gridColumn:"1/-1",background:"rgba(212,133,10,0.05)",border:"1px solid rgba(212,133,10,0.18)",borderRadius:10,padding:"14px 16px"}}>
                         <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>💰 Walk-in Payment</div>
                         <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"flex-start"}}>
-                          {total2>0&&<div><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:3}}>Total</div><div style={{fontSize:18,fontWeight:800,color:"#f0c060",fontFamily:"'Playfair Display'"}}>₹{total2.toLocaleString("en-IN")}</div></div>}
+                          {total2>0
+                            ? <div><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:3}}>Total</div><div style={{fontSize:18,fontWeight:800,color:"#f0c060",fontFamily:"'Playfair Display'"}}>₹{total2.toLocaleString("en-IN")}</div></div>
+                            : <div style={{fontSize:12,color:"rgba(255,255,255,0.3)",fontStyle:"italic",alignSelf:"center"}}>No price set — <button onClick={()=>setEditBooking(b)} style={{background:"none",border:"none",color:"#f0c060",cursor:"pointer",fontSize:12,padding:0,textDecoration:"underline"}}>Edit booking</button> to add price/day</div>
+                          }
                           {recv2>0&&<div><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:3}}>Received</div><div style={{fontSize:18,fontWeight:800,color:"#4ade80",fontFamily:"'Playfair Display'"}}>₹{recv2.toLocaleString("en-IN")}</div></div>}
                           {remain2>0&&<div><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:3}}>Remaining</div><div style={{fontSize:18,fontWeight:800,color:"#ff6b6b",fontFamily:"'Playfair Display'"}}>₹{remain2.toLocaleString("en-IN")}</div></div>}
                           <div style={{display:"flex",flexDirection:"column",gap:6,marginLeft:"auto"}}>
@@ -3771,14 +3779,32 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                     );
                     return null;
                   })()}
-                  {/* Record Payment button */}
                   {/* ── Customer ID Panel — scan/view customer ID ── */}
                   <CustomerIdPanel booking={b} onUpdated={() => reload()} />
-                  <div style={{gridColumn:"1/-1"}}>
-                    <button onClick={()=>setRecordPaymentModal(b)} style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
-                      💰 Record Received Payment
-                    </button>
-                  </div>
+                  {/* Record / Edit Payment button */}
+                  {(()=>{
+                    const bppd   = getPricePerDay(b);
+                    const bdays  = (b.checkIn&&b.checkOut)?Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)):1;
+                    const btotal = bppd*bdays;
+                    const brecv  = b.receivedAmount||0;
+                    // Only walk-in bookings get the "Edit Payment" treatment when fully paid
+                    // Online bookings always show the green Record Payment button (their token flow is unchanged)
+                    const walkin = isWalkin(b);
+                    const fullyPaid = walkin && btotal>0 && brecv>=btotal;
+                    const btnLabel = fullyPaid ? "✏️ Edit Payment" : "💰 Record Received Payment";
+                    const btnStyle = fullyPaid
+                      ? {background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.4)"}
+                      : {background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80"};
+                    return (
+                      <div style={{gridColumn:"1/-1",display:"flex",alignItems:"center",gap:10}}>
+                        <button onClick={()=>setRecordPaymentModal(b)}
+                          style={{...btnStyle,padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
+                          {btnLabel}
+                        </button>
+                        {fullyPaid&&<span style={{fontSize:11,color:"rgba(255,255,255,0.25)"}}>Payment complete — click to correct if needed</span>}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
@@ -3839,40 +3865,28 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
             const bid = String(recordPaymentModal._id||"");
             const days_ = (recordPaymentModal.checkIn&&recordPaymentModal.checkOut)?Math.max(1,Math.round((new Date(recordPaymentModal.checkOut)-new Date(recordPaymentModal.checkIn))/864e5)):1;
             const orderTotal = totalAmt || (getPricePerDay(recordPaymentModal)*days_) || (recordPaymentModal.tokenAmount*2) || 0;
-            const alreadyReceived = recordPaymentModal.receivedAmount||0;
-            const newReceived = alreadyReceived + Number(received);
-            const newStatus = newReceived >= orderTotal && orderTotal>0 ? "completed" : "confirmed";
+            const prevReceived = recordPaymentModal.receivedAmount||0;
+            // `received` is the NEW TOTAL received (not an addition) — user sees and edits the cumulative figure
+            const newReceived = Number(received);
+            const addedNow    = Math.max(0, newReceived - prevReceived); // how much was added this session
+            const newStatus   = newReceived >= orderTotal && orderTotal>0 ? "completed" : newReceived>0 ? "confirmed" : recordPaymentModal.status;
             await api.put(`/bookings?id=${bid}`, { receivedAmount: newReceived, status: newStatus });
             if (newStatus === "confirmed"||newStatus==="completed") await syncInventory(recordPaymentModal, newStatus);
-            // 2. Auto-create accounting transaction for this payment
+            // 2. Auto-create accounting entry only for the NEW amount added this session
             const balanceRemaining = Math.max(0, orderTotal - newReceived);
             try {
-              // Record the received payment
-              await api.post("/accounting", {
-                type: "income",
-                category: "vehicle_rental",
-                amount: Number(received),
-                description: `${alreadyReceived>0?"Balance payment":"Advance payment"} — ${recordPaymentModal.vehicleName||"vehicle"} booking for ${recordPaymentModal.customerName}`,
-                clientName: recordPaymentModal.customerName,
-                linkedBookingId: bid,
-                paymentStatus: balanceRemaining > 0 ? "partial" : "paid",
-                paymentMethod: "upi",
-                date: new Date().toISOString(),
-                notes: `Order total: ₹${orderTotal} | Paid so far: ₹${newReceived} | Remaining: ₹${balanceRemaining}`,
-              });
-              // If balance still due, create a pending entry so accounting shows the outstanding amount
-              if (balanceRemaining > 0) {
+              if (addedNow > 0) {
                 await api.post("/accounting", {
                   type: "income",
                   category: "vehicle_rental",
-                  amount: balanceRemaining,
-                  description: `Balance due at pickup — ${recordPaymentModal.vehicleName||"vehicle"} booking for ${recordPaymentModal.customerName}`,
+                  amount: addedNow,
+                  description: `${prevReceived>0?"Balance payment":"Payment"} — ${recordPaymentModal.vehicleName||"vehicle"} / ${recordPaymentModal.customerName}`,
                   clientName: recordPaymentModal.customerName,
                   linkedBookingId: bid,
-                  paymentStatus: "pending",
-                  paymentMethod: "upi",
+                  paymentStatus: balanceRemaining > 0 ? "partial" : "paid",
+                  paymentMethod: recordPaymentModal.paymentMethod||"cash",
                   date: new Date().toISOString(),
-                  notes: `Order total: ₹${orderTotal} | Already received: ₹${newReceived} | Balance pending: ₹${balanceRemaining}`,
+                  notes: `Order total: ₹${orderTotal} | Paid so far: ₹${newReceived} | Remaining: ₹${balanceRemaining}`,
                 });
               }
             } catch(e) { console.error("Accounting sync failed:", e); }
@@ -4064,61 +4078,83 @@ function PaymentTokenModal({ booking, suggestedAmount, total, days, onSend, onAp
 
 // ─── Record Payment Modal ────────────────────────────────────────────────────
 function RecordPaymentModal({ booking, totalAmount=0, onSave, onClose }) {
-  const [received, setReceived] = useState(String(booking.receivedAmount || booking.tokenAmount || ""));
-  const [error, setError] = useState("");
-  const requested = booking.tokenAmount || 0;
-  // Remaining = total order value minus what's already been received
+  // `received` = TOTAL amount received so far (cumulative), not an addition.
+  // Pre-fill with existing receivedAmount so editing shows the current state.
   const alreadyReceived = booking.receivedAmount || 0;
-  const orderTotal = totalAmount > 0 ? totalAmount : requested;
-  const remaining = Math.max(0, orderTotal - alreadyReceived - (Number(received) || 0) + alreadyReceived);
+  const [received, setReceived] = useState(String(alreadyReceived || ""));
+  const [error, setError]       = useState("");
+  const isEditing  = alreadyReceived > 0;
+  const requested  = booking.tokenAmount || 0;
+  const orderTotal = totalAmount > 0 ? totalAmount : (requested * 2) || 0;
+  const enteredNum = Number(received) || 0;
+  const remaining  = orderTotal > 0 ? Math.max(0, orderTotal - enteredNum) : 0;
+  const addedNow   = Math.max(0, enteredNum - alreadyReceived);
 
   const handleSave = () => {
     const num = Number(received);
     if (!received || isNaN(num) || num < 0) { setError("Please enter a valid amount."); return; }
+    if (num === alreadyReceived) { onClose(); return; } // nothing changed
     onSave(num, orderTotal);
   };
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
       <div style={{background:"#1a1d2e",border:"1px solid rgba(240,192,96,0.2)",borderRadius:16,padding:28,width:"100%",maxWidth:400}}>
-        <h3 style={{color:"#f0c060",fontFamily:"'Playfair Display'",margin:"0 0 4px"}}>💰 Record Payment</h3>
+        <h3 style={{color:"#f0c060",fontFamily:"'Playfair Display'",margin:"0 0 4px"}}>
+          {isEditing ? "✏️ Edit Payment Record" : "💰 Record Payment"}
+        </h3>
         <p style={{color:"rgba(255,255,255,0.4)",fontSize:13,margin:"0 0 20px"}}>{booking.customerName} · {booking.vehicleName||"—"}</p>
 
-        {requested > 0 && (
-          <div style={{display:"flex",gap:12,marginBottom:20}}>
-            <div style={{flex:1,background:"rgba(251,146,60,0.1)",border:"1px solid rgba(251,146,60,0.2)",borderRadius:10,padding:"10px 14px",textAlign:"center"}}>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:4}}>Requested</div>
-              <div style={{fontSize:18,fontWeight:700,color:"#fb923c"}}>₹{requested.toLocaleString("en-IN")}</div>
+        {/* Summary row */}
+        <div style={{display:"flex",gap:12,marginBottom:20}}>
+          {alreadyReceived>0&&(
+            <div style={{flex:1,background:"rgba(74,222,128,0.08)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:10,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:4}}>Previously Received</div>
+              <div style={{fontSize:18,fontWeight:700,color:"#4ade80"}}>₹{alreadyReceived.toLocaleString("en-IN")}</div>
             </div>
+          )}
+          {orderTotal>0&&(
             <div style={{flex:1,background:"rgba(240,192,96,0.08)",border:"1px solid rgba(240,192,96,0.2)",borderRadius:10,padding:"10px 14px",textAlign:"center"}}>
               <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:4}}>Order Total</div>
               <div style={{fontSize:18,fontWeight:700,color:"#f0c060"}}>₹{orderTotal.toLocaleString("en-IN")}</div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        <label style={{fontSize:12,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:6}}>Amount Received (₹)</label>
+        <label style={{fontSize:12,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:6}}>
+          Total Amount Received (₹) {isEditing&&<span style={{color:"rgba(255,255,255,0.25)",textTransform:"none",letterSpacing:0,fontSize:11}}>— edit to correct</span>}
+        </label>
         <input
           type="number" value={received} onChange={e=>{setReceived(e.target.value);setError("");}}
-          placeholder="Enter amount received"
+          placeholder="Enter total amount received"
           style={{width:"100%",padding:"12px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.06)",color:"white",fontSize:16,boxSizing:"border-box",marginBottom:8}}
           autoFocus
         />
         {error&&<div style={{color:"#ff6b6b",fontSize:12,marginBottom:8}}>{error}</div>}
-        {Number(received)>0&&orderTotal>0&&(
-          <div style={{background:"rgba(240,192,96,0.06)",border:"1px solid rgba(240,192,96,0.15)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"rgba(255,255,255,0.6)",marginBottom:12,display:"flex",justifyContent:"space-between"}}>
-            <span>Balance due at pickup</span>
-            <span style={{color:"#f0c060",fontWeight:700}}>₹{Math.max(0, orderTotal - Number(received)).toLocaleString("en-IN")}</span>
+
+        {/* Live feedback */}
+        {enteredNum>0&&orderTotal>0&&remaining>0&&(
+          <div style={{background:"rgba(240,192,96,0.06)",border:"1px solid rgba(240,192,96,0.15)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"rgba(255,255,255,0.6)",marginBottom:10,display:"flex",justifyContent:"space-between"}}>
+            <span>Remaining balance</span>
+            <span style={{color:"#f0c060",fontWeight:700}}>₹{remaining.toLocaleString("en-IN")}</span>
           </div>
         )}
-        {Number(received)>0&&requested>0&&Number(received)>=requested&&(
-          <div style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#4ade80",marginBottom:12}}>
-            ✅ Full advance received — booking will be marked Confirmed
+        {enteredNum>0&&orderTotal>0&&enteredNum>=orderTotal&&(
+          <div style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#4ade80",marginBottom:10}}>
+            ✅ Fully paid — booking will be marked Completed
           </div>
         )}
+        {isEditing&&addedNow>0&&(
+          <div style={{background:"rgba(96,165,250,0.08)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#60a5fa",marginBottom:10}}>
+            +₹{addedNow.toLocaleString("en-IN")} new payment will be added to accounting
+          </div>
+        )}
+
         <div style={{display:"flex",gap:10,marginTop:8}}>
           <button onClick={onClose} style={{flex:1,padding:"11px",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:14}}>Cancel</button>
-          <button onClick={handleSave} style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"white",cursor:"pointer",fontSize:14,fontWeight:700}}>Save Payment</button>
+          <button onClick={handleSave} style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"white",cursor:"pointer",fontSize:14,fontWeight:700}}>
+            {enteredNum===alreadyReceived?"No Change":isEditing?"Update Payment":"Save Payment"}
+          </button>
         </div>
       </div>
     </div>
