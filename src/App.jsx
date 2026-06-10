@@ -3301,7 +3301,7 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
               {currentVehicle && !currentVehicle.available && (
                 <option key={currentVehicle._id} value={currentVehicle._id}>{currentVehicle.name} (currently unavailable)</option>
               )}
-              {available.map(r=><option key={r._id} value={r._id}>{r.name}{r.tag?` (${r.tag})`:""} — {r.price}{r.period||""}</option>)}
+              {available.map(r=><option key={r._id} value={r._id}>{r.name}{r.vehicleNo?` #${r.vehicleNo}`:""} — {r.price}{r.period||""}</option>)}
               <option value="__custom__">Other (type manually)</option>
             </select>
           </div>
