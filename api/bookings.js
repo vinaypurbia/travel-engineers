@@ -1,4 +1,4 @@
-const { connectDB, Booking, Agency } = require("./_db");
+const { connectDB, Booking, Agency, Customer } = require("./_db");
 
 async function sendBookingEmail({ booking, days, agencyEmail, agencyName }) {
   const gmailUser = process.env.GMAIL_USER;
@@ -280,6 +280,53 @@ async function uploadIdToCloudinary(imageBase64, mimeType, customerName) {
   }
 }
 
+// ── Upsert customer record from a booking ────────────────────────────────────
+async function upsertCustomerFromBooking(booking) {
+  if (!booking?.phone) return;
+  try {
+    const phone = String(booking.phone).trim();
+    // Find all bookings for this phone to calculate stats
+    const allBookings = await Booking.find({ phone }).lean();
+    const totalBookings = allBookings.length;
+    const totalSpent    = allBookings.reduce((s, b) => {
+      if (!b.pricePerDay || !b.checkIn || !b.checkOut) return s + (b.receivedAmount || 0);
+      const days = Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5));
+      return s + (b.pricePerDay * days);
+    }, 0);
+    const sorted       = allBookings.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    const firstBooking = sorted[0]?.checkIn || sorted[0]?.createdAt || null;
+    const lastBooking  = sorted[sorted.length - 1]?.checkIn || null;
+    const lastVehicle  = sorted[sorted.length - 1]?.vehicleName || null;
+
+    // Build update — only overwrite KYC fields if they have a value
+    const update = {
+      name:         booking.customerName || undefined,
+      phone,
+      totalBookings,
+      totalSpent,
+      firstBooking,
+      lastBooking,
+      lastVehicle,
+      updatedAt:    new Date(),
+    };
+    // KYC — only set if present in this booking
+    const kyc = ["email","nationality","gender","dateOfBirth","idType","idNumber","idImageUrl","address"];
+    for (const f of kyc) {
+      if (booking[f]) update[f] = booking[f];
+    }
+    // source — set to walkin if any booking was walkin
+    if (booking.source === "walkin") update.source = "walkin";
+
+    await Customer.findOneAndUpdate(
+      { phone },
+      { $set: update, $setOnInsert: { createdAt: new Date(), source: booking.source || "online" } },
+      { upsert: true, new: true }
+    );
+  } catch(e) {
+    console.error("Customer upsert failed:", e.message);
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -309,6 +356,104 @@ module.exports = async (req, res) => {
     await connectDB();
     const id = req.query?.id || null;
 
+    // ── Customer endpoints (?resource=customers) ──────────────────────────────
+    if (req.query?.resource === "customers") {
+
+      // GET ?resource=customers — list all customers, searchable
+      if (req.method === "GET") {
+        const q = req.query?.q || "";
+        const filter = q ? {
+          $or: [
+            { name:    { $regex: q, $options: "i" } },
+            { phone:   { $regex: q, $options: "i" } },
+            { email:   { $regex: q, $options: "i" } },
+            { idNumber:{ $regex: q, $options: "i" } },
+          ]
+        } : {};
+        const customers = await Customer.find(filter).sort({ lastBooking: -1 });
+        return res.json({ customers, total: customers.length });
+      }
+
+      // GET ?resource=customers&phone=xxx — single customer + their bookings
+      if (req.method === "GET" && req.query?.phone) {
+        const customer = await Customer.findOne({ phone: req.query.phone }).lean();
+        if (!customer) return res.status(404).json({ error: "Customer not found" });
+        const bookings = await Booking.find({ phone: req.query.phone }).sort({ createdAt: -1 }).lean();
+        return res.json({ customer, bookings });
+      }
+
+      // PUT ?resource=customers&id=xxx — update customer manually
+      if (req.method === "PUT" && req.query?.id) {
+        const customer = await Customer.findByIdAndUpdate(req.query.id, { ...req.body, updatedAt: new Date() }, { new: true });
+        if (!customer) return res.status(404).json({ error: "Not found" });
+        return res.json(customer);
+      }
+
+      // DELETE ?resource=customers&id=xxx — delete customer record (not their bookings)
+      if (req.method === "DELETE" && req.query?.id) {
+        await Customer.findByIdAndDelete(req.query.id);
+        return res.json({ success: true });
+      }
+
+      // POST ?resource=customers&sync=true — build customer DB from ALL bookings
+      if (req.method === "POST" && req.query?.sync === "true") {
+        const allBookings = await Booking.find({}).lean();
+        // Group by phone
+        const byPhone = {};
+        for (const b of allBookings) {
+          const phone = String(b.phone || "").trim();
+          if (!phone) continue;
+          if (!byPhone[phone]) byPhone[phone] = [];
+          byPhone[phone].push(b);
+        }
+        let created = 0, updated = 0;
+        for (const [phone, bookings] of Object.entries(byPhone)) {
+          const sorted    = bookings.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+          const latest    = sorted[sorted.length - 1];
+          const totalSpent = bookings.reduce((s, b) => {
+            if (!b.pricePerDay || !b.checkIn || !b.checkOut) return s + (b.receivedAmount || 0);
+            const days = Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5));
+            return s + (b.pricePerDay * days);
+          }, 0);
+          // Pick best KYC data across all bookings for this phone
+          const kyc = {};
+          const kycFields = ["email","nationality","gender","dateOfBirth","idType","idNumber","idImageUrl","address"];
+          for (const b of bookings) {
+            for (const f of kycFields) {
+              if (b[f] && !kyc[f]) kyc[f] = b[f];
+            }
+          }
+          const existing = await Customer.findOne({ phone });
+          const data = {
+            name:          latest.customerName,
+            phone,
+            totalBookings: bookings.length,
+            totalSpent,
+            firstBooking:  sorted[0]?.checkIn || sorted[0]?.createdAt,
+            lastBooking:   latest?.checkIn || null,
+            lastVehicle:   latest?.vehicleName || null,
+            source:        bookings.some(b => b.source === "walkin") ? "walkin" : "online",
+            updatedAt:     new Date(),
+            ...kyc,
+          };
+          if (existing) {
+            await Customer.findByIdAndUpdate(existing._id, { $set: data });
+            updated++;
+          } else {
+            await Customer.create({ ...data, createdAt: new Date() });
+            created++;
+          }
+        }
+        return res.json({
+          success: true,
+          message: `Done. ${created} customers created, ${updated} updated.`,
+          created, updated, total: created + updated,
+        });
+      }
+
+      return res.status(405).json({ error: "Method not allowed" });
+    }
+
     if (id) {
       if (req.method === "GET") {
         const booking = await Booking.findById(id);
@@ -318,6 +463,7 @@ module.exports = async (req, res) => {
       if (req.method === "PUT") {
         const booking = await Booking.findByIdAndUpdate(id, req.body, { new: true });
         if (!booking) return res.status(404).json({ error: "Not found" });
+        upsertCustomerFromBooking(booking).catch(console.error);
         return res.json(booking);
       }
       if (req.method === "DELETE") {
@@ -512,6 +658,9 @@ module.exports = async (req, res) => {
           agencyName:  agency?.name  || "Travel Engineers",
         }).catch(console.error);
       }
+
+      // Auto-upsert customer record
+      upsertCustomerFromBooking(booking).catch(console.error);
 
       return res.json({ success: true, booking, whatsappUrl });
     }
