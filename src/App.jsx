@@ -1488,6 +1488,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
     {id:"accounting",  label:"Accounting",   icon:"💰"},
     {id:"bookings",    label:"Bookings",     icon:"📋", badge: (data.bookings||[]).filter(b=>b.status==="pending").length},
     {id:"users",       label:"Users",        icon:"👤"},
+    {id:"customers",   label:"Customers",    icon:"🧑‍💼"},
   ];
   const goTo = (id) => { setAdminTab(id); reload(); };
   return (
@@ -1570,6 +1571,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
               {adminTab==="bookings"     &&<BookingsEditor     data={data} api={api} reload={reload} showSaved={showSavedLocal} rentals={data.rentals||[]}/>}
               {adminTab==="tours"        &&<ToursEditor        data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
               {adminTab==="users"        &&<UsersEditor        data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
+              {adminTab==="customers"    &&<CustomersEditor    api={api}/>}
             </div>
           )}
         </div>
@@ -3377,6 +3379,215 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── CustomersEditor ──────────────────────────────────────────────────────────
+function CustomersEditor({ api }) {
+  const [customers, setCustomers] = useState([]);
+  const [total, setTotal]         = useState(0);
+  const [loading, setLoading]     = useState(true);
+  const [search, setSearch]       = useState("");
+  const [selected, setSelected]   = useState(null); // customer profile view
+  const [profileBookings, setProfileBookings] = useState([]);
+  const [syncing, setSyncing]     = useState(false);
+  const [syncMsg, setSyncMsg]     = useState("");
+
+  const load = async (q = "") => {
+    setLoading(true);
+    try {
+      const res = await api.get(`/bookings?resource=customers${q ? `&q=${encodeURIComponent(q)}` : ""}`);
+      setCustomers(res.customers || []);
+      setTotal(res.total || 0);
+    } catch(e) { console.error(e); }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const openProfile = async (c) => {
+    setSelected(c);
+    try {
+      const res = await api.get(`/bookings?resource=customers&phone=${encodeURIComponent(c.phone)}`);
+      setProfileBookings(res.bookings || []);
+    } catch(e) { setProfileBookings([]); }
+  };
+
+  const sync = async () => {
+    if (!window.confirm("Build customer database from all existing bookings?\n\nThis scans every booking and creates/updates one customer record per phone number. Safe to run multiple times.")) return;
+    setSyncing(true); setSyncMsg("");
+    try {
+      const res = await api.post("/bookings?resource=customers&sync=true", {});
+      setSyncMsg(res.message || "Done");
+      await load(search);
+    } catch(e) { setSyncMsg("Error: " + e.message); }
+    setSyncing(false);
+  };
+
+  const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
+  const fmtMoney = (n) => n > 0 ? `₹${Number(n).toLocaleString("en-IN")}` : "—";
+
+  const sourceColor = (s) => s === "walkin"
+    ? { bg:"rgba(74,222,128,0.1)", border:"rgba(74,222,128,0.3)", color:"#4ade80" }
+    : { bg:"rgba(96,165,250,0.1)", border:"rgba(96,165,250,0.3)", color:"#60a5fa" };
+
+  // ── Customer Profile Modal ──
+  if (selected) return (
+    <div style={{padding:"24px 28px",fontFamily:"'DM Sans'"}}>
+      <button onClick={()=>setSelected(null)} style={{background:"none",border:"none",color:"#f0c060",cursor:"pointer",fontSize:14,fontWeight:600,marginBottom:20,padding:0}}>← Back to Customers</button>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:24}}>
+        {/* Profile card */}
+        <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:16,padding:24}}>
+          <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20}}>
+            <div style={{width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,#d4850a,#f0c060)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:700,color:"#1a1a2e",flexShrink:0}}>
+              {(selected.name||"?")[0].toUpperCase()}
+            </div>
+            <div>
+              <div style={{fontSize:20,fontWeight:700,color:"white",fontFamily:"'Playfair Display'"}}>{selected.name}</div>
+              <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginTop:2}}>{selected.phone}</div>
+            </div>
+          </div>
+          {[
+            ["📧 Email",       selected.email],
+            ["🌍 Nationality", selected.nationality],
+            ["⚥ Gender",      selected.gender],
+            ["🎂 Date of Birth", fmt(selected.dateOfBirth)],
+            ["🪪 ID Type",     selected.idType],
+            ["🔢 ID Number",   selected.idNumber],
+            ["🏠 Address",     selected.address],
+          ].filter(([,v])=>v&&v!=="—").map(([l,v])=>(
+            <div key={l} style={{display:"flex",gap:8,marginBottom:8,fontSize:13}}>
+              <span style={{color:"rgba(255,255,255,0.35)",minWidth:130}}>{l}</span>
+              <span style={{color:"rgba(255,255,255,0.8)"}}>{v}</span>
+            </div>
+          ))}
+          {selected.idImageUrl && (
+            <div style={{marginTop:12}}>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginBottom:6}}>ID DOCUMENT</div>
+              <img src={selected.idImageUrl} alt="ID" style={{width:"100%",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)"}} />
+            </div>
+          )}
+        </div>
+        {/* Stats card */}
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {[
+            { label:"Total Bookings", value:selected.totalBookings||0, color:"#f0c060", icon:"📋" },
+            { label:"Total Spent",    value:fmtMoney(selected.totalSpent), color:"#4ade80", icon:"💰" },
+            { label:"First Booking",  value:fmt(selected.firstBooking), color:"#60a5fa", icon:"📅" },
+            { label:"Last Booking",   value:fmt(selected.lastBooking),  color:"#a78bfa", icon:"🕐" },
+            { label:"Last Vehicle",   value:selected.lastVehicle||"—", color:"#fb923c", icon:"🛵" },
+          ].map(s=>(
+            <div key={s.label} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:13,color:"rgba(255,255,255,0.4)"}}>{s.icon} {s.label}</span>
+              <span style={{fontSize:16,fontWeight:700,color:s.color}}>{s.value}</span>
+            </div>
+          ))}
+          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:13,color:"rgba(255,255,255,0.4)"}}>🌐 Source</span>
+            <span style={{fontSize:12,padding:"3px 10px",borderRadius:20,background:sourceColor(selected.source).bg,border:`1px solid ${sourceColor(selected.source).border}`,color:sourceColor(selected.source).color,fontWeight:600}}>
+              {selected.source==="walkin"?"🏪 Walk-in":"🌐 Online"}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Booking history */}
+      <div style={{fontSize:12,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>Booking History ({profileBookings.length})</div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {profileBookings.length===0&&<div style={{color:"rgba(255,255,255,0.3)",fontSize:13,padding:"20px 0"}}>No bookings found</div>}
+        {profileBookings.map(b=>{
+          const days = (b.checkIn&&b.checkOut)?Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)):1;
+          const total = (b.pricePerDay||0)*days;
+          const statusColor = {pending:"#f0c060",confirmed:"#60a5fa",completed:"#4ade80",cancelled:"#ff6b6b",payment_requested:"#fb923c"}[b.status]||"#aaa";
+          return (
+            <div key={b._id} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:"14px 18px",display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:12,alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:600,color:"white"}}>{b.vehicleName||"—"}</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:2}}>{fmt(b.checkIn)} → {fmt(b.checkOut)} · {days}d</div>
+              </div>
+              <div style={{fontSize:13,color:"#f0c060",fontWeight:700}}>{total>0?fmtMoney(total):"No price"}</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>{fmt(b.createdAt)}</div>
+              <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:`${statusColor}18`,border:`1px solid ${statusColor}44`,color:statusColor,fontWeight:600,whiteSpace:"nowrap"}}>
+                {b.status}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  // ── Customer List ──
+  return (
+    <div style={{padding:"24px 28px",fontFamily:"'DM Sans'"}}>
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
+        <div>
+          <div style={{fontFamily:"'Playfair Display'",fontSize:26,fontWeight:700,color:"white"}}>Customers</div>
+          <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginTop:4}}>{total} total customer records</div>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          {syncMsg&&<span style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>{syncMsg}</span>}
+          <button onClick={sync} disabled={syncing}
+            style={{padding:"10px 16px",background:"rgba(212,133,10,0.1)",border:"1px solid rgba(212,133,10,0.3)",borderRadius:10,color:"#f0c060",fontWeight:600,fontSize:13,cursor:syncing?"not-allowed":"pointer",opacity:syncing?0.6:1}}>
+            {syncing?"⏳ Syncing…":"🔄 Sync from Bookings"}
+          </button>
+        </div>
+      </div>
+
+      {/* Search */}
+      <div style={{position:"relative",marginBottom:20}}>
+        <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:16,color:"rgba(255,255,255,0.3)"}}>🔍</span>
+        <input value={search} onChange={e=>{setSearch(e.target.value);load(e.target.value);}}
+          placeholder="Search by name, phone, email, ID number..."
+          style={{width:"100%",padding:"11px 14px 11px 42px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"white",fontSize:14,outline:"none",boxSizing:"border-box"}}
+        />
+      </div>
+
+      {/* List */}
+      {loading ? (
+        <div style={{textAlign:"center",padding:"60px 0",color:"rgba(255,255,255,0.3)"}}>Loading customers…</div>
+      ) : customers.length === 0 ? (
+        <div style={{textAlign:"center",padding:"60px 0"}}>
+          <div style={{fontSize:40,marginBottom:12}}>🧑‍💼</div>
+          <div style={{color:"rgba(255,255,255,0.5)",fontSize:15,marginBottom:8}}>No customers yet</div>
+          <div style={{color:"rgba(255,255,255,0.3)",fontSize:13}}>Click "Sync from Bookings" to build your customer database</div>
+        </div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {customers.map(c=>(
+            <div key={c._id} onClick={()=>openProfile(c)}
+              style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"16px 20px",cursor:"pointer",display:"grid",gridTemplateColumns:"auto 1fr auto auto auto",gap:16,alignItems:"center",transition:"all 0.2s"}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.06)"}
+              onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}>
+              {/* Avatar */}
+              <div style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,#d4850a,#f0c060)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:700,color:"#1a1a2e",flexShrink:0}}>
+                {(c.name||"?")[0].toUpperCase()}
+              </div>
+              {/* Name + phone */}
+              <div>
+                <div style={{fontSize:14,fontWeight:600,color:"white"}}>{c.name}</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginTop:2}}>{c.phone}{c.email?` · ${c.email}`:""}</div>
+              </div>
+              {/* Last vehicle */}
+              <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",textAlign:"right"}}>
+                <div style={{color:"rgba(255,255,255,0.6)",fontWeight:500}}>{c.lastVehicle||"—"}</div>
+                <div style={{marginTop:2}}>Last: {fmt(c.lastBooking)}</div>
+              </div>
+              {/* Stats */}
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:15,fontWeight:700,color:"#f0c060"}}>{fmtMoney(c.totalSpent)}</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:2}}>{c.totalBookings} booking{c.totalBookings!==1?"s":""}</div>
+              </div>
+              {/* Source badge */}
+              <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:sourceColor(c.source).bg,border:`1px solid ${sourceColor(c.source).border}`,color:sourceColor(c.source).color,fontWeight:600,whiteSpace:"nowrap"}}>
+                {c.source==="walkin"?"🏪 Walk-in":"🌐 Online"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
