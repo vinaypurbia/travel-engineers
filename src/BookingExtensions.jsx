@@ -274,7 +274,7 @@ function ScanPanel({ customerName, onScanned, onImageUrl }) {
       }}>
         📋 Supports Aadhaar, PAN, Passport, Driving Licence, Voter ID, Emirates ID, Kuwait Civil ID.
         Image is automatically compressed and saved securely to Cloudinary.
-        <strong style={{ color: "rgba(255,255,255,0.7)" }}> 1000 free scans/month</strong> via Google Vision.
+        <strong style={{ color: "rgba(255,255,255,0.7)" }}> Free scans</strong> via Gemini AI (no billing needed).
       </div>
 
       {/* Upload + Camera buttons */}
@@ -397,7 +397,7 @@ function ScanPanel({ customerName, onScanned, onImageUrl }) {
           }} />
           <div>
             <div style={{ fontSize: 13, color: "#60a5fa", fontFamily: "'DM Sans'", fontWeight: 600 }}>
-              Reading document with Google Vision…
+              Reading document with Gemini AI…
             </div>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>
               Compressing and uploading image to Cloudinary
