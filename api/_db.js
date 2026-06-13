@@ -172,6 +172,30 @@ const bookingSchema = new mongoose.Schema({
   createdAt:   { type: Date, default: Date.now },
 });
 
+// ── Customer Model ───────────────────────────────────────────────────────────
+// One record per unique phone number — upserted from booking data
+const customerSchema = new mongoose.Schema({
+  name:        { type: String, default: "" },
+  phone:        { type: String, required: true, unique: true },
+  email:        { type: String, default: null },
+  nationality:  { type: String, default: null },
+  gender:       { type: String, default: null },
+  dateOfBirth:  { type: Date,   default: null },
+  idType:       { type: String, default: null },
+  idNumber:     { type: String, default: null },
+  idImageUrl:   { type: String, default: null },
+  address:      { type: String, default: null },
+  notes:        { type: String, default: "" },
+  source:       { type: String, default: "online" }, // first booking source
+  totalBookings:{ type: Number, default: 0 },
+  totalSpent:   { type: Number, default: 0 },
+  firstBooking: { type: Date,   default: null },
+  lastBooking:  { type: Date,   default: null },
+  lastVehicle:  { type: String, default: null },
+  createdAt:    { type: Date,   default: Date.now },
+  updatedAt:    { type: Date,   default: Date.now },
+});
+
 module.exports = {
   connectDB,
   Agency:      mongoose.models.Agency      || mongoose.model("Agency",      agencySchema),
@@ -181,4 +205,5 @@ module.exports = {
   Inventory:   mongoose.models.Inventory   || mongoose.model("Inventory",   inventorySchema),
   Transaction: mongoose.models.Transaction || mongoose.model("Transaction", transactionSchema),
   Booking:     mongoose.models.Booking     || mongoose.model("Booking",     bookingSchema),
+  Customer:    mongoose.models.Customer    || mongoose.model("Customer",    customerSchema),
 };
