@@ -1559,7 +1559,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
           {saved&&<span style={{color:"#16a34a",fontSize:13,fontWeight:600}}>✓ Saved!</span>}
         </div>
         <div style={{padding:adminTab==="dashboard"?"28px":"0"}}>
-          {adminTab==="dashboard"&&<AdminDashboard data={data} goTo={goTo}/>}
+          {adminTab==="dashboard"&&<AdminDashboard data={data} goTo={goTo} api={api}/>}
           {adminTab!=="dashboard"&&(
             <div style={{background:"#0d1b2e",color:"white",minHeight:"100%",padding:"32px"}}>
               {adminTab==="agency"       &&<AgencyEditor       data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
@@ -1581,7 +1581,166 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
 }
 
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
-function AdminDashboard({ data, goTo }) {
+
+// ─── StorageTickers ───────────────────────────────────────────────────────────
+function StorageTickers({ api }) {
+  const [stats, setStats]     = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal]     = useState(null); // "mongodb" | "cloudinary"
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get("/bookings?resource=stats");
+      setStats(res);
+    } catch(e) { console.error("Stats fetch failed:", e); }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const fmtMB = (mb) => mb >= 1000 ? `${(mb/1024).toFixed(1)} GB` : `${mb} MB`;
+
+  const Ticker = ({ type, icon, label, data, color }) => {
+    if (loading) return (
+      <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",background:"rgba(255,255,255,0.05)",borderRadius:20,border:"1px solid rgba(255,255,255,0.08)",cursor:"default"}}>
+        <span style={{fontSize:13}}>{icon}</span>
+        <span style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>…</span>
+      </div>
+    );
+    if (!data || data.error) return (
+      <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",background:"rgba(255,255,255,0.05)",borderRadius:20,border:"1px solid rgba(255,255,255,0.08)",cursor:"pointer"}} onClick={()=>setModal(type)}>
+        <span style={{fontSize:13}}>{icon}</span>
+        <span style={{fontSize:11,color:"#ff6b6b"}}>Error</span>
+      </div>
+    );
+    const pct   = data.usedPct || 0;
+    const barColor = pct > 80 ? "#ff6b6b" : pct > 60 ? "#f0c060" : color;
+    return (
+      <div onClick={()=>setModal(type)} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 14px",background:"rgba(255,255,255,0.05)",borderRadius:20,border:`1px solid ${barColor}30`,cursor:"pointer",transition:"all 0.2s"}}
+        onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.09)"}
+        onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.05)"}>
+        <span style={{fontSize:13}}>{icon}</span>
+        <div style={{display:"flex",flexDirection:"column",gap:2}}>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.7)"}}>{label}</span>
+            <span style={{fontSize:11,color:barColor,fontWeight:700}}>{fmtMB(data.usedMB)}</span>
+          </div>
+          <div style={{width:60,height:3,background:"rgba(255,255,255,0.1)",borderRadius:2}}>
+            <div style={{width:`${Math.min(100,pct)}%`,height:"100%",background:barColor,borderRadius:2,transition:"width 0.5s"}}/>
+          </div>
+        </div>
+        <span style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>{pct}%</span>
+      </div>
+    );
+  };
+
+  // ── Detail Modal ──
+  const ModalView = () => {
+    if (!modal) return null;
+    const isMongo = modal === "mongodb";
+    const data    = isMongo ? stats?.mongodb : stats?.cloudinary;
+    const icon    = isMongo ? "🍃" : "☁️";
+    const title   = isMongo ? "MongoDB Atlas Storage" : "Cloudinary Storage";
+    const color   = isMongo ? "#4ade80" : "#60a5fa";
+    const limit   = data?.limitMB || 0;
+    const used    = data?.usedMB  || 0;
+    const pct     = data?.usedPct || 0;
+    const barColor = pct > 80 ? "#ff6b6b" : pct > 60 ? "#f0c060" : color;
+
+    return (
+      <div style={{position:"fixed",inset:0,zIndex:5000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(4px)"}} onClick={()=>setModal(null)}/>
+        <div style={{position:"relative",background:"#0d1b2e",border:`1px solid ${color}30`,borderRadius:20,width:"100%",maxWidth:520,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.7)"}}>
+          {/* Header */}
+          <div style={{padding:"20px 24px 16px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,background:"#0d1b2e",zIndex:10}}>
+            <div>
+              <div style={{fontSize:18,fontWeight:700,color:color,fontFamily:"'Playfair Display'"}}>{icon} {title}</div>
+              <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginTop:2}}>Free tier · {fmtMB(limit)} limit</div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>{setModal(null);load();}} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.5)",padding:"6px 12px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>🔄 Refresh</button>
+              <button onClick={()=>setModal(null)} style={{background:"rgba(255,255,255,0.06)",border:"none",color:"rgba(255,255,255,0.4)",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+            </div>
+          </div>
+
+          <div style={{padding:"20px 24px 28px"}}>
+            {/* Usage bar */}
+            <div style={{marginBottom:24}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                <span style={{fontSize:20,fontWeight:800,color:barColor}}>{fmtMB(used)} used</span>
+                <span style={{fontSize:13,color:"rgba(255,255,255,0.4)"}}>{pct}% of {fmtMB(limit)}</span>
+              </div>
+              <div style={{height:8,background:"rgba(255,255,255,0.08)",borderRadius:4,overflow:"hidden"}}>
+                <div style={{width:`${Math.min(100,pct)}%`,height:"100%",background:barColor,borderRadius:4,transition:"width 0.6s"}}/>
+              </div>
+              <div style={{fontSize:12,color:"rgba(255,255,255,0.3)",marginTop:6}}>{fmtMB(limit - used)} remaining</div>
+            </div>
+
+            {/* MongoDB: collection breakdown */}
+            {isMongo && data?.collections && (
+              <>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>Collections</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {data.collections.map(c=>(
+                    <div key={c.name} style={{display:"flex",alignItems:"center",gap:12,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"10px 14px"}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:600,color:"white",textTransform:"capitalize"}}>{c.name}</div>
+                        <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:2}}>{c.count.toLocaleString()} documents</div>
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontSize:13,fontWeight:700,color:color}}>{c.sizeMB} MB</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Cloudinary: resource breakdown */}
+            {!isMongo && data && !data.error && (
+              <>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>Usage Details</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                  {[
+                    { label:"Files Stored",     value:data.resources?.toLocaleString()||"—",     icon:"🖼️" },
+                    { label:"Bandwidth Used",   value:`${data.bandwidth} MB`,                     icon:"📡" },
+                    { label:"Transformations",  value:data.transformations?.toLocaleString()||"—",icon:"✨" },
+                    { label:"Storage Used",     value:fmtMB(data.usedMB),                         icon:"💾" },
+                  ].map(s=>(
+                    <div key={s.label} style={{background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"12px 14px"}}>
+                      <div style={{fontSize:18,marginBottom:6}}>{s.icon}</div>
+                      <div style={{fontSize:16,fontWeight:700,color:color}}>{s.value}</div>
+                      <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:2}}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {data?.error && (
+              <div style={{padding:"16px",background:"rgba(255,100,100,0.08)",borderRadius:10,color:"#ff6b6b",fontSize:13}}>
+                ❌ {data.error}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <Ticker type="mongodb"    icon="🍃" label="MONGODB"    data={stats?.mongodb}    color="#4ade80"/>
+        <Ticker type="cloudinary" icon="☁️" label="CLOUDINARY" data={stats?.cloudinary} color="#60a5fa"/>
+      </div>
+      <ModalView />
+    </>
+  );
+}
+
+function AdminDashboard({ data, goTo, api }) {
   const bookings     = data.bookings     || [];
   const tourBookings = data.tourBookings || [];
   const rentals      = data.rentals      || [];
@@ -1608,9 +1767,12 @@ function AdminDashboard({ data, goTo }) {
   ].slice(0,6);
   return (
     <div>
-      <div style={{marginBottom:24}}>
-        <h1 style={{fontSize:26,fontWeight:700,color:"#1a1a2e"}}>Welcome back 👋</h1>
-        <p style={{color:"#6b7280",fontSize:14,marginTop:4}}>Here's what's happening with Travel Engineers this month.</p>
+      <div style={{marginBottom:24,display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
+        <div>
+          <h1 style={{fontSize:26,fontWeight:700,color:"#1a1a2e"}}>Welcome back 👋</h1>
+          <p style={{color:"#6b7280",fontSize:14,marginTop:4}}>Here's what's happening with Travel Engineers this month.</p>
+        </div>
+        <StorageTickers api={api} />
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:16,marginBottom:24}}>
         {statCards.map(c=>(
@@ -4597,7 +4759,7 @@ function StaffPanel({ staffUser, data, api, reload, onExit }) {
             </div>
           </div>
           <div style={{padding:"28px 24px",maxWidth:1200}}>
-            {activeTab==="dashboard"   && <AdminDashboard    data={data} goTo={setActiveTab}/>}
+            {activeTab==="dashboard"   && <AdminDashboard    data={data} goTo={setActiveTab} api={api}/>}
             {activeTab==="bookings"    && <BookingsEditor     data={data} api={api} reload={reload} showSaved={showSaved}/>}
             {activeTab==="accounting"  && <AccountingEditor   data={data} api={api} reload={reload} showSaved={showSaved}/>}
             {activeTab==="reviews"     && <ReviewsEditor      data={data} api={api} reload={reload} showSaved={showSaved}/>}
