@@ -46,42 +46,73 @@ async function sendBookingEmail({ booking, days, agencyEmail, agencyName }) {
   }
 }
 
-// ── Google Cloud Vision OCR ───────────────────────────────────────────────────
-// Uses TEXT_DETECTION (Document OCR) on the ID image
-// Then parses the raw text to extract structured fields
-async function scanWithGoogleVision(imageBase64) {
-  const apiKey = process.env.GOOGLE_VISION_API_KEY;
-  if (!apiKey) return { error: "GOOGLE_VISION_API_KEY not set in Vercel env vars" };
+// ── Gemini Vision OCR ────────────────────────────────────────────────────────
+// Uses Gemini 1.5 Flash (free tier, no billing required) to extract ID fields
+async function scanWithGoogleVision(imageBase64, mimeType) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return { error: "GEMINI_API_KEY not set in Vercel env vars" };
 
   try {
+    const prompt = `You are an ID document scanner. Extract all information from this ID document image.
+Return ONLY a valid JSON object with these exact fields (use null if not found):
+{
+  "idType": "Aadhaar|PAN|Passport|Driving License|Voter ID|Emirates ID|Kuwait Civil ID|Other",
+  "idNumber": "the document number",
+  "fullName": "full name on document",
+  "dateOfBirth": "YYYY-MM-DD format or null",
+  "gender": "Male|Female|Other or null",
+  "nationality": "nationality or null",
+  "address": "full address if present or null",
+  "expiryDate": "YYYY-MM-DD format or null"
+}
+Return only the JSON, no explanation, no markdown.`;
+
     const response = await fetch(
-      `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          requests: [{
-            image: { content: imageBase64 },
-            features: [{ type: "DOCUMENT_TEXT_DETECTION", maxResults: 1 }],
+          contents: [{
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: mimeType || "image/jpeg", data: imageBase64 } }
+            ]
           }],
+          generationConfig: { temperature: 0, maxOutputTokens: 512 }
         }),
       }
     );
 
     const data = await response.json();
-
     if (data.error) return { error: data.error.message };
-    if (data.responses?.[0]?.error) return { error: data.responses[0].error.message };
 
-    const rawText = data.responses?.[0]?.fullTextAnnotation?.text || "";
-    if (!rawText) return { error: "No text found in image. Please use a clearer photo." };
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    if (!rawText) return { error: "No response from Gemini. Please use a clearer photo." };
 
-    // Parse the raw OCR text into structured fields
-    const parsed = parseIdText(rawText);
-    return { ...parsed, rawText };
+    // Parse the JSON response from Gemini
+    try {
+      const clean = rawText.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(clean);
+      return {
+        idType:      parsed.idType      || null,
+        idNumber:    parsed.idNumber    || null,
+        fullName:    parsed.fullName    || null,
+        dateOfBirth: parsed.dateOfBirth || null,
+        gender:      parsed.gender      || null,
+        nationality: parsed.nationality || null,
+        address:     parsed.address     || null,
+        expiryDate:  parsed.expiryDate  || null,
+        rawText,
+      };
+    } catch(parseErr) {
+      // Gemini returned text but not valid JSON — fall back to regex parser
+      const parsed = parseIdText(rawText);
+      return { ...parsed, rawText };
+    }
 
   } catch (err) {
-    return { error: err.message || "Google Vision API call failed" };
+    return { error: err.message || "Gemini API call failed" };
   }
 }
 
@@ -340,7 +371,7 @@ module.exports = async (req, res) => {
     if (!imageBase64) return res.status(400).json({ error: "imageBase64 is required" });
 
     // 1. Scan with Google Vision
-    const scanResult = await scanWithGoogleVision(imageBase64);
+    const scanResult = await scanWithGoogleVision(imageBase64, mimeType || "image/jpeg");
 
     // 2. Optionally upload the image to Cloudinary (for record keeping)
     let imageUrl = null;
