@@ -454,6 +454,75 @@ module.exports = async (req, res) => {
       return res.status(405).json({ error: "Method not allowed" });
     }
 
+    // ── Storage stats (?resource=stats) ──────────────────────────────────────
+    if (req.query?.resource === "stats" && req.method === "GET") {
+      const result = { mongodb: null, cloudinary: null };
+
+      // ── MongoDB Atlas stats via Mongoose db.stats() ──
+      try {
+        const mongoose = require("mongoose");
+        const adminDb  = mongoose.connection.db;
+        const dbStats  = await adminDb.stats({ scale: 1024 }); // in KB
+        // Per-collection counts + sizes
+        const collections = await adminDb.listCollections().toArray();
+        const collStats = [];
+        for (const col of collections) {
+          try {
+            const cs = await adminDb.collection(col.name).stats({ scale: 1024 });
+            collStats.push({
+              name:    col.name,
+              count:   cs.count   || 0,
+              sizeMB:  Number(((cs.storageSize || cs.size || 0) / 1024).toFixed(3)),
+            });
+          } catch(e) { /* skip */ }
+        }
+        collStats.sort((a,b) => b.sizeMB - a.sizeMB);
+        const totalMB  = Number(((dbStats.storageSize || dbStats.dataSize || 0) / 1024).toFixed(2));
+        const limitMB  = 512; // MongoDB Atlas free tier
+        result.mongodb = {
+          usedMB:    totalMB,
+          limitMB,
+          usedPct:   Number(((totalMB / limitMB) * 100).toFixed(1)),
+          collections: collStats,
+        };
+      } catch(e) {
+        result.mongodb = { error: e.message };
+      }
+
+      // ── Cloudinary usage API ──
+      try {
+        const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+        const apiKey    = process.env.CLOUDINARY_API_KEY;
+        const apiSecret = process.env.CLOUDINARY_API_SECRET;
+        if (cloudName && apiKey && apiSecret) {
+          const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString("base64");
+          const resp = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/usage`, {
+            headers: { Authorization: `Basic ${auth}` },
+          });
+          const usage = await resp.json();
+          const usedBytes = usage.storage?.usage || 0;
+          const limitBytes= usage.storage?.limit || (25 * 1024 * 1024 * 1024); // 25GB free
+          const usedMB    = Number((usedBytes / (1024*1024)).toFixed(1));
+          const limitMB   = Number((limitBytes / (1024*1024)).toFixed(0));
+          const usedPct   = Number(((usedBytes / limitBytes) * 100).toFixed(1));
+          result.cloudinary = {
+            usedMB,
+            limitMB,
+            usedPct,
+            resources: usage.resources?.usage || 0,
+            transformations: usage.transformations?.usage || 0,
+            bandwidth: Number(((usage.bandwidth?.usage||0)/(1024*1024)).toFixed(1)),
+          };
+        } else {
+          result.cloudinary = { error: "Cloudinary env vars not set" };
+        }
+      } catch(e) {
+        result.cloudinary = { error: e.message };
+      }
+
+      return res.json(result);
+    }
+
     if (id) {
       if (req.method === "GET") {
         const booking = await Booking.findById(id);
