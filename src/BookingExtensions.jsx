@@ -3,7 +3,7 @@
 // Google Cloud Vision OCR + Cloudinary ID image upload with compression
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 const apiCall = {
   post: (path, body) =>
@@ -26,17 +26,15 @@ const ID_TYPES = ["Aadhaar", "PAN", "Passport", "Driving License", "Voter ID", "
 const inp = {
   width: "100%", padding: "10px 14px",
   background: "#0d1b2e",
-  border: "1.5px solid rgba(255,255,255,0.1)",
+  border: "1.5px solid rgba(255,255,255,0.12)",
   borderRadius: 8, color: "white",
   fontFamily: "'DM Sans', sans-serif", fontSize: 14,
   outline: "none", boxSizing: "border-box",
 };
-// Select-specific overrides: solid bg + custom arrow so system chrome doesn't bleed through
-const inpSel = {
-  ...inp,
-  cursor: "pointer",
-  appearance: "none",
-  WebkitAppearance: "none",
+// Select-specific style — adds custom gold arrow
+const sel = {
+  ...inp, cursor: "pointer",
+  appearance: "none", WebkitAppearance: "none",
   backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23f0c060' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",
   backgroundRepeat: "no-repeat",
   backgroundPosition: "right 12px center",
@@ -47,16 +45,6 @@ const lbl = {
   color: "rgba(255,255,255,0.4)", textTransform: "uppercase",
   letterSpacing: 2, marginBottom: 6,
 };
-
-// Injected once per page to make <option> elements readable inside dark selects.
-// Inline styles on <option> are ignored by most browsers; only CSS works.
-const DARK_SELECT_STYLE = `
-  .te-dark-sel option,
-  .te-dark-sel optgroup {
-    background: #0d1b2e !important;
-    color: #ffffff !important;
-  }
-`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Image compression utility
@@ -131,7 +119,6 @@ function IdFormFields({ form, setForm }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-      <style>{DARK_SELECT_STYLE}</style>
       <div style={{ gridColumn: "1/-1" }}>
         <label style={lbl}>Customer Full Name</label>
         <input style={inp} value={form.customerName || ""} onChange={e => set("customerName", e.target.value)} placeholder="As printed on document" />
@@ -146,7 +133,7 @@ function IdFormFields({ form, setForm }) {
       </div>
       <div>
         <label style={lbl}>ID Type</label>
-        <select className="te-dark-sel" style={inpSel} value={form.idType || ""} onChange={e => set("idType", e.target.value)}>
+        <select style={sel} value={form.idType || ""} onChange={e => set("idType", e.target.value)}>
           <option value="">— Select —</option>
           {ID_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
@@ -161,7 +148,7 @@ function IdFormFields({ form, setForm }) {
       </div>
       <div>
         <label style={lbl}>Gender</label>
-        <select className="te-dark-sel" style={inpSel} value={form.gender || ""} onChange={e => set("gender", e.target.value)}>
+        <select style={sel} value={form.gender || ""} onChange={e => set("gender", e.target.value)}>
           <option value="">— Select —</option>
           <option value="Male">Male</option>
           <option value="Female">Female</option>
@@ -274,7 +261,7 @@ function ScanPanel({ customerName, onScanned, onImageUrl }) {
       }}>
         📋 Supports Aadhaar, PAN, Passport, Driving Licence, Voter ID, Emirates ID, Kuwait Civil ID.
         Image is automatically compressed and saved securely to Cloudinary.
-        <strong style={{ color: "rgba(255,255,255,0.7)" }}> Free scans</strong> via Gemini AI (no billing needed).
+        <strong style={{ color: "rgba(255,255,255,0.7)" }}> 1000 free scans/month</strong> via Google Vision.
       </div>
 
       {/* Upload + Camera buttons */}
@@ -397,7 +384,7 @@ function ScanPanel({ customerName, onScanned, onImageUrl }) {
           }} />
           <div>
             <div style={{ fontSize: 13, color: "#60a5fa", fontFamily: "'DM Sans'", fontWeight: 600 }}>
-              Reading document with Gemini AI…
+              Reading document with Google Vision…
             </div>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>
               Compressing and uploading image to Cloudinary
@@ -538,7 +525,7 @@ export function CustomerIdPanel({ booking, onUpdated }) {
           {mode === "view" && (
             <>
               <button onClick={() => setMode("scan")} style={{ background: "rgba(96,165,250,0.12)", border: "1px solid rgba(96,165,250,0.3)", color: "#60a5fa", padding: "5px 12px", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>📷 Scan ID</button>
-              <button onClick={() => setMode("manual")} style={{ background: "rgba(212,133,10,0.12)", border: "1px solid rgba(212,133,10,0.3)", color: "#f0c060", padding: "5px 12px", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>✏️ Edit ID</button>
+              <button onClick={() => setMode("manual")} style={{ background: "rgba(212,133,10,0.12)", border: "1px solid rgba(212,133,10,0.3)", color: "#f0c060", padding: "5px 12px", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>✏️ Edit</button>
             </>
           )}
           {mode !== "view" && (
@@ -633,9 +620,60 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
   const [error, setError] = useState("");
   const [scanDone, setScanDone] = useState(false);
 
+  // Customer search state
+  const [custSearch, setCustSearch] = useState("");
+  const [custResults, setCustResults] = useState([]);
+  const [custLoading, setCustLoading] = useState(false);
+  const [custDropOpen, setCustDropOpen] = useState(false);
+  const custTimer = useRef(null);
+
+  const searchCustomers = (q) => {
+    setCustSearch(q);
+    set("customerName", q);
+    if (!q || q.length < 2) { setCustResults([]); setCustDropOpen(false); return; }
+    clearTimeout(custTimer.current);
+    custTimer.current = setTimeout(async () => {
+      setCustLoading(true);
+      try {
+        const res = await fetch(`/api/bookings?search=${encodeURIComponent(q)}`).then(r => r.json());
+        // Deduplicate by phone
+        const seen = new Set();
+        const unique = (Array.isArray(res) ? res : []).filter(b => {
+          if (!b.customerName || b.customerName === "Walk-in Customer") return false;
+          const key = b.phone || b.customerName;
+          if (seen.has(key)) return false;
+          seen.add(key); return true;
+        });
+        setCustResults(unique.slice(0, 8));
+        setCustDropOpen(unique.length > 0);
+      } catch(e) { setCustResults([]); }
+      setCustLoading(false);
+    }, 350);
+  };
+
+  const selectCustomer = (b) => {
+    setCustSearch(b.customerName);
+    setCustDropOpen(false);
+    setForm(f => ({
+      ...f,
+      customerName: b.customerName || "",
+      phone: b.phone || f.phone,
+      email: b.email || f.email,
+      nationality: b.nationality || f.nationality,
+      stayAddress: b.stayAddress || f.stayAddress,
+      idType: b.idType || f.idType,
+      idNumber: b.idNumber || f.idNumber,
+      idImageUrl: b.idImageUrl || f.idImageUrl,
+      nationality: b.nationality || f.nationality,
+      dateOfBirth: b.dateOfBirth || f.dateOfBirth,
+      gender: b.gender || f.gender,
+      address: b.address || f.address,
+    }));
+  };
+
   const [form, setForm] = useState({
     customerName: "", phone: "", email: "",
-    vehicleId: "", vehicleName: "",
+    vehicleId: "", vehicleName: "", vehicleNumber: "",
     checkIn: today, checkOut: "",
     stayAddress: "", notes: "",
     pricePerDay: "",
@@ -687,22 +725,54 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
     setError("");
     setSaving(true);
     try {
-      const result = await apiCall.post("/bookings", { ...form, pricePerDay: priceNum, source: "walkin" });
+      const result = await apiCall.post("/bookings", {
+        ...form,
+        pricePerDay: priceNum,
+        source: "walkin",
+        tokenAmount: Math.round(total / 2),
+        receivedAmount: total,
+        paymentStatus: total > 0 ? "paid" : "pending",
+        status: "completed",
+      });
       if (result.success) {
-        // Normalise the returned booking — some API responses omit fields like `source`.
-        // Fall back to the form data so onCreated always receives a usable object.
-        const returnedBooking = result.booking || result.data || {};
-        const resolvedBooking = {
-          ...form,
-          pricePerDay: priceNum,
-          source: "walkin",
-          ...returnedBooking,
-          // Always enforce source so isWalkin() works even if the API strips it
-          source: "walkin",
-        };
-        if (onCreated) onCreated(resolvedBooking);
+        const booking = result.booking || result;
+        const bookingId = booking?._id || booking?.id;
+
+        // Patch source back in case API strips it
+        if (bookingId) {
+          try {
+            await apiCall.put(`/bookings?id=${bookingId}`, {
+              source: "walkin",
+              receivedAmount: total,
+              paymentStatus: total > 0 ? "paid" : "pending",
+              status: "completed",
+            });
+          } catch(e) { console.warn("Patch walkin source failed:", e); }
+
+          // Create accounting entry
+          if (total > 0) {
+            try {
+              await apiCall.post("/accounting", {
+                type: "income",
+                category: "vehicle_rental",
+                amount: total,
+                description: `Walk-in cash — ${form.vehicleName} / ${form.customerName}`,
+                clientName: form.customerName || "Walk-in Customer",
+                linkedBookingId: String(bookingId),
+                paymentStatus: "paid",
+                paymentMethod: "cash",
+                date: form.checkIn || new Date().toISOString(),
+                notes: `Walk-in booking. Vehicle: ${form.vehicleName} | ₹${priceNum}/day × ${days}d = ₹${total}`,
+              });
+            } catch(e) { console.warn("Accounting entry failed:", e); }
+          }
+        }
+
+        if (onCreated) onCreated(booking);
         onClose();
-      } else setError("Something went wrong. Try again.");
+      } else {
+        setError(result.error || "Something went wrong. Try again.");
+      }
     } catch (err) {
       setError(err.message || "Save failed.");
     }
@@ -751,7 +821,8 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
           <button onClick={onClose} style={{ background: "rgba(255,255,255,0.06)", border: "none", color: "rgba(255,255,255,0.4)", width: 28, height: 28, borderRadius: "50%", cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
         </div>
 
-        <div style={{ padding: "20px 22px 28px" }}>
+        <div style={{ padding: "20px 22px 28px" }} className="te-modal">
+          <style>{`.te-modal select option{background:#0d1b2e!important;color:#fff!important}.te-modal select optgroup{background:#081425!important;color:#f0c060!important}.te-modal input:focus,.te-modal select:focus,.te-modal textarea:focus{border-color:#d4850a!important;background:#0f2035!important}.te-modal input::placeholder,.te-modal textarea::placeholder{color:rgba(255,255,255,0.25)!important}`}</style>
 
           {/* ── STEP 1: Details ── */}
           {step === "details" && (
@@ -759,9 +830,9 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
               {/* Vehicle */}
               <div style={{ marginBottom: 14 }}>
                 <label style={lbl}>Vehicle *</label>
-                <select className="te-dark-sel" style={inpSel} value={form.vehicleId} onChange={e => selectVehicle(e.target.value)}>
+                <select style={sel} value={form.vehicleId} onChange={e => selectVehicle(e.target.value)}>
                   <option value="">— Select from available vehicles —</option>
-                  {available.map(r => <option key={r._id} value={r._id}>{r.name}{r.vehicleNo ? ` #${r.vehicleNo}` : ""} — {r.price}{r.period}</option>)}
+                  {available.map(r => <option key={r._id} value={r._id}>{r.name} — {r.price}{r.period}</option>)}
                   <option value="__custom__">Other (type manually)</option>
                 </select>
               </div>
@@ -771,12 +842,67 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
                   <input style={inp} value={form.vehicleName} onChange={e => set("vehicleName", e.target.value)} placeholder="e.g. Honda Activa, Innova Crysta" />
                 </div>
               )}
+              {/* Vehicle number — always shown */}
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>Vehicle Number</label>
+                <input style={inp} value={form.vehicleNumber || ""} onChange={e => set("vehicleNumber", e.target.value)} placeholder="e.g. RJ14 AB 1234" />
+              </div>
 
               {/* Customer */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
                 <div style={{ gridColumn: "1/-1" }}>
                   <label style={lbl}>Customer Full Name *</label>
-                  <input style={inp} value={form.customerName} onChange={e => set("customerName", e.target.value)} placeholder="Priya Sharma" />
+                  {/* Searchable customer field */}
+                  <div style={{position:"relative"}}>
+                    <div style={{position:"relative"}}>
+                      <input
+                        style={{...inp, paddingRight: 36}}
+                        value={custSearch}
+                        onChange={e => searchCustomers(e.target.value)}
+                        onFocus={() => custResults.length > 0 && setCustDropOpen(true)}
+                        onBlur={() => setTimeout(()=>setCustDropOpen(false), 200)}
+                        placeholder="Type name or phone to search repeat customers…"
+                        autoComplete="off"
+                      />
+                      {custLoading && (
+                        <span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",fontSize:12,color:"rgba(255,255,255,0.3)"}}>⏳</span>
+                      )}
+                      {!custLoading && custSearch && (
+                        <span onClick={()=>{setCustSearch("");set("customerName","");setCustDropOpen(false);}}
+                          style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",fontSize:14,color:"rgba(255,255,255,0.3)",cursor:"pointer"}}>✕</span>
+                      )}
+                    </div>
+                    {/* Dropdown results */}
+                    {custDropOpen && custResults.length > 0 && (
+                      <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#0d1b2e",border:"1.5px solid rgba(212,133,10,0.4)",borderRadius:10,zIndex:999,maxHeight:260,overflowY:"auto",boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>
+                        <div style={{padding:"8px 14px 4px",fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:2}}>Repeat customers</div>
+                        {custResults.map((b,i) => (
+                          <div key={i} onMouseDown={()=>selectCustomer(b)}
+                            style={{padding:"10px 14px",cursor:"pointer",borderTop:"1px solid rgba(255,255,255,0.05)",display:"flex",gap:10,alignItems:"center"}}
+                            onMouseEnter={e=>e.currentTarget.style.background="rgba(212,133,10,0.1)"}
+                            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                            <div style={{width:32,height:32,borderRadius:"50%",background:"rgba(212,133,10,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>
+                              👤
+                            </div>
+                            <div style={{minWidth:0}}>
+                              <div style={{fontWeight:600,fontSize:13,color:"white",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.customerName}</div>
+                              <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:2}}>
+                                {b.phone && <span>📞 {b.phone}</span>}
+                                {b.vehicleName && <span style={{marginLeft:8}}>🚗 {b.vehicleName}</span>}
+                                {b.nationality && <span style={{marginLeft:8}}>🌍 {b.nationality}</span>}
+                              </div>
+                            </div>
+                            <div style={{marginLeft:"auto",fontSize:10,color:"rgba(255,255,255,0.2)",flexShrink:0}}>
+                              {b.checkIn ? new Date(b.checkIn).toLocaleDateString("en-IN",{day:"numeric",month:"short"}) : ""}
+                            </div>
+                          </div>
+                        ))}
+                        <div style={{padding:"8px 14px",fontSize:11,color:"rgba(255,255,255,0.2)",borderTop:"1px solid rgba(255,255,255,0.05)"}}>
+                          Not listed? Just keep typing to add as new customer.
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label style={lbl}>Phone (WhatsApp) *</label>
@@ -792,11 +918,11 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
                 <div>
                   <label style={lbl}>Check-in *</label>
-                  <input type="date" style={{ ...inp, colorScheme: "dark" }} value={form.checkIn} onChange={e => set("checkIn", e.target.value)} />
+                  <input type="date" style={{ ...inp, colorScheme: "dark" }} value={form.checkIn} min={today} onChange={e => set("checkIn", e.target.value)} />
                 </div>
                 <div>
                   <label style={lbl}>Check-out *</label>
-                  <input type="date" style={{ ...inp, colorScheme: "dark" }} value={form.checkOut} min={form.checkIn || ""} onChange={e => set("checkOut", e.target.value)} />
+                  <input type="date" style={{ ...inp, colorScheme: "dark" }} value={form.checkOut} min={form.checkIn || today} onChange={e => set("checkOut", e.target.value)} />
                 </div>
                 <div>
                   <label style={lbl}>Price per Day (₹)</label>
@@ -851,7 +977,7 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                     <div>
                       <label style={lbl}>ID Type</label>
-                      <select className="te-dark-sel" style={inpSel} value={form.idType} onChange={e => set("idType", e.target.value)}>
+                      <select style={sel} value={form.idType} onChange={e => set("idType", e.target.value)}>
                         <option value="">— Select —</option>
                         {ID_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
@@ -885,6 +1011,7 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
                     ["Customer",  form.customerName],
                     ["Phone",     form.phone],
                     ["Vehicle",   form.vehicleName || "—"],
+                    form.vehicleNumber ? ["Veh. Number", form.vehicleNumber] : null,
                     ["Dates",     form.checkIn && form.checkOut
                       ? `${new Date(form.checkIn).toLocaleDateString("en-IN",{day:"numeric",month:"short"})} → ${new Date(form.checkOut).toLocaleDateString("en-IN",{day:"numeric",month:"short"})} (${days}d)` : "—"],
                     ["Stay At",   form.stayAddress || "—"],
