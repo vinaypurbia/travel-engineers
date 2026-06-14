@@ -702,11 +702,16 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
   const total = priceNum * days;
 
   const selectVehicle = (vehicleId) => {
-    if (vehicleId === "__custom__") { set("vehicleId", "__custom__"); set("vehicleName", ""); return; }
+    if (vehicleId === "__custom__") { set("vehicleId", "__custom__"); set("vehicleName", ""); set("vehicleNumber", ""); return; }
     const r = available.find(r => r._id === vehicleId);
     if (r) {
       const price = r.price ? Number(String(r.price).replace(/[^0-9.]/g, "")) : 0;
-      setForm(f => ({ ...f, vehicleId, vehicleName: r.name, pricePerDay: price ? String(price) : f.pricePerDay }));
+      // Extract vehicle number from name e.g. "Activa #9654" → "9654"
+      // or from a dedicated vehicleNo / registrationNo field if it exists
+      const numFromName = (r.vehicleNo || r.registrationNo || r.vehicleNumber || "");
+      const numFromHash = !numFromName ? ((r.name||"").match(/#([A-Z0-9\s]+)/i)||[])[1]?.trim() || "" : "";
+      const vehicleNumber = numFromName || numFromHash;
+      setForm(f => ({ ...f, vehicleId, vehicleName: r.name, pricePerDay: price ? String(price) : f.pricePerDay, vehicleNumber: vehicleNumber || f.vehicleNumber }));
     }
   };
 
