@@ -934,25 +934,23 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
           {/* ── STEP 2: ID Scan ── */}
           {step === "id" && (
             <div>
-              <ScanPanel
-                customerName={form.customerName}
-                onScanned={handleScanned}
-                onImageUrl={(url) => set("idImageUrl", url)}
-              />
-
-              {scanDone && (
+              {/* If repeat customer already has ID on file — show it first */}
+              {form.idImageUrl && !scanDone ? (
                 <div>
-                  <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)", color: "#4ade80", fontSize: 12, marginBottom: 14 }}>
-                    ✅ Scan complete — review and edit extracted details below
+                  <div style={{padding:"10px 14px",borderRadius:8,background:"rgba(74,222,128,0.08)",border:"1px solid rgba(74,222,128,0.2)",color:"#4ade80",fontSize:12,marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
+                    <span>✅</span>
+                    <span>ID on file for <strong>{form.customerName}</strong> — no re-upload needed unless document has changed.</span>
                   </div>
-                  <IdFormFields form={form} setForm={setForm} />
-                </div>
-              )}
-
-              {!scanDone && (
-                <div style={{ marginTop: 14 }}>
-                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", textAlign: "center", marginBottom: 10 }}>— or fill manually —</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                  {/* Show stored ID */}
+                  <div style={{marginBottom:16,textAlign:"center"}}>
+                    <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>Stored ID Document</div>
+                    <a href={form.idImageUrl} target="_blank" rel="noreferrer">
+                      <img src={form.idImageUrl} alt="Stored ID" style={{maxHeight:180,maxWidth:"100%",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)",objectFit:"contain",background:"rgba(0,0,0,0.3)",cursor:"pointer"}}/>
+                    </a>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.2)",marginTop:4}}>Tap to open full size</div>
+                  </div>
+                  {/* Show existing ID fields */}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
                     <div>
                       <label style={lbl}>ID Type</label>
                       <select className="te-dark-sel" style={inpSel} value={form.idType} onChange={e => set("idType", e.target.value)}>
@@ -965,7 +963,53 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
                       <input style={inp} value={form.idNumber} onChange={e => set("idNumber", e.target.value)} placeholder="Document number" />
                     </div>
                   </div>
+                  {/* Replace ID option */}
+                  <div style={{borderTop:"1px solid rgba(255,255,255,0.07)",paddingTop:14,marginBottom:4}}>
+                    <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginBottom:10,textAlign:"center"}}>— Upload new ID to replace the existing one —</div>
+                    <ScanPanel
+                      customerName={form.customerName}
+                      onScanned={(result) => { handleScanned(result); }}
+                      onImageUrl={(url) => set("idImageUrl", url)}
+                      compact={true}
+                    />
+                  </div>
                 </div>
+              ) : (
+                <>
+                  <ScanPanel
+                    customerName={form.customerName}
+                    onScanned={handleScanned}
+                    onImageUrl={(url) => set("idImageUrl", url)}
+                  />
+
+                  {scanDone && (
+                    <div>
+                      <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)", color: "#4ade80", fontSize: 12, marginBottom: 14 }}>
+                        ✅ Scan complete — review and edit extracted details below
+                      </div>
+                      <IdFormFields form={form} setForm={setForm} />
+                    </div>
+                  )}
+
+                  {!scanDone && (
+                    <div style={{ marginTop: 14 }}>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", textAlign: "center", marginBottom: 10 }}>— or fill manually —</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                        <div>
+                          <label style={lbl}>ID Type</label>
+                          <select className="te-dark-sel" style={inpSel} value={form.idType} onChange={e => set("idType", e.target.value)}>
+                            <option value="">— Select —</option>
+                            {ID_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={lbl}>ID Number</label>
+                          <input style={inp} value={form.idNumber} onChange={e => set("idNumber", e.target.value)} placeholder="Document number" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
               <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
