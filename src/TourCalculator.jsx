@@ -143,17 +143,28 @@ function RouteMap({ stops, routeCoords, onMapClick, center }) {
     const L = leafRef.current, map = mapRef.current;
     if (!L || !map) return;
     markersRef.current.forEach(m => m.remove());
-    markersRef.current = stops.map((s, i) => {
+    // Build full marker list: Udaipur (S) + stops + Udaipur (E)
+    const UDAIPUR = [24.5854, 73.7125];
+    const allMarkers = [
+      { coords: UDAIPUR, label: "S", bg: "#4ade80", name: "Udaipur (Start)" },
+      ...stops.map((s, i) => ({ coords: s.coords, label: String(i+1), bg: "#f0c060", name: s.name })),
+      { coords: UDAIPUR, label: "E", bg: "#f87171", name: "Udaipur (Return)" },
+    ];
+    markersRef.current = allMarkers.map((m) => {
       const icon = L.divIcon({
-        html: `<div style="background:${i===0?"#4ade80":i===stops.length-1?"#f87171":"#f0c060"};color:#06111f;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)">${i+1}</div>`,
+        html: `<div style="background:${m.bg};color:#06111f;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)">${m.label}</div>`,
         className: "", iconSize: [28,28], iconAnchor: [14,14],
       });
-      return L.marker(s.coords, { icon })
+      return L.marker(m.coords, { icon })
         .addTo(map)
-        .bindPopup(`<b>${s.name}</b>`);
+        .bindPopup(`<b>${m.name}</b>`);
     });
     if (stops.length > 0) {
-      map.setView(stops[stops.length-1].coords, Math.max(map.getZoom(), 11));
+      // Fit bounds to include Udaipur + all stops
+      const UDAIPUR = [24.5854, 73.7125];
+      const allCoords = [UDAIPUR, ...stops.map(s => s.coords)];
+      const bounds = L.latLngBounds(allCoords);
+      map.fitBounds(bounds, { padding: [40, 40] });
     }
   }, [stops]);
 
@@ -256,10 +267,14 @@ export default function TourCalculator() {
     }
   }, [stops.length, addStop]);
 
+  // Udaipur coordinates (fixed start & return point)
+  const UDAIPUR_COORDS = [24.5854, 73.7125];
+
   const calculateRoute = async () => {
-    if (stops.length < 2) return;
+    if (stops.length < 1) return;
     setLoadingRoute(true);
-    const r = await getRoute(stops.map(s => s.coords));
+    const waypoints = [UDAIPUR_COORDS, ...stops.map(s => s.coords), UDAIPUR_COORDS];
+    const r = await getRoute(waypoints);
     setRoute(r);
     setLoadingRoute(false);
   };
