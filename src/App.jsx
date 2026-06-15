@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ManualBookingModal, CustomerIdPanel } from "./BookingExtensions";
 import TravelAssistant from "./TravelAssistant";
+import TourCalculator from "./TourCalculator";
 
 const API = "/api";
 
@@ -679,6 +680,10 @@ export default function App() {
           <div style={{textAlign:"center",color:"#999",fontFamily:"'DM Sans'",padding:60}}>
             <div style={{fontSize:48,marginBottom:16}}>Tours coming soon!</div>
           </div>
+      <div style={{marginTop: 60}}>
+    <TourCalculator rentals={(data.rentals || [])} />
+  </div>
+</section>
         )}
       </section>
 
