@@ -778,6 +778,9 @@ export default function App() {
           {toast.type==="delete"?"🗑️":toast.type==="error"?"❌":"✅"} {toast.msg}
         </div>
       )}
+
+      {/* AI Travel Assistant */}
+      <TravelAssistant whatsapp={agency?.whatsapp} />
     </div>
   );
 }
@@ -1489,7 +1492,6 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
     {id:"accounting",  label:"Accounting",   icon:"💰"},
     {id:"bookings",    label:"Bookings",     icon:"📋", badge: (data.bookings||[]).filter(b=>b.status==="pending").length},
     {id:"users",       label:"Users",        icon:"👤"},
-    {id:"customers",   label:"Customers",    icon:"🧑‍💼"},
   ];
   const goTo = (id) => { setAdminTab(id); reload(); };
   return (
@@ -1560,7 +1562,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
           {saved&&<span style={{color:"#16a34a",fontSize:13,fontWeight:600}}>✓ Saved!</span>}
         </div>
         <div style={{padding:adminTab==="dashboard"?"28px":"0"}}>
-          {adminTab==="dashboard"&&<AdminDashboard data={data} goTo={goTo} api={api}/>}
+          {adminTab==="dashboard"&&<AdminDashboard data={data} goTo={goTo}/>}
           {adminTab!=="dashboard"&&(
             <div style={{background:"#0d1b2e",color:"white",minHeight:"100%",padding:"32px"}}>
               {adminTab==="agency"       &&<AgencyEditor       data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
@@ -1572,7 +1574,6 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
               {adminTab==="bookings"     &&<BookingsEditor     data={data} api={api} reload={reload} showSaved={showSavedLocal} rentals={data.rentals||[]}/>}
               {adminTab==="tours"        &&<ToursEditor        data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
               {adminTab==="users"        &&<UsersEditor        data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
-              {adminTab==="customers"    &&<CustomersEditor    api={api}/>}
             </div>
           )}
         </div>
@@ -1582,166 +1583,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
 }
 
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
-
-// ─── StorageTickers ───────────────────────────────────────────────────────────
-function StorageTickers({ api }) {
-  const [stats, setStats]     = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [modal, setModal]     = useState(null); // "mongodb" | "cloudinary"
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get("/bookings?resource=stats");
-      setStats(res);
-    } catch(e) { console.error("Stats fetch failed:", e); }
-    setLoading(false);
-  };
-
-  useEffect(() => { load(); }, []);
-
-  const fmtMB = (mb) => mb >= 1000 ? `${(mb/1024).toFixed(1)} GB` : `${mb} MB`;
-
-  const Ticker = ({ type, icon, label, data, color }) => {
-    if (loading) return (
-      <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",background:"rgba(255,255,255,0.05)",borderRadius:20,border:"1px solid rgba(255,255,255,0.08)",cursor:"default"}}>
-        <span style={{fontSize:13}}>{icon}</span>
-        <span style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>…</span>
-      </div>
-    );
-    if (!data || data.error) return (
-      <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",background:"rgba(255,255,255,0.05)",borderRadius:20,border:"1px solid rgba(255,255,255,0.08)",cursor:"pointer"}} onClick={()=>setModal(type)}>
-        <span style={{fontSize:13}}>{icon}</span>
-        <span style={{fontSize:11,color:"#ff6b6b"}}>Error</span>
-      </div>
-    );
-    const pct   = data.usedPct || 0;
-    const barColor = pct > 80 ? "#ff6b6b" : pct > 60 ? "#f0c060" : color;
-    return (
-      <div onClick={()=>setModal(type)} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 14px",background:"rgba(255,255,255,0.05)",borderRadius:20,border:`1px solid ${barColor}30`,cursor:"pointer",transition:"all 0.2s"}}
-        onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.09)"}
-        onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.05)"}>
-        <span style={{fontSize:13}}>{icon}</span>
-        <div style={{display:"flex",flexDirection:"column",gap:2}}>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.7)"}}>{label}</span>
-            <span style={{fontSize:11,color:barColor,fontWeight:700}}>{fmtMB(data.usedMB)}</span>
-          </div>
-          <div style={{width:60,height:3,background:"rgba(255,255,255,0.1)",borderRadius:2}}>
-            <div style={{width:`${Math.min(100,pct)}%`,height:"100%",background:barColor,borderRadius:2,transition:"width 0.5s"}}/>
-          </div>
-        </div>
-        <span style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>{pct}%</span>
-      </div>
-    );
-  };
-
-  // ── Detail Modal ──
-  const ModalView = () => {
-    if (!modal) return null;
-    const isMongo = modal === "mongodb";
-    const data    = isMongo ? stats?.mongodb : stats?.cloudinary;
-    const icon    = isMongo ? "🍃" : "☁️";
-    const title   = isMongo ? "MongoDB Atlas Storage" : "Cloudinary Storage";
-    const color   = isMongo ? "#4ade80" : "#60a5fa";
-    const limit   = data?.limitMB || 0;
-    const used    = data?.usedMB  || 0;
-    const pct     = data?.usedPct || 0;
-    const barColor = pct > 80 ? "#ff6b6b" : pct > 60 ? "#f0c060" : color;
-
-    return (
-      <div style={{position:"fixed",inset:0,zIndex:5000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(4px)"}} onClick={()=>setModal(null)}/>
-        <div style={{position:"relative",background:"#0d1b2e",border:`1px solid ${color}30`,borderRadius:20,width:"100%",maxWidth:520,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.7)"}}>
-          {/* Header */}
-          <div style={{padding:"20px 24px 16px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,background:"#0d1b2e",zIndex:10}}>
-            <div>
-              <div style={{fontSize:18,fontWeight:700,color:color,fontFamily:"'Playfair Display'"}}>{icon} {title}</div>
-              <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginTop:2}}>Free tier · {fmtMB(limit)} limit</div>
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>{setModal(null);load();}} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.5)",padding:"6px 12px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>🔄 Refresh</button>
-              <button onClick={()=>setModal(null)} style={{background:"rgba(255,255,255,0.06)",border:"none",color:"rgba(255,255,255,0.4)",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-            </div>
-          </div>
-
-          <div style={{padding:"20px 24px 28px"}}>
-            {/* Usage bar */}
-            <div style={{marginBottom:24}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-                <span style={{fontSize:20,fontWeight:800,color:barColor}}>{fmtMB(used)} used</span>
-                <span style={{fontSize:13,color:"rgba(255,255,255,0.4)"}}>{pct}% of {fmtMB(limit)}</span>
-              </div>
-              <div style={{height:8,background:"rgba(255,255,255,0.08)",borderRadius:4,overflow:"hidden"}}>
-                <div style={{width:`${Math.min(100,pct)}%`,height:"100%",background:barColor,borderRadius:4,transition:"width 0.6s"}}/>
-              </div>
-              <div style={{fontSize:12,color:"rgba(255,255,255,0.3)",marginTop:6}}>{fmtMB(limit - used)} remaining</div>
-            </div>
-
-            {/* MongoDB: collection breakdown */}
-            {isMongo && data?.collections && (
-              <>
-                <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>Collections</div>
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {data.collections.map(c=>(
-                    <div key={c.name} style={{display:"flex",alignItems:"center",gap:12,background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"10px 14px"}}>
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:13,fontWeight:600,color:"white",textTransform:"capitalize"}}>{c.name}</div>
-                        <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:2}}>{c.count.toLocaleString()} documents</div>
-                      </div>
-                      <div style={{textAlign:"right"}}>
-                        <div style={{fontSize:13,fontWeight:700,color:color}}>{c.sizeMB} MB</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {/* Cloudinary: resource breakdown */}
-            {!isMongo && data && !data.error && (
-              <>
-                <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>Usage Details</div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                  {[
-                    { label:"Files Stored",     value:data.resources?.toLocaleString()||"—",     icon:"🖼️" },
-                    { label:"Bandwidth Used",   value:`${data.bandwidth} MB`,                     icon:"📡" },
-                    { label:"Transformations",  value:data.transformations?.toLocaleString()||"—",icon:"✨" },
-                    { label:"Storage Used",     value:fmtMB(data.usedMB),                         icon:"💾" },
-                  ].map(s=>(
-                    <div key={s.label} style={{background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"12px 14px"}}>
-                      <div style={{fontSize:18,marginBottom:6}}>{s.icon}</div>
-                      <div style={{fontSize:16,fontWeight:700,color:color}}>{s.value}</div>
-                      <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:2}}>{s.label}</div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {data?.error && (
-              <div style={{padding:"16px",background:"rgba(255,100,100,0.08)",borderRadius:10,color:"#ff6b6b",fontSize:13}}>
-                ❌ {data.error}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        <Ticker type="mongodb"    icon="🍃" label="MONGODB"    data={stats?.mongodb}    color="#4ade80"/>
-        <Ticker type="cloudinary" icon="☁️" label="CLOUDINARY" data={stats?.cloudinary} color="#60a5fa"/>
-      </div>
-      <ModalView />
-    </>
-  );
-}
-
-function AdminDashboard({ data, goTo, api }) {
+function AdminDashboard({ data, goTo }) {
   const bookings     = data.bookings     || [];
   const tourBookings = data.tourBookings || [];
   const rentals      = data.rentals      || [];
@@ -1768,12 +1610,9 @@ function AdminDashboard({ data, goTo, api }) {
   ].slice(0,6);
   return (
     <div>
-      <div style={{marginBottom:24,display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
-        <div>
-          <h1 style={{fontSize:26,fontWeight:700,color:"#1a1a2e"}}>Welcome back 👋</h1>
-          <p style={{color:"#6b7280",fontSize:14,marginTop:4}}>Here's what's happening with Travel Engineers this month.</p>
-        </div>
-        <StorageTickers api={api} />
+      <div style={{marginBottom:24}}>
+        <h1 style={{fontSize:26,fontWeight:700,color:"#1a1a2e"}}>Welcome back 👋</h1>
+        <p style={{color:"#6b7280",fontSize:14,marginTop:4}}>Here's what's happening with Travel Engineers this month.</p>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:16,marginBottom:24}}>
         {statCards.map(c=>(
@@ -1894,7 +1733,7 @@ function RentalsEditor({ data, api, reload, showSaved }) {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(null);
   const [adding, setAdding] = useState(false);
-  const blank = {type:"scooty",name:"",vehicleNo:"",category:"Scooty",price:"",period:"/day",tag:"",description:"",features:[""],image:"",available:true};
+  const blank = {type:"scooty",name:"",vehicleNo:"",category:"Scooty",price:"",period:"/day",pricePerKm:"",seats:"",tag:"",description:"",features:[""],image:"",available:true};
   const startEdit = (r) => { setForm({...r,features:[...(r.features||[])]}); setEditId(r._id); setAdding(false); };
   const startAdd = () => { setForm({...blank}); setEditId(null); setAdding(true); };
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -1916,8 +1755,8 @@ function RentalsEditor({ data, api, reload, showSaved }) {
         <div className="adm-card" style={{marginBottom:28,border:"1px solid rgba(212,133,10,0.3)"}}>
           <h3 style={{marginBottom:20,color:"#f0c060"}}>{adding?"Add New Vehicle":"Edit Vehicle"}</h3>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
-            {[["Vehicle Name","name"],["Vehicle No.","vehicleNo"],["Price","price"],["Period","period"],["Tag (optional)","tag"]].map(([l,k])=>(
-              <div key={k}><label className="adm-label">{l}</label><input className="adm-input" value={form[k]||""} onChange={e=>set(k,e.target.value)} placeholder={k==="vehicleNo"?"e.g. 9654":""}/></div>
+            {[["Vehicle Name","name"],["Vehicle No.","vehicleNo"],["Price/day (₹)","price"],["Period","period"],["Rate per KM (₹)","pricePerKm"],["Seats / Capacity","seats"],["Tag (optional)","tag"]].map(([l,k])=>(
+              <div key={k}><label className="adm-label">{l}</label><input className="adm-input" type={["pricePerKm","seats"].includes(k)?"number":"text"} value={form[k]||""} onChange={e=>set(k,e.target.value)} placeholder={k==="vehicleNo"?"e.g. 9654":k==="pricePerKm"?"e.g. 14":k==="seats"?"e.g. 4":""}/></div>
             ))}
             <div><label className="adm-label">Type</label>
               <select className="adm-input" value={form.type} onChange={e=>set("type",e.target.value)}>
@@ -1959,7 +1798,11 @@ function RentalsEditor({ data, api, reload, showSaved }) {
                 <span style={{fontSize:11,background:"rgba(255,255,255,0.08)",padding:"2px 8px",borderRadius:10,color:"rgba(255,255,255,0.5)"}}>{r.type}</span>
                 <span style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:r.available?"rgba(74,222,128,0.1)":"rgba(255,80,80,0.1)",color:r.available?"#4ade80":"#ff6b6b"}}>{r.available?"Available":"Unavailable"}</span>
               </div>
-              <div style={{fontSize:13,color:"rgba(255,255,255,0.4)"}}>{r.price}{r.period}</div>
+              <div style={{fontSize:13,color:"rgba(255,255,255,0.4)"}}>
+                {r.price}{r.period}
+                {r.pricePerKm && <span style={{marginLeft:10,color:"#60a5fa"}}>· ₹{r.pricePerKm}/km</span>}
+                {r.seats && <span style={{marginLeft:10,color:"rgba(255,255,255,0.3)"}}>· {r.seats} seats</span>}
+              </div>
             </div>
             <div style={{display:"flex",gap:8,flexShrink:0}}>
               <button onClick={()=>toggleAvail(r)} style={btnStyle(r.available?"255,80,80":"74,222,128")}>{r.available?"Hide":"Show"}</button>
@@ -2726,7 +2569,6 @@ function AccountingEditor({ data, api, reload, showSaved }) {
           <button onClick={()=>startAdd("income")} style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Income</button>
           <button onClick={()=>startAdd("expense")} style={{background:"rgba(255,100,100,0.15)",border:"1px solid rgba(255,100,100,0.3)",color:"#ff6b6b",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Expense</button>
           <button onClick={async()=>{ if(!window.confirm("Remove accounting entries linked to deleted bookings?")) return; const r=await api.delete("/bookings?cleanup=accounting"); alert(r.message||"Done"); await reload(); }} style={{background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.4)",border:"1px solid rgba(255,255,255,0.1)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>Clean Orphaned</button>
-          <button onClick={async()=>{ if(!window.confirm("Remove duplicate accounting entries?\nKeeps only the latest entry per booking.")) return; const r=await api.delete("/accounting?dedup=true"); alert(r.message||"Done"); await reload(); }} style={{background:"rgba(255,100,100,0.08)",color:"rgba(255,150,150,0.7)",border:"1px solid rgba(255,100,100,0.2)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>🧹 Clean Duplicates</button>
         </div>
       </div>
 
@@ -3289,74 +3131,6 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
   );
 }
 
-// ── MigrationButton — reusable base for fix_sources + regen_accounting ──────
-function MigrationButton({ label, runningLabel, doneLabel, title, onRun, onDone, confirmMsg }) {
-  const [state, setState] = useState("idle");
-  const [result, setResult] = useState(null);
-
-  const run = async () => {
-    if (confirmMsg && !window.confirm(confirmMsg)) return;
-    setState("running");
-    try {
-      const res = await onRun();
-      setResult(res);
-      setState("done");
-      setTimeout(() => { setState("idle"); setResult(null); if (onDone) onDone(); }, 4000);
-    } catch(e) {
-      setResult({ message: e.message });
-      setState("error");
-      setTimeout(() => setState("idle"), 4000);
-    }
-  };
-
-  const cfg = {
-    idle:    { label,         bg:"rgba(255,255,255,0.06)", border:"rgba(255,255,255,0.12)", color:"rgba(255,255,255,0.5)" },
-    running: { label:runningLabel||"⏳ Running…", bg:"rgba(255,255,255,0.04)", border:"rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.3)" },
-    done:    { label:doneLabel||"✅ Done!",        bg:"rgba(74,222,128,0.1)",   border:"rgba(74,222,128,0.3)",   color:"#4ade80" },
-    error:   { label:"❌ Failed",                  bg:"rgba(255,100,100,0.1)",  border:"rgba(255,100,100,0.3)",  color:"#ff6b6b" },
-  }[state];
-
-  return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
-      <button onClick={run} disabled={state==="running"} title={title}
-        style={{padding:"10px 16px",background:cfg.bg,border:`1px solid ${cfg.border}`,borderRadius:10,color:cfg.color,fontWeight:600,fontSize:13,cursor:state==="running"?"not-allowed":"pointer",whiteSpace:"nowrap",transition:"all 0.3s"}}>
-        {cfg.label}
-      </button>
-      {result?.message && (
-        <div style={{fontSize:11,color:state==="error"?"#ff6b6b":"rgba(255,255,255,0.4)",textAlign:"right",maxWidth:240,lineHeight:1.4}}>
-          {result.message}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── FixSourcesButton ──────────────────────────────────────────────────────────
-function FixSourcesButton({ api, onDone }) {
-  return (
-    <MigrationButton
-      label="🔧 Fix Sources"
-      title="Stamp source:walkin/online on all existing bookings"
-      confirmMsg={"Scan all bookings and stamp source:walkin or source:online\nbased on phone, name, notes and status patterns.\n\nAlready-tagged bookings are skipped. Safe to run multiple times.\n\nContinue?"}
-      onRun={() => api.post("/bookings?fix_sources=true", {})}
-      onDone={onDone}
-    />
-  );
-}
-
-// ── RegenAccountingButton ─────────────────────────────────────────────────────
-function RegenAccountingButton({ api, onDone }) {
-  return (
-    <MigrationButton
-      label="📒 Regen Accounting"
-      title="Create missing accounting entries for all walk-in bookings"
-      confirmMsg={"Create accounting entries for all walk-in bookings that don't have one yet.\n\nBookings already in accounting are skipped.\nBookings with no price data are skipped.\n\nRun AFTER Fix Sources.\n\nContinue?"}
-      onRun={() => api.post("/bookings?regen_accounting=true", {})}
-      onDone={onDone}
-    />
-  );
-}
-
 // ─── EditBookingModal ────────────────────────────────────────────────────────
 // Lets admin edit vehicle, dates, price, address, notes on any booking
 function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
@@ -3381,12 +3155,12 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
     stayAddress:  booking.stayAddress||"",
     notes:        booking.notes||"",
     paymentMethod: booking.paymentMethod||"cash",
-    source: booking.source||"online",
   });
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
-  // Derived from form so it updates live when the user toggles Source
-  const isWalkin = form.source === "walkin";
+  const isWalkin = booking.source==="walkin"||
+    (booking.customerName||"").toLowerCase()==="walk-in customer"||
+    (booking.phone||"").replace(/[^0-9]/g,"")==="0000000000";
 
   const days = form.checkIn&&form.checkOut
     ? Math.max(0,Math.round((new Date(form.checkOut)-new Date(form.checkIn))/864e5)) : 0;
@@ -3424,14 +3198,13 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
         stayAddress:   form.stayAddress||null,
         notes:         form.notes||null,
         paymentMethod: form.paymentMethod||null,
-        source:        form.source||"online",
       });
       await onSaved();
     } catch(e) { setError(e.message||"Save failed."); }
     setSaving(false);
   };
 
-  const fi  = {width:"100%",padding:"10px 14px",background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",boxSizing:"border-box"};
+  const fi  = {width:"100%",padding:"10px 14px",background:"#0d1b2e",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",boxSizing:"border-box"};
   const fiS = {...fi,cursor:"pointer",appearance:"none",WebkitAppearance:"none",backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23f0c060' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center",paddingRight:32};
   const lb  = {display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6};
 
@@ -3467,7 +3240,7 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
               {currentVehicle && !currentVehicle.available && (
                 <option key={currentVehicle._id} value={currentVehicle._id}>{currentVehicle.name} (currently unavailable)</option>
               )}
-              {available.map(r=><option key={r._id} value={r._id}>{r.name}{r.vehicleNo?` #${r.vehicleNo}`:""} — {r.price}{r.period||""}</option>)}
+              {available.map(r=><option key={r._id} value={r._id}>{r.name} — {r.price}{r.period||""}</option>)}
               <option value="__custom__">Other (type manually)</option>
             </select>
           </div>
@@ -3482,7 +3255,7 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
           {/* Dates + price */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
             <div><label style={lb}>Check-in *</label><input type="date" style={{...fi,colorScheme:"dark"}} value={form.checkIn} onChange={e=>set("checkIn",e.target.value)}/></div>
-            <div><label style={lb}>Check-out *</label><input type="date" style={{...fi,colorScheme:"dark"}} value={form.checkOut} min={form.checkIn||""} onChange={e=>set("checkOut",e.target.value)}/></div>
+            <div><label style={lb}>Check-out *</label><input type="date" style={{...fi,colorScheme:"dark"}} value={form.checkOut} min={form.checkIn||today} onChange={e=>set("checkOut",e.target.value)}/></div>
             <div><label style={lb}>Price per Day (₹)</label><input type="number" style={fi} value={form.pricePerDay} onChange={e=>set("pricePerDay",e.target.value)} placeholder="0"/></div>
             <div style={{display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
               {days>0&&ppd>0&&(
@@ -3497,26 +3270,6 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
           {/* Address + Notes */}
           <div><label style={lb}>Hotel / Stay Address</label><input style={fi} value={form.stayAddress} onChange={e=>set("stayAddress",e.target.value)} placeholder="Hotel name, area"/></div>
           <div><label style={lb}>Notes</label><textarea rows={2} style={{...fi,resize:"vertical",lineHeight:1.6}} value={form.notes} onChange={e=>set("notes",e.target.value)}/></div>
-
-          {/* Source toggle */}
-          <div>
-            <label style={lb}>Booking Source</label>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-              {[
-                {val:"online", icon:"🌐", label:"Online",   desc:"Customer booked via website"},
-                {val:"walkin", icon:"🏪", label:"Walk-in",  desc:"In-person / admin entry"},
-              ].map(opt=>(
-                <button key={opt.val} type="button" onClick={()=>set("source",opt.val)}
-                  style={{padding:"10px 14px",borderRadius:10,border:`1.5px solid ${form.source===opt.val?(opt.val==="walkin"?"rgba(74,222,128,0.5)":"rgba(96,165,250,0.5)"):"rgba(255,255,255,0.1)"}`,
-                    background:form.source===opt.val?(opt.val==="walkin"?"rgba(74,222,128,0.08)":"rgba(96,165,250,0.08)"):"rgba(255,255,255,0.03)",
-                    cursor:"pointer",textAlign:"left",transition:"all 0.2s"}}>
-                  <div style={{fontSize:16,marginBottom:2}}>{opt.icon}</div>
-                  <div style={{fontSize:13,fontWeight:700,color:form.source===opt.val?(opt.val==="walkin"?"#4ade80":"#60a5fa"):"rgba(255,255,255,0.5)"}}>{opt.label}</div>
-                  <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:1}}>{opt.desc}</div>
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* Payment method — walk-in only */}
           {isWalkin && (
@@ -3542,215 +3295,6 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ─── CustomersEditor ──────────────────────────────────────────────────────────
-function CustomersEditor({ api }) {
-  const [customers, setCustomers] = useState([]);
-  const [total, setTotal]         = useState(0);
-  const [loading, setLoading]     = useState(true);
-  const [search, setSearch]       = useState("");
-  const [selected, setSelected]   = useState(null); // customer profile view
-  const [profileBookings, setProfileBookings] = useState([]);
-  const [syncing, setSyncing]     = useState(false);
-  const [syncMsg, setSyncMsg]     = useState("");
-
-  const load = async (q = "") => {
-    setLoading(true);
-    try {
-      const res = await api.get(`/bookings?resource=customers${q ? `&q=${encodeURIComponent(q)}` : ""}`);
-      setCustomers(res.customers || []);
-      setTotal(res.total || 0);
-    } catch(e) { console.error(e); }
-    setLoading(false);
-  };
-
-  useEffect(() => { load(); }, []);
-
-  const openProfile = async (c) => {
-    setSelected(c);
-    try {
-      const res = await api.get(`/bookings?resource=customers&phone=${encodeURIComponent(c.phone)}`);
-      setProfileBookings(res.bookings || []);
-    } catch(e) { setProfileBookings([]); }
-  };
-
-  const sync = async () => {
-    if (!window.confirm("Build customer database from all existing bookings?\n\nThis scans every booking and creates/updates one customer record per phone number. Safe to run multiple times.")) return;
-    setSyncing(true); setSyncMsg("");
-    try {
-      const res = await api.post("/bookings?resource=customers&sync=true", {});
-      setSyncMsg(res.message || "Done");
-      await load(search);
-    } catch(e) { setSyncMsg("Error: " + e.message); }
-    setSyncing(false);
-  };
-
-  const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
-  const fmtMoney = (n) => n > 0 ? `₹${Number(n).toLocaleString("en-IN")}` : "—";
-
-  const sourceColor = (s) => s === "walkin"
-    ? { bg:"rgba(74,222,128,0.1)", border:"rgba(74,222,128,0.3)", color:"#4ade80" }
-    : { bg:"rgba(96,165,250,0.1)", border:"rgba(96,165,250,0.3)", color:"#60a5fa" };
-
-  // ── Customer Profile Modal ──
-  if (selected) return (
-    <div style={{padding:"24px 28px",fontFamily:"'DM Sans'"}}>
-      <button onClick={()=>setSelected(null)} style={{background:"none",border:"none",color:"#f0c060",cursor:"pointer",fontSize:14,fontWeight:600,marginBottom:20,padding:0}}>← Back to Customers</button>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:24}}>
-        {/* Profile card */}
-        <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:16,padding:24}}>
-          <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20}}>
-            <div style={{width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,#d4850a,#f0c060)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:700,color:"#1a1a2e",flexShrink:0}}>
-              {(selected.name||"?")[0].toUpperCase()}
-            </div>
-            <div>
-              <div style={{fontSize:20,fontWeight:700,color:"white",fontFamily:"'Playfair Display'"}}>{selected.name}</div>
-              <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginTop:2}}>{selected.phone}</div>
-            </div>
-          </div>
-          {[
-            ["📧 Email",       selected.email],
-            ["🌍 Nationality", selected.nationality],
-            ["⚥ Gender",      selected.gender],
-            ["🎂 Date of Birth", fmt(selected.dateOfBirth)],
-            ["🪪 ID Type",     selected.idType],
-            ["🔢 ID Number",   selected.idNumber],
-            ["🏠 Address",     selected.address],
-          ].filter(([,v])=>v&&v!=="—").map(([l,v])=>(
-            <div key={l} style={{display:"flex",gap:8,marginBottom:8,fontSize:13}}>
-              <span style={{color:"rgba(255,255,255,0.35)",minWidth:130}}>{l}</span>
-              <span style={{color:"rgba(255,255,255,0.8)"}}>{v}</span>
-            </div>
-          ))}
-          {selected.idImageUrl && (
-            <div style={{marginTop:12}}>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginBottom:6}}>ID DOCUMENT</div>
-              <img src={selected.idImageUrl} alt="ID" style={{width:"100%",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)"}} />
-            </div>
-          )}
-        </div>
-        {/* Stats card */}
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {[
-            { label:"Total Bookings", value:selected.totalBookings||0, color:"#f0c060", icon:"📋" },
-            { label:"Total Spent",    value:fmtMoney(selected.totalSpent), color:"#4ade80", icon:"💰" },
-            { label:"First Booking",  value:fmt(selected.firstBooking), color:"#60a5fa", icon:"📅" },
-            { label:"Last Booking",   value:fmt(selected.lastBooking),  color:"#a78bfa", icon:"🕐" },
-            { label:"Last Vehicle",   value:selected.lastVehicle||"—", color:"#fb923c", icon:"🛵" },
-          ].map(s=>(
-            <div key={s.label} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{fontSize:13,color:"rgba(255,255,255,0.4)"}}>{s.icon} {s.label}</span>
-              <span style={{fontSize:16,fontWeight:700,color:s.color}}>{s.value}</span>
-            </div>
-          ))}
-          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span style={{fontSize:13,color:"rgba(255,255,255,0.4)"}}>🌐 Source</span>
-            <span style={{fontSize:12,padding:"3px 10px",borderRadius:20,background:sourceColor(selected.source).bg,border:`1px solid ${sourceColor(selected.source).border}`,color:sourceColor(selected.source).color,fontWeight:600}}>
-              {selected.source==="walkin"?"🏪 Walk-in":"🌐 Online"}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Booking history */}
-      <div style={{fontSize:12,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>Booking History ({profileBookings.length})</div>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {profileBookings.length===0&&<div style={{color:"rgba(255,255,255,0.3)",fontSize:13,padding:"20px 0"}}>No bookings found</div>}
-        {profileBookings.map(b=>{
-          const days = (b.checkIn&&b.checkOut)?Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)):1;
-          const total = (b.pricePerDay||0)*days;
-          const statusColor = {pending:"#f0c060",confirmed:"#60a5fa",completed:"#4ade80",cancelled:"#ff6b6b",payment_requested:"#fb923c"}[b.status]||"#aaa";
-          return (
-            <div key={b._id} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:"14px 18px",display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:12,alignItems:"center"}}>
-              <div>
-                <div style={{fontSize:13,fontWeight:600,color:"white"}}>{b.vehicleName||"—"}</div>
-                <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:2}}>{fmt(b.checkIn)} → {fmt(b.checkOut)} · {days}d</div>
-              </div>
-              <div style={{fontSize:13,color:"#f0c060",fontWeight:700}}>{total>0?fmtMoney(total):"No price"}</div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>{fmt(b.createdAt)}</div>
-              <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:`${statusColor}18`,border:`1px solid ${statusColor}44`,color:statusColor,fontWeight:600,whiteSpace:"nowrap"}}>
-                {b.status}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-
-  // ── Customer List ──
-  return (
-    <div style={{padding:"24px 28px",fontFamily:"'DM Sans'"}}>
-      {/* Header */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
-        <div>
-          <div style={{fontFamily:"'Playfair Display'",fontSize:26,fontWeight:700,color:"white"}}>Customers</div>
-          <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginTop:4}}>{total} total customer records</div>
-        </div>
-        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-          {syncMsg&&<span style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>{syncMsg}</span>}
-          <button onClick={sync} disabled={syncing}
-            style={{padding:"10px 16px",background:"rgba(212,133,10,0.1)",border:"1px solid rgba(212,133,10,0.3)",borderRadius:10,color:"#f0c060",fontWeight:600,fontSize:13,cursor:syncing?"not-allowed":"pointer",opacity:syncing?0.6:1}}>
-            {syncing?"⏳ Syncing…":"🔄 Sync from Bookings"}
-          </button>
-        </div>
-      </div>
-
-      {/* Search */}
-      <div style={{position:"relative",marginBottom:20}}>
-        <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:16,color:"rgba(255,255,255,0.3)"}}>🔍</span>
-        <input value={search} onChange={e=>{setSearch(e.target.value);load(e.target.value);}}
-          placeholder="Search by name, phone, email, ID number..."
-          style={{width:"100%",padding:"11px 14px 11px 42px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"white",fontSize:14,outline:"none",boxSizing:"border-box"}}
-        />
-      </div>
-
-      {/* List */}
-      {loading ? (
-        <div style={{textAlign:"center",padding:"60px 0",color:"rgba(255,255,255,0.3)"}}>Loading customers…</div>
-      ) : customers.length === 0 ? (
-        <div style={{textAlign:"center",padding:"60px 0"}}>
-          <div style={{fontSize:40,marginBottom:12}}>🧑‍💼</div>
-          <div style={{color:"rgba(255,255,255,0.5)",fontSize:15,marginBottom:8}}>No customers yet</div>
-          <div style={{color:"rgba(255,255,255,0.3)",fontSize:13}}>Click "Sync from Bookings" to build your customer database</div>
-        </div>
-      ) : (
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {customers.map(c=>(
-            <div key={c._id} onClick={()=>openProfile(c)}
-              style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"16px 20px",cursor:"pointer",display:"grid",gridTemplateColumns:"auto 1fr auto auto auto",gap:16,alignItems:"center",transition:"all 0.2s"}}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.06)"}
-              onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}>
-              {/* Avatar */}
-              <div style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,#d4850a,#f0c060)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:700,color:"#1a1a2e",flexShrink:0}}>
-                {(c.name||"?")[0].toUpperCase()}
-              </div>
-              {/* Name + phone */}
-              <div>
-                <div style={{fontSize:14,fontWeight:600,color:"white"}}>{c.name}</div>
-                <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginTop:2}}>{c.phone}{c.email?` · ${c.email}`:""}</div>
-              </div>
-              {/* Last vehicle */}
-              <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",textAlign:"right"}}>
-                <div style={{color:"rgba(255,255,255,0.6)",fontWeight:500}}>{c.lastVehicle||"—"}</div>
-                <div style={{marginTop:2}}>Last: {fmt(c.lastBooking)}</div>
-              </div>
-              {/* Stats */}
-              <div style={{textAlign:"right"}}>
-                <div style={{fontSize:15,fontWeight:700,color:"#f0c060"}}>{fmtMoney(c.totalSpent)}</div>
-                <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:2}}>{c.totalBookings} booking{c.totalBookings!==1?"s":""}</div>
-              </div>
-              {/* Source badge */}
-              <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:sourceColor(c.source).bg,border:`1px solid ${sourceColor(c.source).border}`,color:sourceColor(c.source).color,fontWeight:600,whiteSpace:"nowrap"}}>
-                {c.source==="walkin"?"🏪 Walk-in":"🌐 Online"}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -3954,14 +3498,10 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           <h2 style={{fontFamily:"'Playfair Display'",fontSize:30,marginBottom:4}}>Bookings</h2>
           <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>{bookings.length} total · {counts.pending} pending action</p>
         </div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-start"}}>
-          <button onClick={()=>setShowManualModal(true)}
-            style={{padding:"10px 20px",background:"linear-gradient(135deg,#d4850a,#f0c060)",border:"none",borderRadius:10,color:"white",fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",gap:8,whiteSpace:"nowrap"}}>
-            🏪 Walk-in Booking
-          </button>
-          <FixSourcesButton api={api} onDone={reload} />
-          <RegenAccountingButton api={api} onDone={reload} />
-        </div>
+        <button onClick={()=>setShowManualModal(true)}
+          style={{padding:"10px 20px",background:"linear-gradient(135deg,#d4850a,#f0c060)",border:"none",borderRadius:10,color:"white",fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",gap:8,whiteSpace:"nowrap"}}>
+          🏪 Walk-in Booking
+        </button>
       </div>
 
       {/* Source Tabs */}
@@ -4112,12 +3652,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                     const total2 = ppd2>0 ? ppd2*bDays2 : 0;
                     const recv2  = b.receivedAmount||0;
                     const remain2 = total2>0 ? Math.max(0,total2-recv2) : 0;
-                    // If no pricePerDay set: recv>0 means paid, recv=0 means unpaid (can't calc partial)
-                    const payStatus = recv2===0
-                      ? "unpaid"
-                      : total2===0
-                        ? "paid"                          // received something, no price set — assume paid
-                        : recv2>=total2 ? "paid" : "partial";
+                    const payStatus = recv2===0 ? "unpaid" : (total2>0 && recv2>=total2) ? "paid" : "partial";
                     const payStatusCfg = {
                       unpaid:  { label:"💸 Unpaid",       color:"#ff6b6b", bg:"rgba(255,107,107,0.12)", border:"rgba(255,107,107,0.3)" },
                       partial: { label:"🔶 Partly Paid",  color:"#f0c060", bg:"rgba(240,192,96,0.12)",  border:"rgba(240,192,96,0.3)"  },
@@ -4128,10 +3663,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                       <div style={{gridColumn:"1/-1",background:"rgba(212,133,10,0.05)",border:"1px solid rgba(212,133,10,0.18)",borderRadius:10,padding:"14px 16px"}}>
                         <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>💰 Walk-in Payment</div>
                         <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"flex-start"}}>
-                          {total2>0
-                            ? <div><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:3}}>Total</div><div style={{fontSize:18,fontWeight:800,color:"#f0c060",fontFamily:"'Playfair Display'"}}>₹{total2.toLocaleString("en-IN")}</div></div>
-                            : <div style={{fontSize:12,color:"rgba(255,255,255,0.3)",fontStyle:"italic",alignSelf:"center"}}>No price set — <button onClick={()=>setEditBooking(b)} style={{background:"none",border:"none",color:"#f0c060",cursor:"pointer",fontSize:12,padding:0,textDecoration:"underline"}}>Edit booking</button> to add price/day</div>
-                          }
+                          {total2>0&&<div><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:3}}>Total</div><div style={{fontSize:18,fontWeight:800,color:"#f0c060",fontFamily:"'Playfair Display'"}}>₹{total2.toLocaleString("en-IN")}</div></div>}
                           {recv2>0&&<div><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:3}}>Received</div><div style={{fontSize:18,fontWeight:800,color:"#4ade80",fontFamily:"'Playfair Display'"}}>₹{recv2.toLocaleString("en-IN")}</div></div>}
                           {remain2>0&&<div><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:3}}>Remaining</div><div style={{fontSize:18,fontWeight:800,color:"#ff6b6b",fontFamily:"'Playfair Display'"}}>₹{remain2.toLocaleString("en-IN")}</div></div>}
                           <div style={{display:"flex",flexDirection:"column",gap:6,marginLeft:"auto"}}>
@@ -4154,37 +3686,14 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                     );
                     return null;
                   })()}
+                  {/* Record Payment button */}
                   {/* ── Customer ID Panel — scan/view customer ID ── */}
                   <CustomerIdPanel booking={b} onUpdated={() => reload()} />
-                  {/* Record / Edit Payment button */}
-                  {(()=>{
-                    const bppd   = getPricePerDay(b);
-                    const bdays  = (b.checkIn&&b.checkOut)?Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)):1;
-                    const btotal = bppd*bdays;
-                    const brecv  = b.receivedAmount||0;
-                    // Only walk-in bookings get the "Edit Payment" treatment when fully paid
-                    // Online bookings always show the green Record Payment button (their token flow is unchanged)
-                    const walkin = isWalkin(b);
-                    // Fully paid if: total is set and received >= total
-                    // OR: no price set but some amount was received (legacy imports with no pricePerDay)
-                    const fullyPaid = walkin && (
-                      (btotal>0 && brecv>=btotal) ||
-                      (btotal===0 && brecv>0)
-                    );
-                    const btnLabel = fullyPaid ? "✏️ Edit Payment" : "💰 Record Received Payment";
-                    const btnStyle = fullyPaid
-                      ? {background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.4)"}
-                      : {background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80"};
-                    return (
-                      <div style={{gridColumn:"1/-1",display:"flex",alignItems:"center",gap:10}}>
-                        <button onClick={()=>setRecordPaymentModal(b)}
-                          style={{...btnStyle,padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
-                          {btnLabel}
-                        </button>
-                        {fullyPaid&&<span style={{fontSize:11,color:"rgba(255,255,255,0.25)"}}>Payment complete — click to correct if needed</span>}
-                      </div>
-                    );
-                  })()}
+                  <div style={{gridColumn:"1/-1"}}>
+                    <button onClick={()=>setRecordPaymentModal(b)} style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
+                      💰 Record Received Payment
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -4245,28 +3754,40 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
             const bid = String(recordPaymentModal._id||"");
             const days_ = (recordPaymentModal.checkIn&&recordPaymentModal.checkOut)?Math.max(1,Math.round((new Date(recordPaymentModal.checkOut)-new Date(recordPaymentModal.checkIn))/864e5)):1;
             const orderTotal = totalAmt || (getPricePerDay(recordPaymentModal)*days_) || (recordPaymentModal.tokenAmount*2) || 0;
-            const prevReceived = recordPaymentModal.receivedAmount||0;
-            // `received` is the NEW TOTAL received (not an addition) — user sees and edits the cumulative figure
-            const newReceived = Number(received);
-            const addedNow    = Math.max(0, newReceived - prevReceived); // how much was added this session
-            const newStatus   = newReceived >= orderTotal && orderTotal>0 ? "completed" : newReceived>0 ? "confirmed" : recordPaymentModal.status;
+            const alreadyReceived = recordPaymentModal.receivedAmount||0;
+            const newReceived = alreadyReceived + Number(received);
+            const newStatus = newReceived >= orderTotal && orderTotal>0 ? "completed" : "confirmed";
             await api.put(`/bookings?id=${bid}`, { receivedAmount: newReceived, status: newStatus });
             if (newStatus === "confirmed"||newStatus==="completed") await syncInventory(recordPaymentModal, newStatus);
-            // 2. Auto-create accounting entry only for the NEW amount added this session
+            // 2. Auto-create accounting transaction for this payment
             const balanceRemaining = Math.max(0, orderTotal - newReceived);
             try {
-              if (addedNow > 0) {
+              // Record the received payment
+              await api.post("/accounting", {
+                type: "income",
+                category: "vehicle_rental",
+                amount: Number(received),
+                description: `${alreadyReceived>0?"Balance payment":"Advance payment"} — ${recordPaymentModal.vehicleName||"vehicle"} booking for ${recordPaymentModal.customerName}`,
+                clientName: recordPaymentModal.customerName,
+                linkedBookingId: bid,
+                paymentStatus: balanceRemaining > 0 ? "partial" : "paid",
+                paymentMethod: "upi",
+                date: new Date().toISOString(),
+                notes: `Order total: ₹${orderTotal} | Paid so far: ₹${newReceived} | Remaining: ₹${balanceRemaining}`,
+              });
+              // If balance still due, create a pending entry so accounting shows the outstanding amount
+              if (balanceRemaining > 0) {
                 await api.post("/accounting", {
                   type: "income",
                   category: "vehicle_rental",
-                  amount: addedNow,
-                  description: `${prevReceived>0?"Balance payment":"Payment"} — ${recordPaymentModal.vehicleName||"vehicle"} / ${recordPaymentModal.customerName}`,
+                  amount: balanceRemaining,
+                  description: `Balance due at pickup — ${recordPaymentModal.vehicleName||"vehicle"} booking for ${recordPaymentModal.customerName}`,
                   clientName: recordPaymentModal.customerName,
                   linkedBookingId: bid,
-                  paymentStatus: balanceRemaining > 0 ? "partial" : "paid",
-                  paymentMethod: recordPaymentModal.paymentMethod||"cash",
+                  paymentStatus: "pending",
+                  paymentMethod: "upi",
                   date: new Date().toISOString(),
-                  notes: `Order total: ₹${orderTotal} | Paid so far: ₹${newReceived} | Remaining: ₹${balanceRemaining}`,
+                  notes: `Order total: ₹${orderTotal} | Already received: ₹${newReceived} | Balance pending: ₹${balanceRemaining}`,
                 });
               }
             } catch(e) { console.error("Accounting sync failed:", e); }
@@ -4293,17 +3814,36 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
         <ManualBookingModal
           rentals={data.rentals || rentals || []}
           onClose={()=>setShowManualModal(false)}
-          onCreated={async ()=>{
+          onCreated={async (booking)=>{
             setShowManualModal(false);
-            // Accounting is recorded when payment is received via "Record Received Payment"
-            // Do NOT post here to avoid duplicate entries
+            try {
+              const rental = (data.rentals||[]).find(r => String(r._id) === String(booking?.vehicleId));
+              const ppd = booking?.pricePerDay > 0 ? Number(booking.pricePerDay)
+                        : rental ? Number(rental.price||0)
+                        : (booking?.tokenAmount||0)*2;
+              const bDays = (booking?.checkIn && booking?.checkOut)
+                ? Math.max(1, Math.round((new Date(booking.checkOut)-new Date(booking.checkIn))/864e5))
+                : 1;
+              const amt = ppd * bDays;
+              if (amt > 0) {
+                await api.post("/accounting", {
+                  type: "income",
+                  category: "vehicle_rental",
+                  amount: amt,
+                  description: `Walk-in cash — ${booking?.vehicleName||"vehicle"} / ${booking?.customerName||"Walk-in Customer"}`,
+                  clientName: booking?.customerName || "Walk-in Customer",
+                  linkedBookingId: String(booking?._id||""),
+                  paymentStatus: "paid",
+                  paymentMethod: booking?.paymentMethod || "cash",
+                  date: booking?.checkIn || new Date().toISOString(),
+                  notes: `Walk-in booking. Vehicle: ${booking?.vehicleName} | ₹${ppd}/day × ${bDays}d = ₹${amt}`
+                });
+              }
+            } catch(e) { console.warn("Walk-in accounting failed:", e); }
             await reload();
           }}
         />
       )}
-
-      {/* AI Travel Assistant */}
-      <TravelAssistant whatsapp={agency?.whatsapp} />
     </div>
   );
 }
@@ -4441,83 +3981,61 @@ function PaymentTokenModal({ booking, suggestedAmount, total, days, onSend, onAp
 
 // ─── Record Payment Modal ────────────────────────────────────────────────────
 function RecordPaymentModal({ booking, totalAmount=0, onSave, onClose }) {
-  // `received` = TOTAL amount received so far (cumulative), not an addition.
-  // Pre-fill with existing receivedAmount so editing shows the current state.
+  const [received, setReceived] = useState(String(booking.receivedAmount || booking.tokenAmount || ""));
+  const [error, setError] = useState("");
+  const requested = booking.tokenAmount || 0;
+  // Remaining = total order value minus what's already been received
   const alreadyReceived = booking.receivedAmount || 0;
-  const [received, setReceived] = useState(String(alreadyReceived || ""));
-  const [error, setError]       = useState("");
-  const isEditing  = alreadyReceived > 0;
-  const requested  = booking.tokenAmount || 0;
-  const orderTotal = totalAmount > 0 ? totalAmount : (requested * 2) || 0;
-  const enteredNum = Number(received) || 0;
-  const remaining  = orderTotal > 0 ? Math.max(0, orderTotal - enteredNum) : 0;
-  const addedNow   = Math.max(0, enteredNum - alreadyReceived);
+  const orderTotal = totalAmount > 0 ? totalAmount : requested;
+  const remaining = Math.max(0, orderTotal - alreadyReceived - (Number(received) || 0) + alreadyReceived);
 
   const handleSave = () => {
     const num = Number(received);
     if (!received || isNaN(num) || num < 0) { setError("Please enter a valid amount."); return; }
-    if (num === alreadyReceived) { onClose(); return; } // nothing changed
     onSave(num, orderTotal);
   };
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
       <div style={{background:"#1a1d2e",border:"1px solid rgba(240,192,96,0.2)",borderRadius:16,padding:28,width:"100%",maxWidth:400}}>
-        <h3 style={{color:"#f0c060",fontFamily:"'Playfair Display'",margin:"0 0 4px"}}>
-          {isEditing ? "✏️ Edit Payment Record" : "💰 Record Payment"}
-        </h3>
+        <h3 style={{color:"#f0c060",fontFamily:"'Playfair Display'",margin:"0 0 4px"}}>💰 Record Payment</h3>
         <p style={{color:"rgba(255,255,255,0.4)",fontSize:13,margin:"0 0 20px"}}>{booking.customerName} · {booking.vehicleName||"—"}</p>
 
-        {/* Summary row */}
-        <div style={{display:"flex",gap:12,marginBottom:20}}>
-          {alreadyReceived>0&&(
-            <div style={{flex:1,background:"rgba(74,222,128,0.08)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:10,padding:"10px 14px",textAlign:"center"}}>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:4}}>Previously Received</div>
-              <div style={{fontSize:18,fontWeight:700,color:"#4ade80"}}>₹{alreadyReceived.toLocaleString("en-IN")}</div>
+        {requested > 0 && (
+          <div style={{display:"flex",gap:12,marginBottom:20}}>
+            <div style={{flex:1,background:"rgba(251,146,60,0.1)",border:"1px solid rgba(251,146,60,0.2)",borderRadius:10,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:4}}>Requested</div>
+              <div style={{fontSize:18,fontWeight:700,color:"#fb923c"}}>₹{requested.toLocaleString("en-IN")}</div>
             </div>
-          )}
-          {orderTotal>0&&(
             <div style={{flex:1,background:"rgba(240,192,96,0.08)",border:"1px solid rgba(240,192,96,0.2)",borderRadius:10,padding:"10px 14px",textAlign:"center"}}>
               <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:4}}>Order Total</div>
               <div style={{fontSize:18,fontWeight:700,color:"#f0c060"}}>₹{orderTotal.toLocaleString("en-IN")}</div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        <label style={{fontSize:12,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:6}}>
-          Total Amount Received (₹) {isEditing&&<span style={{color:"rgba(255,255,255,0.25)",textTransform:"none",letterSpacing:0,fontSize:11}}>— edit to correct</span>}
-        </label>
+        <label style={{fontSize:12,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:6}}>Amount Received (₹)</label>
         <input
           type="number" value={received} onChange={e=>{setReceived(e.target.value);setError("");}}
-          placeholder="Enter total amount received"
+          placeholder="Enter amount received"
           style={{width:"100%",padding:"12px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.06)",color:"white",fontSize:16,boxSizing:"border-box",marginBottom:8}}
           autoFocus
         />
         {error&&<div style={{color:"#ff6b6b",fontSize:12,marginBottom:8}}>{error}</div>}
-
-        {/* Live feedback */}
-        {enteredNum>0&&orderTotal>0&&remaining>0&&(
-          <div style={{background:"rgba(240,192,96,0.06)",border:"1px solid rgba(240,192,96,0.15)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"rgba(255,255,255,0.6)",marginBottom:10,display:"flex",justifyContent:"space-between"}}>
-            <span>Remaining balance</span>
-            <span style={{color:"#f0c060",fontWeight:700}}>₹{remaining.toLocaleString("en-IN")}</span>
+        {Number(received)>0&&orderTotal>0&&(
+          <div style={{background:"rgba(240,192,96,0.06)",border:"1px solid rgba(240,192,96,0.15)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"rgba(255,255,255,0.6)",marginBottom:12,display:"flex",justifyContent:"space-between"}}>
+            <span>Balance due at pickup</span>
+            <span style={{color:"#f0c060",fontWeight:700}}>₹{Math.max(0, orderTotal - Number(received)).toLocaleString("en-IN")}</span>
           </div>
         )}
-        {enteredNum>0&&orderTotal>0&&enteredNum>=orderTotal&&(
-          <div style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#4ade80",marginBottom:10}}>
-            ✅ Fully paid — booking will be marked Completed
+        {Number(received)>0&&requested>0&&Number(received)>=requested&&(
+          <div style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#4ade80",marginBottom:12}}>
+            ✅ Full advance received — booking will be marked Confirmed
           </div>
         )}
-        {isEditing&&addedNow>0&&(
-          <div style={{background:"rgba(96,165,250,0.08)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#60a5fa",marginBottom:10}}>
-            +₹{addedNow.toLocaleString("en-IN")} new payment will be added to accounting
-          </div>
-        )}
-
         <div style={{display:"flex",gap:10,marginTop:8}}>
           <button onClick={onClose} style={{flex:1,padding:"11px",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:14}}>Cancel</button>
-          <button onClick={handleSave} style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"white",cursor:"pointer",fontSize:14,fontWeight:700}}>
-            {enteredNum===alreadyReceived?"No Change":isEditing?"Update Payment":"Save Payment"}
-          </button>
+          <button onClick={handleSave} style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"white",cursor:"pointer",fontSize:14,fontWeight:700}}>Save Payment</button>
         </div>
       </div>
     </div>
@@ -4763,7 +4281,7 @@ function StaffPanel({ staffUser, data, api, reload, onExit }) {
             </div>
           </div>
           <div style={{padding:"28px 24px",maxWidth:1200}}>
-            {activeTab==="dashboard"   && <AdminDashboard    data={data} goTo={setActiveTab} api={api}/>}
+            {activeTab==="dashboard"   && <AdminDashboard    data={data} goTo={setActiveTab}/>}
             {activeTab==="bookings"    && <BookingsEditor     data={data} api={api} reload={reload} showSaved={showSaved}/>}
             {activeTab==="accounting"  && <AccountingEditor   data={data} api={api} reload={reload} showSaved={showSaved}/>}
             {activeTab==="reviews"     && <ReviewsEditor      data={data} api={api} reload={reload} showSaved={showSaved}/>}
