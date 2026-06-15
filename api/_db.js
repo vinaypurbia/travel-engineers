@@ -35,6 +35,8 @@ const rentalSchema = new mongoose.Schema({
   category:  String,
   price:     String,
   period:    { type: String, default: "/day" },
+  pricePerKm: { type: Number, default: null },   // rate per km for tour calculator
+  seats:      { type: String, default: "" },
   tag:       String,
   vehicleNo: { type: String, default: "" },  // registration / fleet number
   description: String,
