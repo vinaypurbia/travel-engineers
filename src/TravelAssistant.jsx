@@ -5,7 +5,19 @@
 
 import { useState, useRef, useEffect } from "react";
 
-const SYSTEM_PROMPT = `You are the Travel Engineers assistant — a friendly, knowledgeable helper for a vehicle rental, villa stay, and tours & taxi service based in Udaipur, Rajasthan, India.
+const QUICK_REPLIES = [
+  { label: "🛵 Vehicle prices", msg: "What are your vehicle rental prices?" },
+  { label: "🗺️ Tours available", msg: "What tours do you offer?" },
+  { label: "🏡 Villa stays", msg: "Tell me about villa stays" },
+  { label: "📍 Location", msg: "Where are you located?" },
+  { label: "💳 Payment options", msg: "What payment methods do you accept?" },
+  { label: "📅 How to book", msg: "How do I make a booking?" },
+];
+
+export default function TravelAssistant({ whatsapp }) {
+  const WHATSAPP_NUMBER = whatsapp || "918619425208"; // fallback to hardcoded
+
+  const SYSTEM_PROMPT = `You are the Travel Engineers assistant — a friendly, knowledgeable helper for a vehicle rental, villa stay, and tours & taxi service based in Udaipur, Rajasthan, India.
 
 Your job is to help customers with:
 - Vehicle rentals (scooters, bikes, cars — daily rates around ₹300-500/day)
@@ -21,18 +33,6 @@ Keep replies short, warm, and helpful. Use bullet points for lists. Always end w
 Website: travelengineers.online
 WhatsApp: +${WHATSAPP_NUMBER}
 Location: Udaipur, Rajasthan`;
-
-const QUICK_REPLIES = [
-  { label: "🛵 Vehicle prices", msg: "What are your vehicle rental prices?" },
-  { label: "🗺️ Tours available", msg: "What tours do you offer?" },
-  { label: "🏡 Villa stays", msg: "Tell me about villa stays" },
-  { label: "📍 Location", msg: "Where are you located?" },
-  { label: "💳 Payment options", msg: "What payment methods do you accept?" },
-  { label: "📅 How to book", msg: "How do I make a booking?" },
-];
-
-export default function TravelAssistant({ whatsapp }) {
-  const WHATSAPP_NUMBER = whatsapp || "918619425208"; // fallback to hardcoded
   const [open, setOpen]       = useState(false);
   const [tab, setTab]         = useState("chat"); // "chat" | "whatsapp"
   const [messages, setMessages] = useState([
