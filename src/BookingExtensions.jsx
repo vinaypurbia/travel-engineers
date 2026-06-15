@@ -648,16 +648,27 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
     custTimer.current = setTimeout(async () => {
       setCustLoading(true);
       try {
-        const res = await fetch(`/api/bookings?search=${encodeURIComponent(q)}`).then(r => r.json());
-        const seen = new Set();
-        const unique = (Array.isArray(res) ? res : []).filter(b => {
-          if (!b.customerName || b.customerName === "Walk-in Customer") return false;
-          const key = b.phone || b.customerName;
-          if (seen.has(key)) return false;
-          seen.add(key); return true;
-        });
-        setCustResults(unique.slice(0, 8));
-        setCustDropOpen(unique.length > 0);
+        // Use customers endpoint — has idImageUrl, idType, idNumber, nationality etc.
+        const res = await fetch(`/api/bookings?resource=customers&q=${encodeURIComponent(q)}`).then(r => r.json());
+        const list = Array.isArray(res) ? res : (res.customers || []);
+        // Map customer fields to booking-like shape for selectCustomer
+        const mapped = list.filter(c => c.name && c.name !== "Walk-in Customer").map(c => ({
+          customerName: c.name,
+          phone:        c.phone,
+          email:        c.email,
+          nationality:  c.nationality,
+          idType:       c.idType,
+          idNumber:     c.idNumber,
+          idImageUrl:   c.idImageUrl,
+          dateOfBirth:  c.dateOfBirth,
+          gender:       c.gender,
+          address:      c.address,
+          stayAddress:  c.lastStayAddress || "",
+          vehicleName:  c.lastVehicle || "",
+          checkIn:      c.lastBooking || "",
+        }));
+        setCustResults(mapped.slice(0, 8));
+        setCustDropOpen(mapped.length > 0);
       } catch(e) { setCustResults([]); }
       setCustLoading(false);
     }, 350);
