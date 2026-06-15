@@ -1,11 +1,9 @@
 // TravelAssistant.jsx
 // Drop this anywhere in your app — it renders a floating chat widget
-// Uses Gemini 1.5 Flash free tier via /api/chat (see chat.js for the backend route)
-// WhatsApp number: update WHATSAPP_NUMBER below
+// Uses Gemini 2.5 Flash free tier via /api/upload?action=chat
+// WhatsApp number is passed as a prop from agency data (falls back to hardcoded)
 
 import { useState, useRef, useEffect } from "react";
-
-const WHATSAPP_NUMBER = "919XXXXXXXXX"; // ← replace with your WhatsApp number (country code + number, no +)
 
 const SYSTEM_PROMPT = `You are the Travel Engineers assistant — a friendly, knowledgeable helper for a vehicle rental, villa stay, and tours & taxi service based in Udaipur, Rajasthan, India.
 
@@ -21,7 +19,7 @@ Your job is to help customers with:
 Keep replies short, warm, and helpful. Use bullet points for lists. Always end with a gentle nudge to book or contact us on WhatsApp if they need more help. Never make up prices you're not sure about — instead say "please WhatsApp us for the latest rates."
 
 Website: travelengineers.online
-WhatsApp: +91-XXXXXXXXXX (update this)
+WhatsApp: +${WHATSAPP_NUMBER}
 Location: Udaipur, Rajasthan`;
 
 const QUICK_REPLIES = [
@@ -33,7 +31,8 @@ const QUICK_REPLIES = [
   { label: "📅 How to book", msg: "How do I make a booking?" },
 ];
 
-export default function TravelAssistant() {
+export default function TravelAssistant({ whatsapp }) {
+  const WHATSAPP_NUMBER = whatsapp || "918619425208"; // fallback to hardcoded
   const [open, setOpen]       = useState(false);
   const [tab, setTab]         = useState("chat"); // "chat" | "whatsapp"
   const [messages, setMessages] = useState([
@@ -81,7 +80,7 @@ export default function TravelAssistant() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/upload?action=chat", {
+      const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
