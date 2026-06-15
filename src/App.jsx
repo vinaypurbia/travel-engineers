@@ -778,6 +778,7 @@ export default function App() {
           {toast.type==="delete"?"🗑️":toast.type==="error"?"❌":"✅"} {toast.msg}
         </div>
       )}
+      <TravelAssistant />
     </div>
   );
 }
