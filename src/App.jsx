@@ -680,11 +680,10 @@ export default function App() {
           <div style={{textAlign:"center",color:"#999",fontFamily:"'DM Sans'",padding:60}}>
             <div style={{fontSize:48,marginBottom:16}}>Tours coming soon!</div>
           </div>
-      <div style={{marginTop: 60}}>
-    <TourCalculator rentals={(data.rentals || [])} />
-  </div>
-</section>
         )}
+        <div style={{marginTop: 60}}>
+          <TourCalculator rentals={(data.rentals || [])} />
+        </div>
       </section>
 
       {/* TESTIMONIALS */}
