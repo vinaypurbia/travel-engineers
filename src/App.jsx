@@ -1,6 +1,7 @@
 // v4
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ManualBookingModal, CustomerIdPanel } from "./BookingExtensions";
+import TravelAssistant from "./TravelAssistant";
 
 const API = "/api";
 
@@ -4300,6 +4301,9 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           }}
         />
       )}
+
+      {/* AI Travel Assistant */}
+      <TravelAssistant />
     </div>
   );
 }
