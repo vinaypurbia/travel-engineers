@@ -778,7 +778,6 @@ export default function App() {
           {toast.type==="delete"?"🗑️":toast.type==="error"?"❌":"✅"} {toast.msg}
         </div>
       )}
-      <TravelAssistant />
     </div>
   );
 }
@@ -4304,7 +4303,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
       )}
 
       {/* AI Travel Assistant */}
-      <TravelAssistant />
+      <TravelAssistant whatsapp={agency?.whatsapp} />
     </div>
   );
 }
