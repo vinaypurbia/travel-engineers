@@ -454,7 +454,26 @@ export default function App() {
     onLogin={async () => {
       try {
         const res = await api.post("/auth", { password: loginInput });
-        if (res.success) { setView("admin"); setLoginError(""); setLoginInput(""); sessionStorage.setItem("adminToken", loginInput); }
+        if (res.success) {
+          // Exchange the login password for the real ADMIN_SECRET token.
+          // users.js checks x-admin-token against ADMIN_SECRET, not the raw password —
+          // so we must fetch the real token once here and store THAT instead.
+          try {
+            const tokenRes = await fetch("/api/users?action=admin-token", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ password: loginInput }),
+            }).then(r => r.json());
+            if (tokenRes.success && tokenRes.adminToken) {
+              sessionStorage.setItem("adminToken", tokenRes.adminToken);
+            } else {
+              sessionStorage.setItem("adminToken", loginInput); // fallback (old behavior)
+            }
+          } catch {
+            sessionStorage.setItem("adminToken", loginInput); // fallback if exchange fails
+          }
+          setView("admin"); setLoginError(""); setLoginInput("");
+        }
         else setLoginError("Wrong password!");
       } catch { setLoginError("Error connecting. Try again."); }
     }} onBack={() => setView("home")} />;
@@ -2578,6 +2597,7 @@ function AccountingEditor({ data, api, reload, showSaved }) {
           <button onClick={()=>startAdd("income")} style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Income</button>
           <button onClick={()=>startAdd("expense")} style={{background:"rgba(255,100,100,0.15)",border:"1px solid rgba(255,100,100,0.3)",color:"#ff6b6b",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Expense</button>
           <button onClick={async()=>{ if(!window.confirm("Remove accounting entries linked to deleted bookings?")) return; const r=await api.delete("/bookings?cleanup=accounting"); alert(r.message||"Done"); await reload(); }} style={{background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.4)",border:"1px solid rgba(255,255,255,0.1)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>Clean Orphaned</button>
+          <button onClick={async()=>{ if(!window.confirm("This will DELETE all booking-linked accounting entries and rebuild them fresh from current booking data. Continue?")) return; const r=await api.post("/bookings?regen_accounting=true",{}); alert(r.message||"Done"); await reload(); }} style={{background:"rgba(96,165,250,0.12)",color:"#60a5fa",border:"1px solid rgba(96,165,250,0.3)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>↻ Regenerate Accounting</button>
         </div>
       </div>
 
