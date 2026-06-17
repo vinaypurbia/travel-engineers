@@ -3427,10 +3427,18 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   const walkinCountReal = bookings.filter(b => isWalkin(b)).length;
 
   // Revenue totals derived directly from bookings (not accounting)
+  // Priority: pricePerDay×days → totalAmount on booking → amount field → receivedAmount floor
   const calcBookingTotal = (b) => {
+    // 1. pricePerDay × duration (most accurate)
     const ppd = getPricePerDay(b);
     const d = (b.checkIn && b.checkOut) ? Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5)) : 0;
-    return ppd * d;
+    if (ppd > 0 && d > 0) return ppd * d;
+    // 2. Explicit totalAmount field (some bookings store this directly)
+    if (b.totalAmount > 0) return b.totalAmount;
+    // 3. amount field (used by some legacy/online bookings)
+    if (b.amount > 0) return b.amount;
+    // 4. Fall back to received — at minimum the booking is worth what was collected
+    return b.receivedAmount || 0;
   };
   const activeBookings = bookings.filter(b => b.status !== "cancelled");
   const totalRevenue    = activeBookings.reduce((sum, b) => sum + calcBookingTotal(b), 0);
