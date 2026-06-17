@@ -92,6 +92,7 @@ function MobileNav({ agency, activeNav, setActiveNav }) {
             <span key={n} className="nav-link" style={{color:activeNav===n?"#f0c060":"rgba(255,255,255,0.7)"}}
               onClick={()=>scrollTo(n)}>{n}</span>
           ))}
+          <button onClick={()=>scrollTo("calculator")} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",borderRadius:8,padding:"8px 16px",fontFamily:"'DM Sans'",fontWeight:700,fontSize:13,textTransform:"uppercase",letterSpacing:1.5,cursor:"pointer",whiteSpace:"nowrap"}}>🧮 Fare Calculator</button>
         </div>
         <button onClick={()=>setMenuOpen(o=>!o)} className="hamburger"
           style={{background:"transparent",border:"none",color:"#f0c060",fontSize:24,cursor:"pointer",padding:"4px 8px",display:"none"}}>
@@ -101,12 +102,16 @@ function MobileNav({ agency, activeNav, setActiveNav }) {
       </nav>
       {menuOpen&&(
         <div style={{position:"fixed",top:70,left:0,right:0,zIndex:99,background:"rgba(10,22,40,0.98)",borderBottom:"1px solid rgba(212,133,10,0.2)",padding:"12px 0",display:"flex",flexDirection:"column"}}>
-          {["home","rentals","villa","contact"].map(n=>(
+          {["home","rentals","villa","tours","contact"].map(n=>(
             <button key={n} onClick={()=>scrollTo(n)}
               style={{background:"transparent",border:"none",color:activeNav===n?"#f0c060":"rgba(255,255,255,0.7)",padding:"14px 5%",textAlign:"left",fontFamily:"'DM Sans'",fontSize:15,fontWeight:500,textTransform:"uppercase",letterSpacing:2,cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
               {n}
             </button>
           ))}
+          <button onClick={()=>{ scrollTo("calculator"); setMenuOpen(false); }}
+            style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",border:"none",color:"#1a1a2e",padding:"14px 5%",textAlign:"left",fontFamily:"'DM Sans'",fontSize:15,fontWeight:700,textTransform:"uppercase",letterSpacing:2,cursor:"pointer"}}>
+            🧮 Fare Calculator
+          </button>
         </div>
       )}
     </>
@@ -681,7 +686,7 @@ export default function App() {
             <div style={{fontSize:48,marginBottom:16}}>Tours coming soon!</div>
           </div>
         )}
-        <div style={{marginTop: 60}}>
+        <div id="sec-calculator" style={{marginTop: 60}}>
           <TourCalculator rentals={(data.rentals || [])} />
         </div>
       </section>
