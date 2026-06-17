@@ -768,11 +768,11 @@ module.exports = async (req, res) => {
       });
     }
 
-    // ── POST ?regen_accounting=true — TRUE regenerate ──────────────────────────
-    // Deletes ALL accounting entries linked to any booking, then rebuilds every
-    // walk-in booking's accounting entry fresh based on CURRENT booking data.
-    // This guarantees entries always match the latest booking amounts/details,
-    // instead of just filling gaps like the old "skip if exists" version did.
+    // ── POST ?regen_accounting=true — TRUE regenerate, ALL bookings ────────────
+    // Deletes ALL accounting entries linked to any booking, then rebuilds an
+    // entry for EVERY booking in the system — no filtering by source, no
+    // skipping for missing price. Missing price just records as ₹0 so every
+    // booking is represented and visible in accounting.
     if (req.method === "POST" && req.query?.regen_accounting === "true") {
       const { connectDB: _, Transaction } = require("./_db");
 
@@ -782,23 +782,23 @@ module.exports = async (req, res) => {
         linkedBookingId: { $exists: true, $ne: "" }
       });
 
-      // Step 2 — rebuild fresh entries for every walk-in booking
-      const walkins = await Booking.find({ source: "walkin" }).lean();
+      // Step 2 — rebuild an entry for every booking, regardless of source
+      const allBookings = await Booking.find({}).lean();
 
-      let created = 0, noAmount = 0;
+      let created = 0, zeroAmount = 0;
 
-      for (const b of walkins) {
+      for (const b of allBookings) {
         const bid = String(b._id);
 
-        // Calculate amount from CURRENT booking data
+        // Calculate amount from CURRENT booking data — default to 0, never skip
         const ppd  = Number(b.pricePerDay) || 0;
         const days = (b.checkIn && b.checkOut)
           ? Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5))
           : 1;
         const amt  = ppd * days;
+        if (amt <= 0) zeroAmount++;
 
-        // Skip if no price info at all — nothing meaningful to record
-        if (amt <= 0) { noAmount++; continue; }
+        const isWalkin = b.source === "walkin";
 
         await Transaction.create({
           type:            "income",
@@ -806,20 +806,20 @@ module.exports = async (req, res) => {
           amount:          amt,
           currency:        "INR",
           date:            b.createdAt || new Date(),
-          description:     `Walk-in rental — ${b.vehicleName || "vehicle"} / ${b.customerName || "Walk-in Customer"}`,
-          clientName:      b.customerName || "Walk-in Customer",
+          description:     `${isWalkin ? "Walk-in" : "Online"} rental — ${b.vehicleName || "vehicle"} / ${b.customerName || "Customer"}`,
+          clientName:      b.customerName || "Customer",
           linkedBookingId: bid,
-          paymentStatus:   b.receivedAmount >= amt ? "paid" : b.receivedAmount > 0 ? "partial" : "pending",
+          paymentStatus:   b.receivedAmount >= amt && amt > 0 ? "paid" : b.receivedAmount > 0 ? "partial" : "pending",
           paymentMethod:   b.paymentMethod || "cash",
-          notes:           `Auto-generated. Vehicle: ${b.vehicleName || "—"} | ₹${ppd}/day × ${days} day${days!==1?"s":""}`,
+          notes:           `Auto-generated. Vehicle: ${b.vehicleName || "—"} | ₹${ppd}/day × ${days} day${days!==1?"s":""}${amt<=0?" (no price set on booking)":""}`,
         });
         created++;
       }
 
       return res.json({
         success: true,
-        message: `Regenerated. ${deleteResult.deletedCount} old entries removed, ${created} fresh entries created, ${noAmount} skipped (no price data).`,
-        deleted: deleteResult.deletedCount, created, noAmount, total: walkins.length,
+        message: `Regenerated. ${deleteResult.deletedCount} old entries removed, ${created} entries created (${zeroAmount} with ₹0 — missing price on booking).`,
+        deleted: deleteResult.deletedCount, created, zeroAmount, total: allBookings.length,
       });
     }
 
