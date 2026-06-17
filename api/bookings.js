@@ -439,13 +439,29 @@ module.exports = async (req, res) => {
           return res.json({ found: false, message: "No bookings found for this phone." });
         }
         const before = await Customer.findOne({ phone }).lean();
-        await upsertCustomerFromBooking(bookings[0]);
+        // Also try a flexible match in case the stored phone has different
+        // whitespace/type/format than the exact string we're querying with.
+        const allCustomers = await Customer.find({}).lean();
+        const flexMatch = allCustomers.filter(c => String(c.phone).trim() === phone);
+
+        let upsertError = null;
+        try {
+          await upsertCustomerFromBooking(bookings[0]);
+        } catch (e) {
+          upsertError = e.message;
+        }
         const after = await Customer.findOne({ phone }).lean();
+
         return res.json({
           found: true,
-          bookingUsed: { id: bookings[0]._id, idImageUrl: bookings[0].idImageUrl, createdAt: bookings[0].createdAt },
-          customerBefore: { idImageUrl: before?.idImageUrl, updatedAt: before?.updatedAt },
-          customerAfter:  { idImageUrl: after?.idImageUrl,  updatedAt: after?.updatedAt },
+          queriedPhone: phone,
+          queriedPhoneType: typeof phone,
+          bookingUsed: { id: bookings[0]._id, idImageUrl: bookings[0].idImageUrl, createdAt: bookings[0].createdAt, phoneOnBooking: bookings[0].phone, phoneTypeOnBooking: typeof bookings[0].phone },
+          customerBefore: before ? { idImageUrl: before.idImageUrl, updatedAt: before.updatedAt, phoneOnCustomer: before.phone, phoneTypeOnCustomer: typeof before.phone, exactMatchFound: true } : { exactMatchFound: false },
+          flexMatchCount: flexMatch.length,
+          flexMatches: flexMatch.map(c => ({ id: c._id, name: c.name, phone: c.phone, phoneType: typeof c.phone, idImageUrl: c.idImageUrl })),
+          upsertError,
+          customerAfter:  after ? { idImageUrl: after.idImageUrl,  updatedAt: after.updatedAt } : { found: false },
         });
       }
 
