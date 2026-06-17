@@ -167,9 +167,9 @@ function RouteMap({ stops, route, routeCoords, onMapClick, center }) {
     const UDAIPUR        = [24.5854, 73.7125];
     const UDAIPUR_RETURN = [24.5855, 73.7126];
     const allMarkers = [
-      { coords: UDAIPUR,        label: "S", bg: "#4ade80", name: "Udaipur (Start)" },
+      { coords: [24.5854, 73.7110], label: "S", bg: "#4ade80", name: "Udaipur (Start)" }, // offset left so S & E are both visible
       ...stops.map((s, i) => ({ coords: s.coords, label: String(i+1), bg: "#f0c060", name: s.name })),
-      { coords: UDAIPUR_RETURN, label: "E", bg: "#f87171", name: "Udaipur (Return)" },
+      { coords: UDAIPUR_RETURN,    label: "E", bg: "#f87171", name: "Udaipur (Return)" },
     ];
     markersRef.current = allMarkers.map((m) => {
       const icon = L.divIcon({
@@ -453,12 +453,15 @@ export default function TourCalculator() {
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                   <div style={{textAlign:"center"}}>
                     <div style={{fontSize:22,fontWeight:800,color:"#f0c060",fontFamily:"'Playfair Display'"}}>{fmtKm(route.distanceKm)}</div>
-                    <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginTop:2}}>Round trip</div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginTop:2}}>Round trip (incl. return)</div>
                   </div>
                   <div style={{textAlign:"center"}}>
                     <div style={{fontSize:22,fontWeight:800,color:"#60a5fa",fontFamily:"'Playfair Display'"}}>{Math.round(route.durationMin/60)}h {Math.round(route.durationMin%60)}m</div>
                     <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginTop:2}}>Est. drive time</div>
                   </div>
+                </div>
+                <div style={{marginTop:10,fontSize:11,color:"rgba(255,255,255,0.25)",textAlign:"center",lineHeight:1.5}}>
+                  ↕ Return route overlaps outbound on map (same road both ways)
                 </div>
               </div>
             )}
