@@ -632,6 +632,7 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [scanDone, setScanDone] = useState(false);
+  const [replaceId, setReplaceId] = useState(false); // toggle replace ID panel
 
   // ── Customer search ────────────────────────────────────────────────────────
   const [custSearch, setCustSearch]   = useState("");
@@ -677,6 +678,7 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
   const selectCustomer = (b) => {
     setCustSearch(b.customerName);
     setCustDropOpen(false);
+    setReplaceId(false); // reset replace mode when switching customer
     setForm(f => ({
       ...f,
       customerName: b.customerName  || f.customerName,
@@ -945,23 +947,26 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
           {/* ── STEP 2: ID Scan ── */}
           {step === "id" && (
             <div>
-              {/* If repeat customer already has ID on file — show it first */}
-              {form.idImageUrl && !scanDone ? (
+              {/* ── Returning customer: ID already on file ── */}
+              {form.idImageUrl && !scanDone && !replaceId ? (
                 <div>
+                  {/* Green banner */}
                   <div style={{padding:"10px 14px",borderRadius:8,background:"rgba(74,222,128,0.08)",border:"1px solid rgba(74,222,128,0.2)",color:"#4ade80",fontSize:12,marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
                     <span>✅</span>
-                    <span>ID on file for <strong>{form.customerName}</strong> — no re-upload needed unless document has changed.</span>
+                    <span>ID already on file for <strong>{form.customerName}</strong> — no re-upload needed.</span>
                   </div>
-                  {/* Show stored ID */}
-                  <div style={{marginBottom:16,textAlign:"center"}}>
+
+                  {/* Stored ID preview */}
+                  <div style={{marginBottom:16,textAlign:"center",position:"relative"}}>
                     <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>Stored ID Document</div>
                     <a href={form.idImageUrl} target="_blank" rel="noreferrer">
                       <img src={form.idImageUrl} alt="Stored ID" style={{maxHeight:180,maxWidth:"100%",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)",objectFit:"contain",background:"rgba(0,0,0,0.3)",cursor:"pointer"}}/>
                     </a>
-                    <div style={{fontSize:10,color:"rgba(255,255,255,0.2)",marginTop:4}}>Tap to open full size</div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.2)",marginTop:4}}>Tap image to open full size</div>
                   </div>
-                  {/* Show existing ID fields */}
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+
+                  {/* Stored ID type & number (read-only display) */}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:16}}>
                     <div>
                       <label style={lbl}>ID Type</label>
                       <select className="te-dark-sel" style={inpSel} value={form.idType} onChange={e => set("idType", e.target.value)}>
@@ -974,18 +979,35 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
                       <input style={inp} value={form.idNumber} onChange={e => set("idNumber", e.target.value)} placeholder="Document number" />
                     </div>
                   </div>
-                  {/* Replace ID option */}
-                  <div style={{borderTop:"1px solid rgba(255,255,255,0.07)",paddingTop:14,marginBottom:4}}>
-                    <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginBottom:10,textAlign:"center"}}>— Upload new ID to replace the existing one —</div>
-                    <ScanPanel
-                      customerName={form.customerName}
-                      onScanned={(result) => { handleScanned(result); }}
-                      onImageUrl={(url) => set("idImageUrl", url)}
-                      compact={true}
-                    />
+
+                  {/* Replace button */}
+                  <div style={{borderTop:"1px solid rgba(255,255,255,0.07)",paddingTop:14,marginBottom:4,textAlign:"center"}}>
+                    <button
+                      onClick={() => setReplaceId(true)}
+                      style={{padding:"9px 22px",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.35)",color:"#f87171",borderRadius:8,cursor:"pointer",fontFamily:"'DM Sans'",fontSize:13,fontWeight:600}}
+                    >
+                      🔄 Replace ID Document
+                    </button>
+                    <div style={{fontSize:11,color:"rgba(255,255,255,0.2)",marginTop:6}}>Only needed if the customer's ID has changed or expired</div>
                   </div>
                 </div>
+
+              ) : form.idImageUrl && replaceId ? (
+                /* ── Replace mode: upload new ID, old is removed on save ── */
+                <div>
+                  <div style={{padding:"10px 14px",borderRadius:8,background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",color:"#f87171",fontSize:12,marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                    <span>🔄 Upload a new ID — the old one will be replaced when saved.</span>
+                    <button onClick={() => setReplaceId(false)} style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.35)",cursor:"pointer",fontSize:12,whiteSpace:"nowrap"}}>✕ Cancel</button>
+                  </div>
+                  <ScanPanel
+                    customerName={form.customerName}
+                    onScanned={(result) => { handleScanned(result); setReplaceId(false); }}
+                    onImageUrl={(url) => { set("idImageUrl", url); setReplaceId(false); }}
+                  />
+                </div>
+
               ) : (
+                /* ── New customer: no ID on file ── */
                 <>
                   <ScanPanel
                     customerName={form.customerName}
@@ -1027,7 +1049,7 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
                 <button onClick={() => setStep("confirm")} style={{ flex: 2, padding: "11px", background: "linear-gradient(135deg,#d4850a,#f0c060)", color: "#1a1a2e", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}>
                   Next: Confirm →
                 </button>
-                <button onClick={() => { setScanDone(false); setStep("confirm"); }} style={{ flex: 1, padding: "11px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.35)", borderRadius: 8, cursor: "pointer", fontSize: 13 }}>
+                <button onClick={() => { setScanDone(false); setReplaceId(false); setStep("confirm"); }} style={{ flex: 1, padding: "11px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.35)", borderRadius: 8, cursor: "pointer", fontSize: 13 }}>
                   Skip ID
                 </button>
               </div>
