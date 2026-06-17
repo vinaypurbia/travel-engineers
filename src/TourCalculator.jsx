@@ -38,26 +38,66 @@ async function geocode(query) {
 }
 
 // ─── Route via OSRM ──────────────────────────────────────────────────────────
-// Fetch one leg: point A → point B, return shortest route
+// Fetch one leg using Valhalla (more accurate for Indian roads, free, no key needed)
 async function fetchLeg(from, to) {
-  const coords = `${from[1]},${from[0]};${to[1]},${to[0]}`;
-  const r = await fetch(
-    `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&alternatives=true`
-  );
-  const d = await r.json();
-  if (d.code !== "Ok") return null;
-  // Pick the shortest route among alternatives (most cost-effective for customer)
-  const best = (d.routes || []).reduce((a, b) => a.distance <= b.distance ? a : b);
-  return {
-    distanceKm: best.distance / 1000,
-    durationMin: best.duration / 60,
-    coords: best.geometry.coordinates.map(c => [c[1], c[0]]),
+  const body = {
+    locations: [
+      { lon: from[1], lat: from[0], type: "break" },
+      { lon: to[1],   lat: to[0],   type: "break" },
+    ],
+    costing: "auto",
+    costing_options: { auto: { use_highways: 1, use_tolls: 0.5 } },
+    directions_options: { units: "km" },
   };
+  try {
+    const r = await fetch("https://valhalla1.openstreetmap.de/route", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!d.trip) throw new Error("No trip");
+    const leg = d.trip.legs[0];
+    // Decode the encoded polyline shape
+    const coords = decodePolyline(leg.shape, 6);
+    return {
+      distanceKm: d.trip.summary.length,
+      durationMin: d.trip.summary.time / 60,
+      coords,
+    };
+  } catch {
+    // Fallback to OSRM if Valhalla fails
+    const coords2 = `${from[1]},${from[0]};${to[1]},${to[0]}`;
+    const r2 = await fetch(`https://router.project-osrm.org/route/v1/driving/${coords2}?overview=full&geometries=geojson`);
+    const d2 = await r2.json();
+    if (d2.code !== "Ok") return null;
+    return {
+      distanceKm: d2.routes[0].distance / 1000,
+      durationMin: d2.routes[0].duration / 60,
+      coords: d2.routes[0].geometry.coordinates.map(c => [c[1], c[0]]),
+    };
+  }
+}
+
+// Decode Valhalla's encoded polyline (precision 6)
+function decodePolyline(encoded, precision = 6) {
+  const factor = Math.pow(10, precision);
+  const result = [];
+  let lat = 0, lng = 0, i = 0;
+  while (i < encoded.length) {
+    let b, shift = 0, result2 = 0;
+    do { b = encoded.charCodeAt(i++) - 63; result2 |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += (result2 & 1) ? ~(result2 >> 1) : (result2 >> 1);
+    shift = 0; result2 = 0;
+    do { b = encoded.charCodeAt(i++) - 63; result2 |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lng += (result2 & 1) ? ~(result2 >> 1) : (result2 >> 1);
+    result.push([lat / factor, lng / factor]);
+  }
+  return result;
 }
 
 async function getRoute(waypoints) {
   if (waypoints.length < 2) return null;
-  // Fetch each leg separately — gives more accurate per-segment routing
   const legPromises = [];
   for (let i = 0; i < waypoints.length - 1; i++) {
     legPromises.push(fetchLeg(waypoints[i], waypoints[i + 1]));
