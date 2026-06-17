@@ -337,9 +337,13 @@ async function uploadIdToCloudinary(imageBase64, mimeType, customerName) {
 
 // ── Upsert customer record from a booking ────────────────────────────────────
 async function upsertCustomerFromBooking(booking) {
-  if (!booking?.phone) return;
+  if (!booking?.phone) {
+    console.error("[customer-sync] SKIPPED — no phone on booking", booking?._id);
+    return;
+  }
   try {
     const phone = String(booking.phone).trim();
+    console.error(`[customer-sync] START phone=${phone} bookingId=${booking._id} idImageUrl=${booking.idImageUrl || "none"}`);
     // Find all bookings for this phone to calculate stats
     const allBookings = await Booking.find({ phone }).lean();
     const totalBookings = allBookings.length;
@@ -376,13 +380,17 @@ async function upsertCustomerFromBooking(booking) {
     // source — set to walkin if any booking was walkin
     if (booking.source === "walkin") update.source = "walkin";
 
-    await Customer.findOneAndUpdate(
+    console.error("[customer-sync] WRITING update:", JSON.stringify(update));
+
+    const result = await Customer.findOneAndUpdate(
       { phone },
       { $set: update, $setOnInsert: { createdAt: new Date(), source: booking.source || "online" } },
       { upsert: true, new: true }
     );
+
+    console.error(`[customer-sync] SUCCESS phone=${phone} savedIdImageUrl=${result?.idImageUrl || "none"} customerId=${result?._id}`);
   } catch(e) {
-    console.error("Customer upsert failed:", e.message);
+    console.error("[customer-sync] FAILED phone=" + booking?.phone + " — " + e.message, e.stack);
   }
 }
 
@@ -419,6 +427,27 @@ module.exports = async (req, res) => {
 
     // ── Customer endpoints (?resource=customers) ──────────────────────────────
     if (req.query?.resource === "customers") {
+
+      // GET ?resource=customers&debug_sync_phone=xxx — manually trigger sync for
+      // ONE phone number and return exactly what happened. Use this to debug
+      // why a specific customer's idImageUrl isn't syncing, without digging
+      // through Vercel logs.
+      if (req.method === "GET" && req.query?.debug_sync_phone) {
+        const phone = String(req.query.debug_sync_phone).trim();
+        const bookings = await Booking.find({ phone }).sort({ createdAt: -1 }).lean();
+        if (bookings.length === 0) {
+          return res.json({ found: false, message: "No bookings found for this phone." });
+        }
+        const before = await Customer.findOne({ phone }).lean();
+        await upsertCustomerFromBooking(bookings[0]);
+        const after = await Customer.findOne({ phone }).lean();
+        return res.json({
+          found: true,
+          bookingUsed: { id: bookings[0]._id, idImageUrl: bookings[0].idImageUrl, createdAt: bookings[0].createdAt },
+          customerBefore: { idImageUrl: before?.idImageUrl, updatedAt: before?.updatedAt },
+          customerAfter:  { idImageUrl: after?.idImageUrl,  updatedAt: after?.updatedAt },
+        });
+      }
 
       // GET ?resource=customers — list all customers, searchable
       if (req.method === "GET") {
