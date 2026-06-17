@@ -790,57 +790,42 @@ module.exports = async (req, res) => {
       for (const b of allBookings) {
         const bid = String(b._id);
 
-        // Calculate amount — multi-tier fallback so imported/legacy bookings
-        // with pricePerDay=0 still get a meaningful amount:
-        //   1. pricePerDay × days  (normal bookings)
-        //   2. amount parsed from notes  e.g. "Payment: ₹3000" or "Payment: 3000"
-        //   3. receivedAmount  (what was actually collected)
-        //   4. tokenAmount × 2  (advance implies ~50% deposit)
-        //   5. 0  (truly no data — still creates the entry for visibility)
+        // Calculate amount — priority order:
+        //   1. pricePerDay × days  (set on booking — most accurate)
+        //   2. receivedAmount      (what was actually collected — legacy imports)
+        //   3. 0                   (no data at all — entry still created for visibility)
+        //
+        // NOTE: Notes field is intentionally NOT parsed. Legacy import notes like
+        // "Register import. Vehicle: 9659. Payment: ₹3000" record a daily cash
+        // batch total, NOT the individual booking amount — parsing them inflates totals.
         const ppd  = Number(b.pricePerDay) || 0;
         const days = (b.checkIn && b.checkOut)
           ? Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5))
           : 1;
-        const ppdAmt = ppd * days;
-
-        // Parse amount from notes — matches patterns like:
-        //   "Payment: ₹3000", "Payment: 3000", "payment:3000", "Payment ₹ 3,000"
-        let notesAmt = 0;
-        if (ppdAmt <= 0 && b.notes) {
-          const m = b.notes.match(/payment[:\s₹\s]+([\d,]+)/i);
-          if (m) notesAmt = parseInt(m[1].replace(/,/g, ""), 10) || 0;
-        }
-
+        const ppdAmt      = ppd * days;
         const receivedAmt = Number(b.receivedAmount) || 0;
-        const tokenAmt    = Number(b.tokenAmount)    || 0;
 
-        // Pick the best available amount
-        let amt        = ppdAmt;
-        let amtSource  = `₹${ppd}/day × ${days} day${days!==1?"s":""}`;
-        if (amt <= 0 && notesAmt > 0) {
-          amt       = notesAmt;
-          amtSource = `parsed from notes (₹${notesAmt})`;
-        } else if (amt <= 0 && receivedAmt > 0) {
+        let amt       = ppdAmt;
+        let amtSource = `₹${ppd}/day × ${days} day${days!==1?"s":""}`;
+        if (amt <= 0 && receivedAmt > 0) {
           amt       = receivedAmt;
           amtSource = `from receivedAmount (₹${receivedAmt})`;
-        } else if (amt <= 0 && tokenAmt > 0) {
-          amt       = tokenAmt * 2;
-          amtSource = `estimated from token ₹${tokenAmt}×2`;
         }
 
         if (amt <= 0) zeroAmount++;
 
         const isWalkin = b.source === "walkin";
 
-        // Payment status: use receivedAmount vs resolved total where possible
+        // Payment status
         let paymentStatus = "pending";
         if (amt > 0) {
-          if (receivedAmt >= amt)     paymentStatus = "paid";
-          else if (receivedAmt > 0)   paymentStatus = "partial";
-          // Legacy imports with notesAmt often have no receivedAmount field
-          // but the payment WAS collected — mark as paid if amount came from notes
-          else if (notesAmt > 0 && ppdAmt <= 0 && receivedAmt <= 0) paymentStatus = "paid";
+          if (receivedAmt >= amt)   paymentStatus = "paid";
+          else if (receivedAmt > 0) paymentStatus = "partial";
+          // Legacy imports used receivedAmount as the full amount — mark as paid
+          else if (ppdAmt <= 0 && amt === receivedAmt && receivedAmt > 0) paymentStatus = "paid";
         }
+        // If amount came entirely from receivedAmount, it was already collected
+        if (ppdAmt <= 0 && amt > 0 && amt === receivedAmt) paymentStatus = "paid";
 
         await Transaction.create({
           type:            "income",
@@ -853,7 +838,7 @@ module.exports = async (req, res) => {
           linkedBookingId: bid,
           paymentStatus,
           paymentMethod:   b.paymentMethod || "cash",
-          notes:           `Auto-generated. Vehicle: ${b.vehicleName || "—"} | ${amtSource}${amt<=0?" (no price data found on booking)":""}`,
+          notes:           `Auto-generated. Vehicle: ${b.vehicleName || "—"} | ${amtSource}${amt<=0?" (no price data on booking)":""}`,
         });
         created++;
       }
