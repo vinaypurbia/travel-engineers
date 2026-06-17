@@ -2484,6 +2484,7 @@ function AccountingEditor({ data, api, reload, showSaved }) {
   const [showForm, setShowForm]   = useState(false);
   const [editId, setEditId]       = useState(null);
   const [sortDir, setSortDir]     = useState("desc");
+  const [regenerating, setRegenerating] = useState(false);
 
   const blankForm = { type:"income", category:"vehicle_rental", amount:"", date:today, description:"", clientName:"", agencyName:"", paymentStatus:"paid", paymentMethod:"cash", notes:"", vendorName:"", assetTag:"", assetName:"", receiptUrl:"" };
   const [form, setForm] = useState({...blankForm});
@@ -2597,7 +2598,35 @@ function AccountingEditor({ data, api, reload, showSaved }) {
           <button onClick={()=>startAdd("income")} style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Income</button>
           <button onClick={()=>startAdd("expense")} style={{background:"rgba(255,100,100,0.15)",border:"1px solid rgba(255,100,100,0.3)",color:"#ff6b6b",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Expense</button>
           <button onClick={async()=>{ if(!window.confirm("Remove accounting entries linked to deleted bookings?")) return; const r=await api.delete("/bookings?cleanup=accounting"); alert(r.message||"Done"); await reload(); }} style={{background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.4)",border:"1px solid rgba(255,255,255,0.1)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>Clean Orphaned</button>
-          <button onClick={async()=>{ if(!window.confirm("This will DELETE all booking-linked accounting entries and rebuild ONE entry for EVERY booking (online + walk-in) from current data. Continue?")) return; const r=await api.post("/bookings?regen_accounting=true",{}); alert(r.message||"Done"); await reload(); }} style={{background:"rgba(96,165,250,0.12)",color:"#60a5fa",border:"1px solid rgba(96,165,250,0.3)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>↻ Regenerate Accounting</button>
+          <button disabled={regenerating} onClick={async()=>{
+            if(!window.confirm("This will DELETE all booking-linked accounting entries and rebuild ONE entry for EVERY booking (online + walk-in) from current data. Continue?")) return;
+            setRegenerating(true);
+            try {
+              const r = await api.post("/bookings?regen_accounting=true",{});
+              alert(r.message||"Done");
+              await reload();
+            } catch(e) {
+              alert("Failed: " + (e.message||"Unknown error"));
+            }
+            setRegenerating(false);
+          }} style={{background:regenerating?"rgba(96,165,250,0.06)":"rgba(96,165,250,0.12)",color:regenerating?"rgba(96,165,250,0.5)":"#60a5fa",border:"1px solid rgba(96,165,250,0.3)",padding:"9px 14px",borderRadius:8,cursor:regenerating?"not-allowed":"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:7}}>
+            {regenerating
+              ? <><span style={{width:12,height:12,borderRadius:"50%",border:"2px solid rgba(96,165,250,0.3)",borderTopColor:"#60a5fa",animation:"spin 0.8s linear infinite",display:"inline-block"}}/>Regenerating…</>
+              : <>↻ Regenerate Accounting</>
+            }
+          </button>
+          {regenerating && (
+            <div style={{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(2px)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes progressSlide{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}`}</style>
+              <div style={{background:"#0d1b2e",border:"1px solid rgba(96,165,250,0.3)",borderRadius:16,padding:"28px 32px",minWidth:320,boxShadow:"0 24px 60px rgba(0,0,0,0.5)",textAlign:"center"}}>
+                <div style={{fontSize:15,fontWeight:700,color:"#60a5fa",marginBottom:6,fontFamily:"'DM Sans'"}}>Regenerating Accounting…</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:18}}>Deleting old entries and rebuilding from all bookings. This may take a moment for large datasets.</div>
+                <div style={{width:"100%",height:6,background:"rgba(255,255,255,0.08)",borderRadius:10,overflow:"hidden",position:"relative"}}>
+                  <div style={{position:"absolute",inset:0,width:"40%",background:"linear-gradient(90deg,#60a5fa,#a78bfa)",borderRadius:10,animation:"progressSlide 1.1s ease-in-out infinite"}}/>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
