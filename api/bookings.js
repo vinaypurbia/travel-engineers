@@ -340,7 +340,11 @@ async function upsertCustomerFromBooking(booking) {
       lastVehicle,
       updatedAt:    new Date(),
     };
-    // KYC — only set if present in this booking
+    // KYC — only set if present on THIS booking. This is intentional and must
+    // stay this way: a booking with no idImageUrl (e.g. a phone-only repeat
+    // booking) must NEVER overwrite an idImageUrl already saved on the customer
+    // from an earlier booking. Each field only ever upgrades from empty -> value,
+    // never downgrades from value -> empty/null.
     const kyc = ["email","nationality","gender","dateOfBirth","idType","idNumber","idImageUrl","address"];
     for (const f of kyc) {
       if (booking[f]) update[f] = booking[f];
@@ -479,6 +483,48 @@ module.exports = async (req, res) => {
           success: true,
           message: `Done. ${created} customers created, ${updated} updated.`,
           created, updated, total: created + updated,
+        });
+      }
+
+      // POST ?resource=customers&backfill_kyc=true — additive-only KYC backfill
+      // Unlike sync=true (which rebuilds name/totals/etc. for every customer),
+      // this ONLY fills in missing KYC fields (idImageUrl, idType, idNumber, email,
+      // nationality, gender, dateOfBirth, address) on existing customer docs by
+      // scanning their bookings for the first non-empty value. It never overwrites
+      // a field that's already set, and never touches non-KYC fields. Safe to
+      // re-run any time, e.g. after older customers were created before the ID
+      // scan feature existed, or before a booking's ID image finished uploading.
+      if (req.method === "POST" && req.query?.backfill_kyc === "true") {
+        const kycFields = ["email","nationality","gender","dateOfBirth","idType","idNumber","idImageUrl","address"];
+        const customers = await Customer.find({}).lean();
+        let updated = 0, skipped = 0, untouched = 0;
+
+        for (const cust of customers) {
+          // What's already missing on this customer?
+          const missing = kycFields.filter(f => !cust[f]);
+          if (missing.length === 0) { untouched++; continue; }
+
+          const bookings = await Booking.find({ phone: cust.phone })
+            .sort({ createdAt: 1 }) // oldest first, but we just need ANY non-empty value
+            .lean();
+
+          const fill = {};
+          for (const f of missing) {
+            const withValue = bookings.find(b => b[f]);
+            if (withValue) fill[f] = withValue[f];
+          }
+
+          if (Object.keys(fill).length === 0) { skipped++; continue; }
+
+          fill.updatedAt = new Date();
+          await Customer.findByIdAndUpdate(cust._id, { $set: fill });
+          updated++;
+        }
+
+        return res.json({
+          success: true,
+          message: `Done. ${updated} customers backfilled, ${skipped} had no KYC data in their bookings, ${untouched} already complete.`,
+          updated, skipped, untouched, total: customers.length,
         });
       }
 
