@@ -3426,6 +3426,17 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   const onlineCountReal = bookings.filter(b => !isWalkin(b)).length;
   const walkinCountReal = bookings.filter(b => isWalkin(b)).length;
 
+  // Revenue totals derived directly from bookings (not accounting)
+  const calcBookingTotal = (b) => {
+    const ppd = getPricePerDay(b);
+    const d = (b.checkIn && b.checkOut) ? Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5)) : 0;
+    return ppd * d;
+  };
+  const activeBookings = bookings.filter(b => b.status !== "cancelled");
+  const totalRevenue    = activeBookings.reduce((sum, b) => sum + calcBookingTotal(b), 0);
+  const totalReceived   = activeBookings.reduce((sum, b) => sum + (b.receivedAmount || 0), 0);
+  const totalPending    = Math.max(0, totalRevenue - totalReceived);
+
   // Filter + search + sort
   let filtered = bookings;
   if (sourceTab === "online") filtered = filtered.filter(b => !isWalkin(b));
@@ -3551,7 +3562,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   return (
     <div>
       {/* Header */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:12}}>
         <div>
           <h2 style={{fontFamily:"'Playfair Display'",fontSize:30,marginBottom:4}}>Bookings</h2>
           <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>{bookings.length} total · {counts.pending} pending action</p>
@@ -3561,6 +3572,24 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           🏪 Walk-in Booking
         </button>
       </div>
+
+      {/* Revenue Summary — pulled from booking data only */}
+      {totalRevenue > 0 && (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:20}}>
+          {[
+            { label:"Total Booking Value", value:`₹${totalRevenue.toLocaleString("en-IN")}`, color:"#f0c060", icon:"💰", sub:`${activeBookings.length} active booking${activeBookings.length!==1?"s":""}` },
+            { label:"Amount Received",     value:`₹${totalReceived.toLocaleString("en-IN")}`, color:"#4ade80", icon:"✅", sub: totalRevenue>0?`${Math.round((totalReceived/totalRevenue)*100)}% collected`:"" },
+            { label:"Balance Pending",     value:`₹${totalPending.toLocaleString("en-IN")}`,  color: totalPending>0?"#fb923c":"#4ade80", icon: totalPending>0?"🔶":"✅", sub:"yet to be collected" },
+          ].map(card=>(
+            <div key={card.label} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 16px",position:"relative",overflow:"hidden"}}>
+              <div style={{position:"absolute",top:10,right:12,fontSize:18,opacity:0.18}}>{card.icon}</div>
+              <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:6}}>{card.label}</div>
+              <div style={{fontSize:22,fontWeight:800,color:card.color,fontFamily:"'Playfair Display'",lineHeight:1.1}}>{card.value}</div>
+              {card.sub&&<div style={{fontSize:10,color:"rgba(255,255,255,0.25)",marginTop:4}}>{card.sub}</div>}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Source Tabs */}
       <div style={{display:"flex",gap:4,marginBottom:16,background:"rgba(255,255,255,0.03)",padding:6,borderRadius:14,border:"1px solid rgba(255,255,255,0.07)"}}>
