@@ -635,7 +635,10 @@ module.exports = async (req, res) => {
       if (req.method === "PUT") {
         const booking = await Booking.findByIdAndUpdate(id, req.body, { new: true });
         if (!booking) return res.status(404).json({ error: "Not found" });
-        upsertCustomerFromBooking(booking).catch(console.error);
+        // Must await: Vercel can terminate the function as soon as res.json()
+        // is sent, so a fire-and-forget call here can get killed mid-write,
+        // leaving the booking saved but the customer record never updated.
+        try { await upsertCustomerFromBooking(booking); } catch (e) { console.error(e); }
         return res.json(booking);
       }
       if (req.method === "DELETE") {
@@ -832,7 +835,12 @@ module.exports = async (req, res) => {
       }
 
       // Auto-upsert customer record
-      upsertCustomerFromBooking(booking).catch(console.error);
+      // Must await: Vercel can terminate the function as soon as res.json()
+      // is sent, so a fire-and-forget call here can get killed mid-write,
+      // leaving the booking saved but the customer record never updated.
+      // This was the cause of idImageUrl (and other KYC fields) showing up
+      // on the booking but never syncing to the customer record.
+      try { await upsertCustomerFromBooking(booking); } catch (e) { console.error(e); }
 
       return res.json({ success: true, booking, whatsappUrl });
     }
