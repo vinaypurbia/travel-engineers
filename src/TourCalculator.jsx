@@ -286,7 +286,7 @@ export default function TourCalculator() {
     const ex = await analyzeExtras(
       [{ name: stopNames.join(" → ") }],
       vehicle.name,
-      route.distanceKm * 2
+      route.distanceKm
     );
     setExtras(ex);
     setLoadingAI(false);
@@ -294,7 +294,7 @@ export default function TourCalculator() {
   };
 
   // Fare calculations
-  const totalKm      = route ? route.distanceKm * 2 : 0; // round trip
+  const totalKm      = route ? route.distanceKm : 0; // full loop: Udaipur → stops → Udaipur
   const ratePerKm    = vehicle ? Number(vehicle.pricePerKm) || 0 : 0;
   const driverPerDay = vehicle ? (DEFAULT_DRIVER[vehicle.type?.toLowerCase()] || 0) : 0;
   const baseFare     = totalKm * ratePerKm;
@@ -425,11 +425,11 @@ export default function TourCalculator() {
               <div className="tc-card" style={{marginBottom:16}}>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                   <div style={{textAlign:"center"}}>
-                    <div style={{fontSize:22,fontWeight:800,color:"#f0c060",fontFamily:"'Playfair Display'"}}>{fmtKm(route.distanceKm*2)}</div>
+                    <div style={{fontSize:22,fontWeight:800,color:"#f0c060",fontFamily:"'Playfair Display'"}}>{fmtKm(route.distanceKm)}</div>
                     <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginTop:2}}>Round trip</div>
                   </div>
                   <div style={{textAlign:"center"}}>
-                    <div style={{fontSize:22,fontWeight:800,color:"#60a5fa",fontFamily:"'Playfair Display'"}}>{Math.round(route.durationMin*2/60)}h {Math.round(route.durationMin*2%60)}m</div>
+                    <div style={{fontSize:22,fontWeight:800,color:"#60a5fa",fontFamily:"'Playfair Display'"}}>{Math.round(route.durationMin/60)}h {Math.round(route.durationMin%60)}m</div>
                     <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginTop:2}}>Est. drive time</div>
                   </div>
                 </div>
