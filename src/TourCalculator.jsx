@@ -144,11 +144,12 @@ function RouteMap({ stops, routeCoords, onMapClick, center }) {
     if (!L || !map) return;
     markersRef.current.forEach(m => m.remove());
     // Build full marker list: Udaipur (S) + stops + Udaipur (E)
-    const UDAIPUR = [24.5854, 73.7125];
+    const UDAIPUR        = [24.5854, 73.7125];
+    const UDAIPUR_RETURN = [24.5855, 73.7126];
     const allMarkers = [
-      { coords: UDAIPUR, label: "S", bg: "#4ade80", name: "Udaipur (Start)" },
+      { coords: UDAIPUR,        label: "S", bg: "#4ade80", name: "Udaipur (Start)" },
       ...stops.map((s, i) => ({ coords: s.coords, label: String(i+1), bg: "#f0c060", name: s.name })),
-      { coords: UDAIPUR, label: "E", bg: "#f87171", name: "Udaipur (Return)" },
+      { coords: UDAIPUR_RETURN, label: "E", bg: "#f87171", name: "Udaipur (Return)" },
     ];
     markersRef.current = allMarkers.map((m) => {
       const icon = L.divIcon({
@@ -268,12 +269,13 @@ export default function TourCalculator() {
   }, [stops.length, addStop]);
 
   // Udaipur coordinates (fixed start & return point)
-  const UDAIPUR_COORDS = [24.5854, 73.7125];
+  const UDAIPUR_COORDS        = [24.5854, 73.7125];
+  const UDAIPUR_RETURN_COORDS = [24.5855, 73.7126]; // tiny offset so OSRM draws the full return leg
 
   const calculateRoute = async () => {
     if (stops.length < 1) return;
     setLoadingRoute(true);
-    const waypoints = [UDAIPUR_COORDS, ...stops.map(s => s.coords), UDAIPUR_COORDS];
+    const waypoints = [UDAIPUR_COORDS, ...stops.map(s => s.coords), UDAIPUR_RETURN_COORDS];
     const r = await getRoute(waypoints);
     setRoute(r);
     setLoadingRoute(false);
