@@ -450,9 +450,7 @@ export default function TourCalculator() {
                     <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginTop:2}}>Est. drive time</div>
                   </div>
                 </div>
-                <div style={{marginTop:10,fontSize:11,color:"rgba(255,255,255,0.3)",textAlign:"center",lineHeight:1.6,padding:"6px 10px",background:"rgba(255,255,255,0.04)",borderRadius:6}}>
-                  ⚠️ Approximate distance — actual may vary by ±10 km depending on route taken
-                </div>
+
               </div>
             )}
 
@@ -578,7 +576,14 @@ export default function TourCalculator() {
                     <div style={{fontWeight:700,fontSize:15,color:"white"}}>Estimated Total</div>
                     <div style={{fontWeight:800,fontSize:24,color:"#f0c060",fontFamily:"'Playfair Display'"}}>{fmtRs(grandTotal)}</div>
                   </div>
-                  <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:4}}>Includes approximate extras · Actual may vary</div>
+                  <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:6}}>
+                    <div style={{fontSize:11,color:"rgba(255,165,0,0.7)",padding:"7px 10px",background:"rgba(255,165,0,0.07)",borderRadius:6,lineHeight:1.6}}>
+                      🚧 Toll charges, parking fees &amp; government taxes are <b>not included</b> and will be charged extra as applicable.
+                    </div>
+                    <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",padding:"7px 10px",background:"rgba(255,255,255,0.04)",borderRadius:6,lineHeight:1.6}}>
+                      📏 Calculated distance is approximate and may vary by <b>±10 km</b>. Final fare will be adjusted proportionally based on actual distance travelled.
+                    </div>
+                  </div>
                 </div>
               </div>
 
