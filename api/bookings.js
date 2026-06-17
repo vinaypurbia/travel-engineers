@@ -281,7 +281,13 @@ function parseIdText(text) {
   };
 }
 
-// ── Upload ID image to Cloudinary (you already use Cloudinary!) ───────────────
+// ── Upload ID image to Cloudinary (signed upload — no preset required) ────────
+// Previously used upload_preset "ml_default", which only works if that exact
+// preset exists in the Cloudinary dashboard AND is set to "Unsigned". Most
+// accounts don't have it, so uploads were failing silently — the booking still
+// saved, the scan still showed extracted text, but idImageUrl was never set.
+// A signed upload only needs the API key/secret we already require above, so
+// it works regardless of any dashboard preset configuration.
 async function uploadIdToCloudinary(imageBase64, mimeType, customerName) {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   const apiKey    = process.env.CLOUDINARY_API_KEY;
@@ -289,15 +295,31 @@ async function uploadIdToCloudinary(imageBase64, mimeType, customerName) {
   if (!cloudName || !apiKey || !apiSecret) return { error: "Cloudinary not configured" };
 
   try {
+    const crypto = require("crypto");
     const dataUri = `data:${mimeType};base64,${imageBase64}`;
+    const folder    = "customer-ids";
+    const publicId  = `id_${Date.now()}_${(customerName || "customer").replace(/\s+/g, "_")}`;
+    const timestamp = Math.round(Date.now() / 1000);
+
+    // Cloudinary signed-upload rule: sign every param EXCEPT file/api_key/resource_type,
+    // sorted alphabetically as key=value pairs joined with &, with the api secret appended.
+    const paramsToSign = { folder, public_id: publicId, timestamp };
+    const sortedParamString = Object.keys(paramsToSign)
+      .sort()
+      .map(k => `${k}=${paramsToSign[k]}`)
+      .join("&");
+    const signature = crypto
+      .createHash("sha1")
+      .update(sortedParamString + apiSecret)
+      .digest("hex");
+
     const formData = new FormData();
     formData.append("file", dataUri);
-    formData.append("upload_preset", "ml_default"); // or your own unsigned preset
-    formData.append("folder", "customer-ids");
-    formData.append("public_id", `id_${Date.now()}_${(customerName || "customer").replace(/\s+/g, "_")}`);
-    // Quality 70 keeps text readable while cutting file size by ~60%
-    formData.append("quality", "70");
-    formData.append("fetch_format", "auto");
+    formData.append("api_key", apiKey);
+    formData.append("timestamp", String(timestamp));
+    formData.append("signature", signature);
+    formData.append("folder", folder);
+    formData.append("public_id", publicId);
 
     const res = await fetch(
       `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
@@ -305,11 +327,13 @@ async function uploadIdToCloudinary(imageBase64, mimeType, customerName) {
     );
     const data = await res.json();
     if (data.error) return { error: data.error.message };
+    if (!data.secure_url) return { error: "Cloudinary upload returned no URL" };
     return { url: data.secure_url, publicId: data.public_id };
   } catch (err) {
     return { error: err.message };
   }
 }
+
 
 // ── Upsert customer record from a booking ────────────────────────────────────
 async function upsertCustomerFromBooking(booking) {
@@ -379,12 +403,14 @@ module.exports = async (req, res) => {
 
     // 2. Optionally upload the image to Cloudinary (for record keeping)
     let imageUrl = null;
+    let imageUploadError = null;
     if (uploadImage !== false) { // default: always upload
       const uploaded = await uploadIdToCloudinary(imageBase64, mimeType || "image/jpeg", customerName || "customer");
       if (uploaded.url) imageUrl = uploaded.url;
+      else imageUploadError = uploaded.error || "Image upload failed for an unknown reason";
     }
 
-    return res.json({ ...scanResult, imageUrl });
+    return res.json({ ...scanResult, imageUrl, imageUploadError });
   }
 
   try {
