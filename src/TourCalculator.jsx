@@ -42,15 +42,35 @@ async function getRoute(waypoints) {
   if (waypoints.length < 2) return null;
   const coords = waypoints.map(w => `${w[1]},${w[0]}`).join(";");
   const r = await fetch(
-    `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`
+    `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=true&annotations=false`
   );
   const d = await r.json();
   if (d.code !== "Ok") return null;
   const route = d.routes[0];
+  const legs = route.legs || [];
+  // Split geometry into outbound (first half of legs) and return (last leg) for two-tone display
+  const midLeg = Math.floor(legs.length / 2);
+  let outCoords = [], retCoords = [];
+  legs.forEach((leg, i) => {
+    const pts = (leg.steps || []).flatMap(s =>
+      (s.geometry?.coordinates || []).map(c => [c[1], c[0]])
+    );
+    if (i < legs.length - 1) outCoords.push(...pts);
+    else retCoords.push(...pts);
+  });
+  // Fallback: use full geometry split in half if steps are empty
+  if (outCoords.length === 0) {
+    const full = route.geometry.coordinates.map(c => [c[1], c[0]]);
+    const half = Math.floor(full.length / 2);
+    outCoords = full.slice(0, half + 1);
+    retCoords = full.slice(half);
+  }
   return {
     distanceKm: route.distance / 1000,
     durationMin: route.duration / 60,
-    geometry: route.geometry.coordinates.map(c => [c[1], c[0]]),
+    geometry:    route.geometry.coordinates.map(c => [c[1], c[0]]),
+    outCoords,
+    retCoords,
   };
 }
 
@@ -96,7 +116,7 @@ Respond in this EXACT JSON format only, no markdown:
 }
 
 // ─── Map component (loaded dynamically to avoid SSR issues) ───────────────────
-function RouteMap({ stops, routeCoords, onMapClick, center }) {
+function RouteMap({ stops, route, routeCoords, onMapClick, center }) {
   const mapRef   = useRef(null);
   const leafRef  = useRef(null);
   const layerRef = useRef(null);
@@ -169,18 +189,23 @@ function RouteMap({ stops, routeCoords, onMapClick, center }) {
     }
   }, [stops]);
 
-  // Update route polyline
+  // Update route polyline — gold outbound, blue return
   useEffect(() => {
     const L = leafRef.current, map = mapRef.current;
     if (!L || !map) return;
-    if (layerRef.current) layerRef.current.remove();
-    if (routeCoords && routeCoords.length > 1) {
-      layerRef.current = L.polyline(routeCoords, {
-        color: "#d4850a", weight: 4, opacity: 0.8, dashArray: null,
-      }).addTo(map);
-      map.fitBounds(layerRef.current.getBounds(), { padding: [32, 32] });
+    if (layerRef.current) { layerRef.current.forEach?.(l => l.remove()); layerRef.current = null; }
+    if (route && routeCoords && routeCoords.length > 1) {
+      const out = route.outCoords?.length > 1 ? route.outCoords : routeCoords;
+      const ret = route.retCoords?.length > 1 ? route.retCoords : [];
+      const outLine = L.polyline(out, { color: "#d4850a", weight: 5, opacity: 0.9 }).addTo(map);
+      const retLine = ret.length > 1
+        ? L.polyline(ret, { color: "#60a5fa", weight: 5, opacity: 0.9, dashArray: "8,6" }).addTo(map)
+        : null;
+      layerRef.current = [outLine, retLine].filter(Boolean);
+      const bounds = L.latLngBounds(routeCoords);
+      map.fitBounds(bounds, { padding: [32, 32] });
     }
-  }, [routeCoords]);
+  }, [route, routeCoords]);
 
   return (
     <div id="te-tour-map" style={{width:"100%",height:"100%",borderRadius:12,overflow:"hidden"}}/>
@@ -446,13 +471,28 @@ export default function TourCalculator() {
           </div>
 
           {/* Map */}
-          <div className="tc-map-col" style={{flex:1,height:480,borderRadius:14,overflow:"hidden",border:"1px solid rgba(255,255,255,0.08)"}}>
-            <RouteMap
-              stops={stops}
-              routeCoords={route?.geometry}
-              onMapClick={handleMapClick}
-              center={[24.5854, 73.7125]}
-            />
+          <div className="tc-map-col" style={{flex:1,borderRadius:14,overflow:"visible",display:"flex",flexDirection:"column",gap:8}}>
+            <div style={{height:480,borderRadius:14,overflow:"hidden",border:"1px solid rgba(255,255,255,0.08)"}}>
+              <RouteMap
+                stops={stops}
+                route={route}
+                routeCoords={route?.geometry}
+                onMapClick={handleMapClick}
+                center={[24.5854, 73.7125]}
+              />
+            </div>
+            {route && (
+              <div style={{display:"flex",gap:16,justifyContent:"center",fontSize:12,color:"rgba(255,255,255,0.55)",fontFamily:"'DM Sans'"}}>
+                <span style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{display:"inline-block",width:24,height:4,background:"#d4850a",borderRadius:2}}/>
+                  Outbound journey
+                </span>
+                <span style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{display:"inline-block",width:24,height:4,background:"#60a5fa",borderRadius:2,borderTop:"2px dashed #60a5fa"}}/>
+                  Return journey
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
