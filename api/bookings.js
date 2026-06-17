@@ -768,35 +768,36 @@ module.exports = async (req, res) => {
       });
     }
 
-    // ── POST ?regen_accounting=true — create missing accounting entries for walk-ins ──
+    // ── POST ?regen_accounting=true — TRUE regenerate ──────────────────────────
+    // Deletes ALL accounting entries linked to any booking, then rebuilds every
+    // walk-in booking's accounting entry fresh based on CURRENT booking data.
+    // This guarantees entries always match the latest booking amounts/details,
+    // instead of just filling gaps like the old "skip if exists" version did.
     if (req.method === "POST" && req.query?.regen_accounting === "true") {
       const { connectDB: _, Transaction } = require("./_db");
 
-      // Get all walk-in bookings
+      // Step 1 — delete ALL existing accounting entries linked to a booking
+      // (they'll be rebuilt fresh from current booking data below)
+      const deleteResult = await Transaction.deleteMany({
+        linkedBookingId: { $exists: true, $ne: "" }
+      });
+
+      // Step 2 — rebuild fresh entries for every walk-in booking
       const walkins = await Booking.find({ source: "walkin" }).lean();
 
-      // Get all existing accounting entries that are linked to a booking
-      const existing = await Transaction.find({
-        linkedBookingId: { $exists: true, $ne: "" }
-      }, "linkedBookingId").lean();
-      const existingIds = new Set(existing.map(e => String(e.linkedBookingId)));
-
-      let created = 0, skipped = 0, noAmount = 0;
+      let created = 0, noAmount = 0;
 
       for (const b of walkins) {
         const bid = String(b._id);
 
-        // Skip if accounting entry already exists for this booking
-        if (existingIds.has(bid)) { skipped++; continue; }
-
-        // Calculate amount
+        // Calculate amount from CURRENT booking data
         const ppd  = Number(b.pricePerDay) || 0;
         const days = (b.checkIn && b.checkOut)
           ? Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5))
           : 1;
         const amt  = ppd * days;
 
-        // Skip if we have no price info at all
+        // Skip if no price info at all — nothing meaningful to record
         if (amt <= 0) { noAmount++; continue; }
 
         await Transaction.create({
@@ -817,8 +818,8 @@ module.exports = async (req, res) => {
 
       return res.json({
         success: true,
-        message: `Done. ${created} entries created, ${skipped} already existed, ${noAmount} skipped (no price data).`,
-        created, skipped, noAmount, total: walkins.length,
+        message: `Regenerated. ${deleteResult.deletedCount} old entries removed, ${created} fresh entries created, ${noAmount} skipped (no price data).`,
+        deleted: deleteResult.deletedCount, created, noAmount, total: walkins.length,
       });
     }
 
