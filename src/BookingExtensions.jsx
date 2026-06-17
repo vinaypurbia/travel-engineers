@@ -655,48 +655,25 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
     custTimer.current = setTimeout(async () => {
       setCustLoading(true);
       try {
-        // Use customers endpoint — has idImageUrl, idType, idNumber, nationality etc.
         const res = await fetch(`/api/bookings?resource=customers&q=${encodeURIComponent(q)}`).then(r => r.json());
         const list = Array.isArray(res) ? res : (res.customers || []);
-        // Map customer fields to booking-like shape for selectCustomer
-        // For each customer missing idImageUrl, fetch their latest booking to get it
-        const mapped = await Promise.all(
-          list.filter(c => c.name && c.name !== "Walk-in Customer").map(async c => {
-            let idImageUrl = c.idImageUrl || "";
-            let idType     = c.idType    || "";
-            let idNumber   = c.idNumber  || "";
-            // If customer record has no idImageUrl, pull from their own booking history.
-            // Uses the phone-scoped customers endpoint (?resource=customers&phone=xxx),
-            // which returns ONLY this customer's bookings — never another customer's.
-            if (!idImageUrl && c.phone) {
-              try {
-                const detail = await fetch(`/api/bookings?resource=customers&phone=${encodeURIComponent(c.phone)}`).then(r => r.json());
-                const bookings = Array.isArray(detail?.bookings) ? detail.bookings : [];
-                const latest = bookings.find(b => b.idImageUrl);
-                if (latest) {
-                  idImageUrl = latest.idImageUrl || "";
-                  idType     = idType     || latest.idType   || "";
-                  idNumber   = idNumber   || latest.idNumber || "";
-                }
-              } catch {}
-            }
-            return {
-              customerName: c.name,
-              phone:        c.phone,
-              email:        c.email,
-              nationality:  c.nationality,
-              idType,
-              idNumber,
-              idImageUrl,
-              dateOfBirth:  c.dateOfBirth,
-              gender:       c.gender,
-              address:      c.address,
-              stayAddress:  c.lastStayAddress || "",
-              vehicleName:  c.lastVehicle || "",
-              checkIn:      c.lastBooking || "",
-            };
-          })
-        );
+        const mapped = list
+          .filter(c => c.name && c.name !== "Walk-in Customer")
+          .map(c => ({
+            customerName: c.name,
+            phone:        c.phone        || "",
+            email:        c.email        || "",
+            nationality:  c.nationality  || "",
+            idType:       c.idType       || "",
+            idNumber:     c.idNumber     || "",
+            idImageUrl:   c.idImageUrl   || "",
+            dateOfBirth:  c.dateOfBirth  || "",
+            gender:       c.gender       || "",
+            address:      c.address      || "",
+            stayAddress:  c.lastStayAddress || "",
+            vehicleName:  c.lastVehicle  || "",
+            checkIn:      c.lastBooking  || "",
+          }));
         setCustResults(mapped.slice(0, 8));
         setCustDropOpen(mapped.length > 0);
       } catch(e) { setCustResults([]); }
