@@ -465,7 +465,15 @@ module.exports = async (req, res) => {
         });
       }
 
-      // GET ?resource=customers — list all customers, searchable
+      // GET ?resource=customers&phone=xxx — single customer + their bookings (MUST be before general GET)
+      if (req.method === "GET" && req.query?.phone) {
+        const customer = await Customer.findOne({ phone: req.query.phone }).lean();
+        const bookings = await Booking.find({ phone: req.query.phone }).sort({ createdAt: -1 }).lean();
+        if (!customer) return res.json({ customer: null, bookings });
+        return res.json({ customer, bookings });
+      }
+
+      // GET ?resource=customers — list all customers, searchable, enriched with idImageUrl from bookings
       if (req.method === "GET") {
         const q = req.query?.q || "";
         const filter = q ? {
@@ -476,17 +484,23 @@ module.exports = async (req, res) => {
             { idNumber:{ $regex: q, $options: "i" } },
           ]
         } : {};
-        const customers = await Customer.find(filter).sort({ lastBooking: -1 });
-        return res.json({ customers, total: customers.length });
+        const customers = await Customer.find(filter).sort({ lastBooking: -1 }).lean();
+        // Enrich each customer with idImageUrl from their most recent booking that has one
+        const enriched = await Promise.all(customers.map(async (c) => {
+          if (c.idImageUrl) return c;
+          const b = await Booking.findOne({ phone: c.phone, idImageUrl: { $exists: true, $ne: "" } })
+            .sort({ createdAt: -1 }).select("idImageUrl idType idNumber").lean();
+          return {
+            ...c,
+            idImageUrl: b?.idImageUrl || "",
+            idType:     c.idType   || b?.idType   || "",
+            idNumber:   c.idNumber || b?.idNumber || "",
+          };
+        }));
+        return res.json({ customers: enriched, total: enriched.length });
       }
 
-      // GET ?resource=customers&phone=xxx — single customer + their bookings
-      if (req.method === "GET" && req.query?.phone) {
-        const customer = await Customer.findOne({ phone: req.query.phone }).lean();
-        if (!customer) return res.status(404).json({ error: "Customer not found" });
-        const bookings = await Booking.find({ phone: req.query.phone }).sort({ createdAt: -1 }).lean();
-        return res.json({ customer, bookings });
-      }
+      // GET ?resource=customers&phone=xxx — REMOVED (handled above)
 
       // PUT ?resource=customers&id=xxx — update customer manually
       if (req.method === "PUT" && req.query?.id) {
