@@ -38,37 +38,45 @@ async function geocode(query) {
 }
 
 // ─── Route via OSRM ──────────────────────────────────────────────────────────
-async function getRoute(waypoints) {
-  if (waypoints.length < 2) return null;
-  const coords = waypoints.map(w => `${w[1]},${w[0]}`).join(";");
+// Fetch one leg: point A → point B, return shortest route
+async function fetchLeg(from, to) {
+  const coords = `${from[1]},${from[0]};${to[1]},${to[0]}`;
   const r = await fetch(
-    `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=true&annotations=false`
+    `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&alternatives=true`
   );
   const d = await r.json();
   if (d.code !== "Ok") return null;
-  const route = d.routes[0];
-  const legs = route.legs || [];
-  // Split geometry into outbound (first half of legs) and return (last leg) for two-tone display
-  const midLeg = Math.floor(legs.length / 2);
-  let outCoords = [], retCoords = [];
-  legs.forEach((leg, i) => {
-    const pts = (leg.steps || []).flatMap(s =>
-      (s.geometry?.coordinates || []).map(c => [c[1], c[0]])
-    );
-    if (i < legs.length - 1) outCoords.push(...pts);
-    else retCoords.push(...pts);
-  });
-  // Fallback: use full geometry split in half if steps are empty
-  if (outCoords.length === 0) {
-    const full = route.geometry.coordinates.map(c => [c[1], c[0]]);
-    const half = Math.floor(full.length / 2);
-    outCoords = full.slice(0, half + 1);
-    retCoords = full.slice(half);
-  }
+  // Pick the shortest route among alternatives (most cost-effective for customer)
+  const best = (d.routes || []).reduce((a, b) => a.distance <= b.distance ? a : b);
   return {
-    distanceKm: route.distance / 1000,
-    durationMin: route.duration / 60,
-    geometry:    route.geometry.coordinates.map(c => [c[1], c[0]]),
+    distanceKm: best.distance / 1000,
+    durationMin: best.duration / 60,
+    coords: best.geometry.coordinates.map(c => [c[1], c[0]]),
+  };
+}
+
+async function getRoute(waypoints) {
+  if (waypoints.length < 2) return null;
+  // Fetch each leg separately — gives more accurate per-segment routing
+  const legPromises = [];
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    legPromises.push(fetchLeg(waypoints[i], waypoints[i + 1]));
+  }
+  const legs = await Promise.all(legPromises);
+  if (legs.some(l => l === null)) return null;
+
+  const totalDistanceKm = legs.reduce((sum, l) => sum + l.distanceKm, 0);
+  const totalDurationMin = legs.reduce((sum, l) => sum + l.durationMin, 0);
+
+  // Outbound = all legs except last; return = last leg (back to Udaipur)
+  const outCoords = legs.slice(0, -1).flatMap(l => l.coords);
+  const retCoords = legs[legs.length - 1].coords;
+  const geometry  = legs.flatMap(l => l.coords);
+
+  return {
+    distanceKm: totalDistanceKm,
+    durationMin: totalDurationMin,
+    geometry,
     outCoords,
     retCoords,
   };
