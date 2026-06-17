@@ -210,6 +210,12 @@ function ScanPanel({ customerName, onScanned, onImageUrl }) {
         setScanError(result.error);
       } else {
         if (result.imageUrl && onImageUrl) onImageUrl(result.imageUrl);
+        if (result.imageUploadError) {
+          // Scan text succeeded but the photo itself failed to save — this must
+          // be visible, otherwise idType/idNumber look fine while idImageUrl
+          // silently stays empty.
+          setScanError("⚠️ ID details extracted, but the photo failed to save: " + result.imageUploadError);
+        }
         if (onScanned) onScanned(result);
       }
     } catch (err) {
