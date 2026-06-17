@@ -38,87 +38,29 @@ async function geocode(query) {
 }
 
 // ─── Route via OSRM ──────────────────────────────────────────────────────────
-// Fetch one leg using Valhalla (more accurate for Indian roads, free, no key needed)
-async function fetchLeg(from, to) {
-  const body = {
-    locations: [
-      { lon: from[1], lat: from[0], type: "break" },
-      { lon: to[1],   lat: to[0],   type: "break" },
-    ],
-    costing: "auto",
-    costing_options: { auto: { use_highways: 1, use_tolls: 0.5 } },
-    directions_options: { units: "km" },
-  };
-  try {
-    const r = await fetch("https://valhalla1.openstreetmap.de/route", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const d = await r.json();
-    if (!d.trip) throw new Error("No trip");
-    const leg = d.trip.legs[0];
-    // Decode the encoded polyline shape
-    const coords = decodePolyline(leg.shape, 6);
-    return {
-      distanceKm: d.trip.summary.length,
-      durationMin: d.trip.summary.time / 60,
-      coords,
-    };
-  } catch {
-    // Fallback to OSRM if Valhalla fails
-    const coords2 = `${from[1]},${from[0]};${to[1]},${to[0]}`;
-    const r2 = await fetch(`https://router.project-osrm.org/route/v1/driving/${coords2}?overview=full&geometries=geojson`);
-    const d2 = await r2.json();
-    if (d2.code !== "Ok") return null;
-    return {
-      distanceKm: d2.routes[0].distance / 1000,
-      durationMin: d2.routes[0].duration / 60,
-      coords: d2.routes[0].geometry.coordinates.map(c => [c[1], c[0]]),
-    };
-  }
-}
-
-// Decode Valhalla's encoded polyline (precision 6)
-function decodePolyline(encoded, precision = 6) {
-  const factor = Math.pow(10, precision);
-  const result = [];
-  let lat = 0, lng = 0, i = 0;
-  while (i < encoded.length) {
-    let b, shift = 0, result2 = 0;
-    do { b = encoded.charCodeAt(i++) - 63; result2 |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
-    lat += (result2 & 1) ? ~(result2 >> 1) : (result2 >> 1);
-    shift = 0; result2 = 0;
-    do { b = encoded.charCodeAt(i++) - 63; result2 |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
-    lng += (result2 & 1) ? ~(result2 >> 1) : (result2 >> 1);
-    result.push([lat / factor, lng / factor]);
-  }
-  return result;
-}
-
 async function getRoute(waypoints) {
   if (waypoints.length < 2) return null;
-  const legPromises = [];
-  for (let i = 0; i < waypoints.length - 1; i++) {
-    legPromises.push(fetchLeg(waypoints[i], waypoints[i + 1]));
-  }
-  const legs = await Promise.all(legPromises);
-  if (legs.some(l => l === null)) return null;
-
-  const totalDistanceKm = legs.reduce((sum, l) => sum + l.distanceKm, 0);
-  const totalDurationMin = legs.reduce((sum, l) => sum + l.durationMin, 0);
-
-  // Outbound = all legs except last; return = last leg (back to Udaipur)
-  const outCoords = legs.slice(0, -1).flatMap(l => l.coords);
-  const retCoords = legs[legs.length - 1].coords;
-  const geometry  = legs.flatMap(l => l.coords);
-
+  const coords = waypoints.map(w => `${w[1]},${w[0]}`).join(";");
+  const r = await fetch(
+    `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=true`
+  );
+  const d = await r.json();
+  if (d.code !== "Ok") return null;
+  const route = d.routes[0];
+  const legs = route.legs || [];
+  const outCoords = legs.slice(0, -1).flatMap(leg =>
+    (leg.steps || []).flatMap(s => (s.geometry?.coordinates || []).map(c => [c[1], c[0]]))
+  );
+  const retCoords = (legs[legs.length - 1]?.steps || []).flatMap(s =>
+    (s.geometry?.coordinates || []).map(c => [c[1], c[0]])
+  );
+  const full = route.geometry.coordinates.map(c => [c[1], c[0]]);
   return {
-    distanceKm: totalDistanceKm,
-    durationMin: totalDurationMin,
-    geometry,
-    outCoords,
-    retCoords,
+    distanceKm: route.distance / 1000,
+    durationMin: route.duration / 60,
+    geometry:    full,
+    outCoords:   outCoords.length > 1 ? outCoords : full.slice(0, Math.floor(full.length / 2) + 1),
+    retCoords:   retCoords.length > 1 ? retCoords : full.slice(Math.floor(full.length / 2)),
   };
 }
 
@@ -508,8 +450,8 @@ export default function TourCalculator() {
                     <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1.5,marginTop:2}}>Est. drive time</div>
                   </div>
                 </div>
-                <div style={{marginTop:10,fontSize:11,color:"rgba(255,255,255,0.25)",textAlign:"center",lineHeight:1.5}}>
-                  ↕ Return route overlaps outbound on map (same road both ways)
+                <div style={{marginTop:10,fontSize:11,color:"rgba(255,255,255,0.3)",textAlign:"center",lineHeight:1.6,padding:"6px 10px",background:"rgba(255,255,255,0.04)",borderRadius:6}}>
+                  ⚠️ Approximate distance — actual may vary by ±10 km depending on route taken
                 </div>
               </div>
             )}
