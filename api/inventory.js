@@ -79,6 +79,7 @@ module.exports = async (req, res) => {
           type: "vehicle",
           vehicleType: r.type,
           name: r.name,
+          vehicleNo: r.vehicleNo || "",
           description: r.description || "",
           status: !r.available ? "maintenance" : isBookedNow ? "booked" : "available",
           pricePerDay: parseFloat((r.price || "0").replace(/[^\d.]/g, "")) || 0,
