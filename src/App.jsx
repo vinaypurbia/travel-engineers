@@ -18,7 +18,7 @@ const api = {
 
 // ─── CSV helpers (bookings import / export) ───────────────────────────────────
 const BOOKING_CSV_HEADERS = [
-  "customerName","phone","email","vehicleName","checkIn","checkOut",
+  "customerName","phone","email","vehicleName","vehicleNumber","checkIn","checkOut",
   "stayAddress","notes","status","source","pricePerDay","receivedAmount",
   "paymentMethod","idType","idNumber","nationality","dateOfBirth","gender",
   "address","createdAt",
@@ -3609,7 +3609,7 @@ const STATUS_CONFIG = {
 // ─── Import Bookings Modal (CSV) ────────────────────────────────────────────
 const VALID_BOOKING_STATUSES = ["pending","payment_requested","confirmed","cancelled","completed"];
 
-function ImportBookingsModal({ onClose, api, reload }) {
+function ImportBookingsModal({ onClose, api, reload, rentals=[] }) {
   const fileRef = useRef(null);
   const [fileName, setFileName] = useState("");
   const [rows, setRows] = useState([]);
@@ -3651,15 +3651,31 @@ function ImportBookingsModal({ onClose, api, reload }) {
         if (!r.customerName?.trim()) throw new Error("Missing customerName");
         if (!r.phone?.trim()) throw new Error("Missing phone");
         const source = (r.source || "walkin").toLowerCase() === "online" ? "online" : "walkin";
+
+        // Booking has no vehicleNo field of its own — it lives on the linked
+        // Rental. Try to match a rental by registration number; if none
+        // matches, keep the number from being silently dropped by folding it
+        // into notes (same legacy format getVehicleNo() already parses back out).
+        let vehicleId = null;
+        let notes = r.notes || "";
+        if (r.vehicleNumber?.trim()) {
+          const match = rentals.find(rt => (rt.vehicleNo||"").trim().toLowerCase() === r.vehicleNumber.trim().toLowerCase());
+          if (match) vehicleId = match._id;
+          else if (!notes.includes(r.vehicleNumber.trim())) {
+            notes = notes ? `${notes} | Vehicle: ${r.vehicleNumber.trim()}` : `Vehicle: ${r.vehicleNumber.trim()}`;
+          }
+        }
+
         const created = await api.post("/bookings", {
           customerName: r.customerName,
           phone: r.phone,
           email: r.email || null,
           vehicleName: r.vehicleName || "",
+          vehicleId,
           checkIn:  r.checkIn  ? new Date(r.checkIn).toISOString()  : null,
           checkOut: r.checkOut ? new Date(r.checkOut).toISOString() : null,
           stayAddress: r.stayAddress || "",
-          notes: r.notes || "",
+          notes,
           pricePerDay: Number(r.pricePerDay) || 0,
           idType: r.idType || null,
           idNumber: r.idNumber || null,
@@ -3707,7 +3723,7 @@ function ImportBookingsModal({ onClose, api, reload }) {
             <>
               <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",lineHeight:1.6,marginBottom:16}}>
                 Required columns: <strong style={{color:"#f0c060"}}>customerName</strong>, <strong style={{color:"#f0c060"}}>phone</strong>.
-                Optional: vehicleName, checkIn/checkOut (YYYY-MM-DD), stayAddress, notes, pricePerDay, receivedAmount,
+                Optional: vehicleName, vehicleNumber, checkIn/checkOut (YYYY-MM-DD), stayAddress, notes, pricePerDay, receivedAmount,
                 paymentMethod, status, source (online/walkin), idType, idNumber, nationality, dateOfBirth, gender, address.
                 <br/>Leave <strong>source</strong> blank for past/offline bookings — "online" triggers the usual notification email.
               </div>
@@ -3787,6 +3803,19 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
     if (b.pricePerDay > 0) return b.pricePerDay;
     const rental = rentals.find(r => r._id === b.vehicleId);
     return rental ? (Number(rental.price) || 0) : 0;
+  };
+  // Vehicle registration/fleet number isn't stored on the booking itself —
+  // it lives on the linked Rental record. For old register-imported bookings
+  // with no rental link, fall back to parsing it out of vehicleName/notes
+  // (legacy format: vehicleName "Vehicle 9659", notes "...Vehicle: 9659...").
+  const getVehicleNo = (b) => {
+    const rental = rentals.find(r => String(r._id) === String(b.vehicleId));
+    if (rental?.vehicleNo) return rental.vehicleNo;
+    const nameMatch = (b.vehicleName || "").match(/Vehicle\s*#?\s*([A-Za-z0-9-]+)/i);
+    if (nameMatch) return nameMatch[1];
+    const notesMatch = (b.notes || "").match(/Vehicle:\s*([A-Za-z0-9-]+)/i);
+    if (notesMatch) return notesMatch[1];
+    return "";
   };
   const [filter, setFilter]   = useState("all");
   const [sourceTab, setSourceTab] = useState("all"); // all | online | walkin
@@ -3991,7 +4020,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>{bookings.length} total · {counts.pending} pending action</p>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <button onClick={()=>downloadTextFile(`bookings-export-${new Date().toISOString().slice(0,10)}.csv`, bookingsToCSV(filtered))}
+          <button onClick={()=>downloadTextFile(`bookings-export-${new Date().toISOString().slice(0,10)}.csv`, bookingsToCSV(filtered.map(b => ({ ...b, vehicleNumber: getVehicleNo(b) }))))}
             disabled={filtered.length===0}
             style={{padding:"10px 16px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:10,color: filtered.length ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.25)",fontWeight:600,fontSize:13,cursor: filtered.length ? "pointer" : "not-allowed",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
             ⬇ Export ({filtered.length})
@@ -4371,6 +4400,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
         <ImportBookingsModal
           api={api}
           reload={reload}
+          rentals={data.rentals || rentals || []}
           onClose={()=>setShowImportModal(false)}
         />
       )}
