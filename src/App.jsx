@@ -3902,6 +3902,32 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
     if (notesMatch) return notesMatch[1];
     return "";
   };
+
+  // Returns a conflict object if the vehicle is already booked for the given dates,
+  // or null if it's free. Used by ManualBookingModal to warn before submitting.
+  const checkConflict = (vehicleId, checkIn, checkOut) => {
+    if (!vehicleId || !checkIn || !checkOut) return null;
+    const newFrom = new Date(checkIn);
+    const newTo   = new Date(checkOut);
+    const activeStatuses = ["pending", "confirmed", "payment_requested", "completed"];
+    const conflict = bookings.find(b => {
+      if (String(b.vehicleId) !== String(vehicleId)) return false;
+      if (!activeStatuses.includes(b.status)) return false;
+      if (!b.checkIn || !b.checkOut) return false;
+      const bFrom = new Date(b.checkIn);
+      const bTo   = new Date(b.checkOut);
+      // Overlap: new period starts before existing ends AND ends after existing starts
+      return newFrom < bTo && newTo > bFrom;
+    });
+    if (!conflict) return null;
+    return {
+      customerName: conflict.customerName,
+      checkIn:      conflict.checkIn,
+      checkOut:     conflict.checkOut,
+      status:       conflict.status,
+      bookingId:    String(conflict._id),
+    };
+  };
   const [filter, setFilter]   = useState("all");
   const [sourceTab, setSourceTab] = useState("all"); // all | online | walkin
   const [search, setSearch]   = useState("");
@@ -4508,6 +4534,8 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
       {showManualModal && (
         <ManualBookingModal
           rentals={data.rentals || rentals || []}
+          bookings={bookings}
+          checkConflict={checkConflict}
           onClose={()=>setShowManualModal(false)}
           onCreated={async (booking)=>{
             setShowManualModal(false);
