@@ -631,7 +631,7 @@ export function CustomerIdPanel({ booking, onUpdated }) {
 // ManualBookingModal
 // 3-step walk-in booking form for admin
 // ─────────────────────────────────────────────────────────────────────────────
-export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
+export function ManualBookingModal({ rentals = [], onClose, onCreated, checkConflict }) {
   const today = new Date().toISOString().slice(0, 10);
 
   const [step, setStep] = useState("details"); // details | id | confirm
@@ -639,6 +639,7 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
   const [error, setError] = useState("");
   const [scanDone, setScanDone] = useState(false);
   const [replaceId, setReplaceId] = useState(false); // toggle replace ID panel
+  const [conflict, setConflict] = useState(null); // booking conflict for selected vehicle+dates
 
   // ── Customer search ────────────────────────────────────────────────────────
   const [custSearch, setCustSearch]   = useState("");
@@ -720,17 +721,21 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
   const priceNum = Number(form.pricePerDay) || 0;
   const total = priceNum * days;
 
+  const updateConflict = (vid, ci, co) => {
+    if (checkConflict) setConflict(checkConflict(vid, ci, co));
+    else setConflict(null);
+  };
+
   const selectVehicle = (vehicleId) => {
-    if (vehicleId === "__custom__") { set("vehicleId", "__custom__"); set("vehicleName", ""); set("vehicleNumber", ""); return; }
+    if (vehicleId === "__custom__") { set("vehicleId", "__custom__"); set("vehicleName", ""); set("vehicleNumber", ""); setConflict(null); return; }
     const r = available.find(r => r._id === vehicleId);
     if (r) {
       const price = r.price ? Number(String(r.price).replace(/[^0-9.]/g, "")) : 0;
-      // Extract vehicle number from name e.g. "Activa #9654" → "9654"
-      // or from a dedicated vehicleNo / registrationNo field if it exists
       const numFromName = (r.vehicleNo || r.registrationNo || r.vehicleNumber || "");
       const numFromHash = !numFromName ? ((r.name||"").match(/#([A-Z0-9\s]+)/i)||[])[1]?.trim() || "" : "";
       const vehicleNumber = numFromName || numFromHash;
       setForm(f => ({ ...f, vehicleId, vehicleName: r.name, pricePerDay: price ? String(price) : f.pricePerDay, vehicleNumber: vehicleNumber || f.vehicleNumber }));
+      updateConflict(vehicleId, form.checkIn, form.checkOut);
     }
   };
 
@@ -915,11 +920,11 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
                 <div>
                   <label style={lbl}>Check-in *</label>
-                  <input type="date" style={{ ...inp, colorScheme: "dark" }} value={form.checkIn} onChange={e => set("checkIn", e.target.value)} />
+                  <input type="date" style={{ ...inp, colorScheme: "dark" }} value={form.checkIn} onChange={e => { set("checkIn", e.target.value); updateConflict(form.vehicleId, e.target.value, form.checkOut); }} />
                 </div>
                 <div>
                   <label style={lbl}>Check-out *</label>
-                  <input type="date" style={{ ...inp, colorScheme: "dark" }} value={form.checkOut} min={form.checkIn || ""} onChange={e => set("checkOut", e.target.value)} />
+                  <input type="date" style={{ ...inp, colorScheme: "dark" }} value={form.checkOut} min={form.checkIn || ""} onChange={e => { set("checkOut", e.target.value); updateConflict(form.vehicleId, form.checkIn, e.target.value); }} />
                 </div>
                 <div>
                   <label style={lbl}>Price per Day (₹)</label>
@@ -935,6 +940,29 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
                 </div>
               </div>
 
+              {/* ── Conflict Warning ── */}
+              {conflict && (
+                <div style={{ background: "rgba(255,80,80,0.1)", border: "1px solid rgba(255,80,80,0.4)", borderRadius: 10, padding: "12px 16px", marginBottom: 14, display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <span style={{ fontSize: 22, flexShrink: 0 }}>⚠️</span>
+                  <div>
+                    <div style={{ fontWeight: 700, color: "#ff6b6b", fontSize: 13, marginBottom: 4 }}>
+                      This vehicle is already booked for these dates!
+                    </div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", lineHeight: 1.6 }}>
+                      Booked by <strong style={{ color: "white" }}>{conflict.customerName}</strong>
+                      {" · "}
+                      {new Date(conflict.checkIn).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                      {" → "}
+                      {new Date(conflict.checkOut).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                      <span style={{ marginLeft: 6, background: "rgba(255,80,80,0.2)", padding: "1px 7px", borderRadius: 6, fontSize: 11, textTransform: "capitalize" }}>{conflict.status}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 4 }}>
+                      Change the vehicle or adjust the dates to proceed.
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div style={{ marginBottom: 14 }}>
                 <label style={lbl}>Hotel / Stay Address</label>
                 <input style={inp} value={form.stayAddress} onChange={e => set("stayAddress", e.target.value)} placeholder="Hotel name, area" />
@@ -944,8 +972,8 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated }) {
                 <textarea rows={2} style={{ ...inp, resize: "vertical", lineHeight: 1.6 }} value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="Any remarks…" />
               </div>
 
-              <button onClick={() => setStep("id")} style={{ width: "100%", padding: "12px", borderRadius: 10, background: "rgba(212,133,10,0.15)", border: "1px solid rgba(212,133,10,0.3)", color: "#f0c060", cursor: "pointer", fontFamily: "'DM Sans'", fontWeight: 600, fontSize: 14 }}>
-                Next: Scan Customer ID →
+              <button onClick={() => setStep("id")} disabled={!!conflict} style={{ width: "100%", padding: "12px", borderRadius: 10, background: conflict ? "rgba(255,80,80,0.08)" : "rgba(212,133,10,0.15)", border: `1px solid ${conflict ? "rgba(255,80,80,0.3)" : "rgba(212,133,10,0.3)"}`, color: conflict ? "#ff6b6b" : "#f0c060", cursor: conflict ? "not-allowed" : "pointer", fontFamily: "'DM Sans'", fontWeight: 600, fontSize: 14, opacity: conflict ? 0.6 : 1 }}>
+                {conflict ? "⚠️ Resolve conflict to continue" : "Next: Scan Customer ID →"}
               </button>
             </div>
           )}
