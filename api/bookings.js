@@ -878,22 +878,31 @@ module.exports = async (req, res) => {
       });
     }
 
-    // ── POST ?regen_accounting=true — TRUE regenerate, ALL bookings ────────────
-    // Deletes ALL accounting entries linked to any booking, then rebuilds an
-    // entry for EVERY booking in the system — no filtering by source, no
-    // skipping for missing price. Missing price just records as ₹0 so every
-    // booking is represented and visible in accounting.
+    // ── POST ?regen_accounting=true — regenerate entries for bookings ────────────
+    // Deletes and rebuilds entries for bookings in the given date range.
+    // Optional: ?from=YYYY-MM-DD&to=YYYY-MM-DD — limit to bookings in that range.
+    // If no range given, all bookings are processed.
     if (req.method === "POST" && req.query?.regen_accounting === "true") {
       const { connectDB: _, Transaction } = require("./_db");
 
-      // Step 1 — delete ALL existing accounting entries linked to a booking
-      // (they'll be rebuilt fresh from current booking data below)
-      const deleteResult = await Transaction.deleteMany({
-        linkedBookingId: { $exists: true, $ne: "" }
-      });
+      // Optional date range filter (based on checkIn date)
+      const fromDate = req.query?.from ? new Date(req.query.from) : null;
+      const toDate   = req.query?.to   ? new Date(req.query.to + "T23:59:59.999Z") : null;
+      const isFiltered = !!(fromDate || toDate);
 
-      // Step 2 — rebuild an entry for every booking, regardless of source
-      const allBookings = await Booking.find({}).lean();
+      const bookingQuery = isFiltered ? {
+        checkIn: {
+          ...(fromDate ? { $gte: fromDate } : {}),
+          ...(toDate   ? { $lte: toDate   } : {}),
+        }
+      } : {};
+
+      // Step 1 — delete ONLY entries linked to bookings in this range
+      const allBookings = await Booking.find(bookingQuery).lean();
+      const bookingIds  = allBookings.map(b => String(b._id));
+      const deleteResult = await Transaction.deleteMany({
+        linkedBookingId: { $in: bookingIds }
+      });
 
       let created = 0, zeroAmount = 0;
 
@@ -904,10 +913,6 @@ module.exports = async (req, res) => {
         //   1. pricePerDay × days  (set on booking — most accurate)
         //   2. receivedAmount      (what was actually collected — legacy imports)
         //   3. 0                   (no data at all — entry still created for visibility)
-        //
-        // NOTE: Notes field is intentionally NOT parsed. Legacy import notes like
-        // "Register import. Vehicle: 9659. Payment: ₹3000" record a daily cash
-        // batch total, NOT the individual booking amount — parsing them inflates totals.
         const ppd  = Number(b.pricePerDay) || 0;
         const days = (b.checkIn && b.checkOut)
           ? Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5))
@@ -957,9 +962,13 @@ module.exports = async (req, res) => {
         created++;
       }
 
+      const rangeMsg = isFiltered
+        ? ` (range: ${req.query.from || "start"} → ${req.query.to || "end"})`
+        : " (all time)";
+
       return res.json({
         success: true,
-        message: `Regenerated. ${deleteResult.deletedCount} old entries removed, ${created} entries created (${zeroAmount} with ₹0 — truly no price data found).`,
+        message: `Regenerated${rangeMsg}. ${deleteResult.deletedCount} old entries removed, ${created} entries created (${zeroAmount} with ₹0 — truly no price data found).`,
         deleted: deleteResult.deletedCount, created, zeroAmount, total: allBookings.length,
       });
     }
