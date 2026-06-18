@@ -4331,8 +4331,8 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                   <select value={b.status} onChange={e=>{e.stopPropagation();updateStatus(b._id,e.target.value,b);}}
                     onClick={e=>e.stopPropagation()}
                     style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${sc.border}`,background:"#0d1b2e",color:sc.color,fontSize:11,cursor:"pointer",fontWeight:600,outline:"none",appearance:"none",WebkitAppearance:"none",paddingRight:24,backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23f0c060' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",backgroundRepeat:"no-repeat",backgroundPosition:"right 6px center"}}>
-                    <option value="pending" style={{background:"#0d1b2e",color:"white"}}>⏳ Pending</option>
-                    <option value="payment_requested" style={{background:"#0d1b2e",color:"white"}}>💳 Request Payment</option>
+                    {!isWalkin(b)&&<option value="pending" style={{background:"#0d1b2e",color:"white"}}>⏳ Pending</option>}
+                    {!isWalkin(b)&&<option value="payment_requested" style={{background:"#0d1b2e",color:"white"}}>💳 Request Payment</option>}
                     <option value="confirmed" style={{background:"#0d1b2e",color:"white"}}>✅ Confirmed</option>
                     <option value="completed" style={{background:"#0d1b2e",color:"white"}}>🏁 Completed</option>
                     <option value="cancelled" style={{background:"#0d1b2e",color:"white"}}>❌ Cancelled</option>
@@ -4414,7 +4414,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                   <CustomerIdPanel booking={b} onUpdated={() => reload()} />
                   <div style={{gridColumn:"1/-1"}}>
                     <button onClick={()=>setRecordPaymentModal(b)} style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>
-                      💰 Record Received Payment
+                      {Number(b.receivedAmount||0)>0 ? "✏️ Edit Received Payment" : "💰 Record Received Payment"}
                     </button>
                   </div>
                 </div>
@@ -4471,46 +4471,42 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
       {recordPaymentModal&&(
         <RecordPaymentModal
           booking={recordPaymentModal}
+          isEdit={Number(recordPaymentModal.receivedAmount||0)>0}
           totalAmount={getPricePerDay(recordPaymentModal) * ((recordPaymentModal.checkIn && recordPaymentModal.checkOut) ? Math.max(1, Math.round((new Date(recordPaymentModal.checkOut) - new Date(recordPaymentModal.checkIn)) / 864e5)) : 1)}
-          onSave={async(received, totalAmt)=>{
-            // 1. Update booking receivedAmount
+          onSave={async(received, totalAmt, paymentMethod)=>{
+            // 1. Update booking receivedAmount — this REPLACES the stored value
+            // (the modal is pre-filled with whatever was already received), so
+            // correcting a payment (e.g. ₹300 → ₹250) fixes it instead of
+            // stacking a second amount on top of the first.
             const bid = String(recordPaymentModal._id||"");
             const days_ = (recordPaymentModal.checkIn&&recordPaymentModal.checkOut)?Math.max(1,Math.round((new Date(recordPaymentModal.checkOut)-new Date(recordPaymentModal.checkIn))/864e5)):1;
             const orderTotal = totalAmt || (getPricePerDay(recordPaymentModal)*days_) || (recordPaymentModal.tokenAmount*2) || 0;
-            const alreadyReceived = recordPaymentModal.receivedAmount||0;
-            const newReceived = alreadyReceived + Number(received);
+            const newReceived = Number(received);
             const newStatus = newReceived >= orderTotal && orderTotal>0 ? "completed" : "confirmed";
-            await api.put(`/bookings?id=${bid}`, { receivedAmount: newReceived, status: newStatus });
+            await api.put(`/bookings?id=${bid}`, { receivedAmount: newReceived, status: newStatus, paymentMethod });
             if (newStatus === "confirmed"||newStatus==="completed") await syncInventory(recordPaymentModal, newStatus);
-            // 2. Auto-create accounting transaction for this payment
+            // 2. Keep exactly ONE accounting entry in sync with this booking's
+            // payment state. Every time payment is recorded OR edited, remove
+            // whatever entries this booking already has linked (from creation
+            // or a prior save) and write a single fresh entry for the current
+            // amount — so edits update the existing entry instead of creating
+            // a duplicate/dual entry.
             const balanceRemaining = Math.max(0, orderTotal - newReceived);
             try {
-              // Record the received payment
-              await api.post("/accounting", {
-                type: "income",
-                category: "vehicle_rental",
-                amount: Number(received),
-                description: `${alreadyReceived>0?"Balance payment":"Advance payment"} — ${recordPaymentModal.vehicleName||"vehicle"} booking for ${recordPaymentModal.customerName}`,
-                clientName: recordPaymentModal.customerName,
-                linkedBookingId: bid,
-                paymentStatus: balanceRemaining > 0 ? "partial" : "paid",
-                paymentMethod: "upi",
-                date: new Date().toISOString(),
-                notes: `Order total: ₹${orderTotal} | Paid so far: ₹${newReceived} | Remaining: ₹${balanceRemaining}`,
-              });
-              // If balance still due, create a pending entry so accounting shows the outstanding amount
-              if (balanceRemaining > 0) {
+              const linked = (data.accounting?.transactions||[]).filter(t => String(t.linkedBookingId||"")===bid);
+              for (const t of linked) { await api.delete(`/accounting/${t._id}`); }
+              if (newReceived > 0) {
                 await api.post("/accounting", {
                   type: "income",
                   category: "vehicle_rental",
-                  amount: balanceRemaining,
-                  description: `Balance due at pickup — ${recordPaymentModal.vehicleName||"vehicle"} booking for ${recordPaymentModal.customerName}`,
+                  amount: newReceived,
+                  description: `Payment received — ${recordPaymentModal.vehicleName||"vehicle"} booking for ${recordPaymentModal.customerName}`,
                   clientName: recordPaymentModal.customerName,
                   linkedBookingId: bid,
-                  paymentStatus: "pending",
-                  paymentMethod: "upi",
+                  paymentStatus: balanceRemaining > 0 ? "partial" : "paid",
+                  paymentMethod: paymentMethod || "cash",
                   date: new Date().toISOString(),
-                  notes: `Order total: ₹${orderTotal} | Already received: ₹${newReceived} | Balance pending: ₹${balanceRemaining}`,
+                  notes: `Order total: ₹${orderTotal} | Received: ₹${newReceived}${balanceRemaining>0?` | Remaining: ₹${balanceRemaining}`:""}`,
                 });
               }
             } catch(e) { console.error("Accounting sync failed:", e); }
@@ -4551,6 +4547,13 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                 : 1;
               const amt = ppd * bDays;
               if (amt > 0) {
+                // The accounting entry below assumes the full amount was
+                // collected at the desk (paymentStatus: "paid"). Mirror that
+                // onto the booking's own receivedAmount so the two stay in
+                // sync from the moment of creation, instead of the booking
+                // showing "Unpaid" until someone separately clicks Record
+                // Payment for an amount that was already accounted for.
+                try { await api.put(`/bookings?id=${booking?._id}`, { receivedAmount: amt }); } catch(e) { console.warn("receivedAmount sync failed:", e); }
                 await api.post("/accounting", {
                   type: "income",
                   category: "vehicle_rental",
@@ -4730,25 +4733,24 @@ function PaymentTokenModal({ booking, suggestedAmount, total, days, onSend, onAp
 }
 
 // ─── Record Payment Modal ────────────────────────────────────────────────────
-function RecordPaymentModal({ booking, totalAmount=0, onSave, onClose }) {
+function RecordPaymentModal({ booking, totalAmount=0, isEdit=false, onSave, onClose }) {
   const [received, setReceived] = useState(String(booking.receivedAmount || booking.tokenAmount || ""));
+  const [method, setMethod] = useState(booking.paymentMethod || "cash");
   const [error, setError] = useState("");
   const requested = booking.tokenAmount || 0;
-  // Remaining = total order value minus what's already been received
   const alreadyReceived = booking.receivedAmount || 0;
   const orderTotal = totalAmount > 0 ? totalAmount : requested;
-  const remaining = Math.max(0, orderTotal - alreadyReceived - (Number(received) || 0) + alreadyReceived);
 
   const handleSave = () => {
     const num = Number(received);
-    if (!received || isNaN(num) || num < 0) { setError("Please enter a valid amount."); return; }
-    onSave(num, orderTotal);
+    if (received === "" || isNaN(num) || num < 0) { setError("Please enter a valid amount."); return; }
+    onSave(num, orderTotal, method);
   };
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
       <div style={{background:"#1a1d2e",border:"1px solid rgba(240,192,96,0.2)",borderRadius:16,padding:28,width:"100%",maxWidth:400}}>
-        <h3 style={{color:"#f0c060",fontFamily:"'Playfair Display'",margin:"0 0 4px"}}>💰 Record Payment</h3>
+        <h3 style={{color:"#f0c060",fontFamily:"'Playfair Display'",margin:"0 0 4px"}}>{isEdit ? "✏️ Edit Received Payment" : "💰 Record Payment"}</h3>
         <p style={{color:"rgba(255,255,255,0.4)",fontSize:13,margin:"0 0 20px"}}>{booking.customerName} · {booking.vehicleName||"—"}</p>
 
         {requested > 0 && (
@@ -4764,28 +4766,44 @@ function RecordPaymentModal({ booking, totalAmount=0, onSave, onClose }) {
           </div>
         )}
 
-        <label style={{fontSize:12,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:6}}>Amount Received (₹)</label>
+        <label style={{fontSize:12,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:6}}>Total Amount Received (₹)</label>
         <input
           type="number" value={received} onChange={e=>{setReceived(e.target.value);setError("");}}
-          placeholder="Enter amount received"
+          placeholder="Enter total amount received"
           style={{width:"100%",padding:"12px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.06)",color:"white",fontSize:16,boxSizing:"border-box",marginBottom:8}}
           autoFocus
         />
-        {error&&<div style={{color:"#ff6b6b",fontSize:12,marginBottom:8}}>{error}</div>}
-        {Number(received)>0&&orderTotal>0&&(
-          <div style={{background:"rgba(240,192,96,0.06)",border:"1px solid rgba(240,192,96,0.15)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"rgba(255,255,255,0.6)",marginBottom:12,display:"flex",justifyContent:"space-between"}}>
-            <span>Balance due at pickup</span>
-            <span style={{color:"#f0c060",fontWeight:700}}>₹{Math.max(0, orderTotal - Number(received)).toLocaleString("en-IN")}</span>
+        {isEdit&&(
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:14}}>
+            Previously recorded: ₹{alreadyReceived.toLocaleString("en-IN")}. This is the corrected total — it replaces that figure, it isn't added to it.
           </div>
         )}
-        {Number(received)>0&&requested>0&&Number(received)>=requested&&(
+
+        <label style={{fontSize:12,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:6}}>Payment Method</label>
+        <select value={method} onChange={e=>setMethod(e.target.value)}
+          style={{width:"100%",padding:"12px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.06)",color:"white",fontSize:14,boxSizing:"border-box",marginBottom:14,appearance:"none",WebkitAppearance:"none"}}>
+          <option value="cash" style={{background:"#1a1d2e"}}>💵 Cash</option>
+          <option value="upi" style={{background:"#1a1d2e"}}>📱 UPI</option>
+          <option value="card" style={{background:"#1a1d2e"}}>💳 Card</option>
+          <option value="bank_transfer" style={{background:"#1a1d2e"}}>🏦 Bank Transfer</option>
+          <option value="other" style={{background:"#1a1d2e"}}>💰 Other</option>
+        </select>
+
+        {error&&<div style={{color:"#ff6b6b",fontSize:12,marginBottom:8}}>{error}</div>}
+        {Number(received)>0&&orderTotal>0&&Number(received)<orderTotal&&(
+          <div style={{background:"rgba(240,192,96,0.06)",border:"1px solid rgba(240,192,96,0.15)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"rgba(255,255,255,0.6)",marginBottom:12,display:"flex",justifyContent:"space-between"}}>
+            <span>Balance remaining</span>
+            <span style={{color:"#f0c060",fontWeight:700}}>₹{(orderTotal - Number(received)).toLocaleString("en-IN")}</span>
+          </div>
+        )}
+        {Number(received)>0&&orderTotal>0&&Number(received)>=orderTotal&&(
           <div style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#4ade80",marginBottom:12}}>
-            ✅ Full advance received — booking will be marked Confirmed
+            ✅ Fully paid — booking will be marked Completed
           </div>
         )}
         <div style={{display:"flex",gap:10,marginTop:8}}>
           <button onClick={onClose} style={{flex:1,padding:"11px",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:14}}>Cancel</button>
-          <button onClick={handleSave} style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"white",cursor:"pointer",fontSize:14,fontWeight:700}}>Save Payment</button>
+          <button onClick={handleSave} style={{flex:2,padding:"11px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"white",cursor:"pointer",fontSize:14,fontWeight:700}}>{isEdit ? "Update Payment" : "Save Payment"}</button>
         </div>
       </div>
     </div>
