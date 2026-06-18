@@ -16,6 +16,13 @@ const api = {
   upload: async (file) => { const fd = new FormData(); fd.append("file", file); const r = await fetch(`${API}/upload`, { method:"POST", body:fd }); return r.json(); },
 };
 
+const fmtBytes = (bytes) => {
+  if (bytes == null || isNaN(bytes)) return "—";
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1024) return `${mb.toFixed(mb < 10 ? 2 : 1)} MB`;
+  return `${(mb / 1024).toFixed(2)} GB`;
+};
+
 const Icon = ({ name, size=20 }) => {
   const icons = {
     trash: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>,
@@ -1610,6 +1617,142 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
   );
 }
 
+// ─── Storage Usage Widget (small, top-left of dashboard) ─────────────────────
+function StorageWidget({ icon, label, used, total, color, loading, error, onClick }) {
+  const pct = (total && used != null) ? Math.min(100, (used / total) * 100) : null;
+  const barColor = pct == null ? color : pct > 90 ? "#ef4444" : pct > 70 ? "#f59e0b" : color;
+  return (
+    <div onClick={onClick} style={{display:"flex",alignItems:"center",gap:10,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"10px 14px",cursor:"pointer",minWidth:180,transition:"border-color 0.15s"}}
+      onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.2)"} onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.08)"}>
+      <div style={{width:32,height:32,borderRadius:8,background:color+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{icon}</div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:10,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.5px"}}>{label}</div>
+        {loading ? (
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.3)",marginTop:2}}>Loading…</div>
+        ) : error ? (
+          <div style={{fontSize:12,color:"#f87171",marginTop:2}}>Unavailable</div>
+        ) : (
+          <div style={{fontSize:13,fontWeight:600,color:"white",marginTop:1}}>
+            {fmtBytes(used)}{total ? <span style={{color:"rgba(255,255,255,0.35)",fontWeight:400}}> / {fmtBytes(total)}</span> : null}
+          </div>
+        )}
+        {pct != null && !loading && !error && (
+          <div style={{height:4,background:"rgba(255,255,255,0.08)",borderRadius:2,marginTop:6,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${pct}%`,background:barColor,transition:"width 0.3s"}} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Storage Detail Modal ──────────────────────────────────────────────────────
+function StorageDetailModal({ type, storage, onClose }) {
+  const isCloud = type === "cloudinary";
+  const d   = isCloud ? storage?.cloudinary      : storage?.mongodb;
+  const err = isCloud ? storage?.cloudinaryError : storage?.mongodbError;
+  const title = isCloud ? "Cloudinary Storage" : "MongoDB Storage";
+  const icon  = isCloud ? "☁️" : "🍃";
+  const color = isCloud ? "#3b82f6" : "#16a34a";
+
+  let used = null, total = null, pctLabelSuffix = "";
+  if (isCloud && d) {
+    used = d.storageBytes;
+    if (d.storageLimitBytes) { total = d.storageLimitBytes; }
+    else if (d.credits?.limit) { total = null; } // credits shown separately below
+  } else if (!isCloud && d) {
+    used = d.storageSize;
+    total = d.limitBytes;
+  }
+  const pct = (total && used != null) ? Math.min(100, (used / total) * 100) : null;
+  const creditPct = (isCloud && d?.credits?.limit) ? Math.min(100, (d.credits.usage / d.credits.limit) * 100) : null;
+
+  const rows = !d ? [] : isCloud ? [
+    { label:"Plan", value: d.plan || "—" },
+    { label:"Storage Used", value: fmtBytes(d.storageBytes) + (d.storageLimitBytes ? ` of ${fmtBytes(d.storageLimitBytes)}` : "") },
+    { label:"Bandwidth (this period)", value: fmtBytes(d.bandwidthBytes) + (d.bandwidthLimitBytes ? ` of ${fmtBytes(d.bandwidthLimitBytes)}` : "") },
+    ...(d.credits ? [{ label:"Plan Credits Used", value: `${Number(d.credits.usage).toFixed(2)} of ${d.credits.limit}` }] : []),
+    { label:"Total Media Objects", value: d.objects != null ? d.objects.toLocaleString() : "—" },
+    { label:"Derived / Transformed Files", value: d.derivedResources != null ? d.derivedResources.toLocaleString() : "—" },
+    { label:"Transformations (this period)", value: d.transformations != null ? d.transformations.toLocaleString() : "—" },
+    { label:"API Requests (this period)", value: d.requests != null ? d.requests.toLocaleString() : "—" },
+  ] : [
+    { label:"Database", value: d.dbName || "—" },
+    { label:"Data Size", value: fmtBytes(d.dataSize) },
+    { label:"Storage Size (on disk)", value: fmtBytes(d.storageSize) },
+    { label:"Index Size", value: fmtBytes(d.indexSize) },
+    { label:"Total (Storage + Index)", value: fmtBytes((d.storageSize||0) + (d.indexSize||0)) },
+    { label:"Collections", value: d.collections ?? "—" },
+    { label:"Indexes", value: d.indexes ?? "—" },
+    { label:"Documents", value: d.objects != null ? d.objects.toLocaleString() : "—" },
+  ];
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif"}}>
+      <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(6,14,26,0.7)",backdropFilter:"blur(4px)"}} />
+      <div style={{position:"relative",width:"100%",maxWidth:480,margin:"0 16px",background:"#0d1b2e",borderRadius:20,border:"1px solid rgba(255,255,255,0.1)",overflow:"hidden",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 32px 80px rgba(0,0,0,0.5)"}}>
+        <div style={{padding:"24px 28px 20px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <div style={{width:40,height:40,borderRadius:10,background:color+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{icon}</div>
+            <div>
+              <div style={{fontFamily:"'Playfair Display'",fontSize:19,color:"white"}}>{title}</div>
+              <div style={{fontSize:12,color:"rgba(255,255,255,0.35)"}}>Live usage &amp; quota</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.06)",border:"none",color:"rgba(255,255,255,0.5)",width:32,height:32,borderRadius:8,cursor:"pointer",fontSize:16}}>✕</button>
+        </div>
+        <div style={{padding:"24px 28px"}}>
+          {err ? (
+            <div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:10,padding:"14px 16px",color:"#f87171",fontSize:13}}>
+              Couldn't load usage data: {err}
+            </div>
+          ) : !d ? (
+            <div style={{color:"rgba(255,255,255,0.4)",fontSize:13}}>Loading…</div>
+          ) : (
+            <>
+              {pct != null && (
+                <div style={{marginBottom:20}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,fontSize:13,color:"rgba(255,255,255,0.6)"}}>
+                    <span>{fmtBytes(used)} used</span>
+                    <span>{pct.toFixed(1)}% of {fmtBytes(total)}</span>
+                  </div>
+                  <div style={{height:8,background:"rgba(255,255,255,0.08)",borderRadius:4,overflow:"hidden"}}>
+                    <div style={{height:"100%",width:`${pct}%`,background:pct>90?"#ef4444":pct>70?"#f59e0b":color,transition:"width 0.3s"}} />
+                  </div>
+                </div>
+              )}
+              {pct == null && creditPct != null && (
+                <div style={{marginBottom:20}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,fontSize:13,color:"rgba(255,255,255,0.6)"}}>
+                    <span>{Number(d.credits.usage).toFixed(2)} credits used</span>
+                    <span>{creditPct.toFixed(1)}% of {d.credits.limit}</span>
+                  </div>
+                  <div style={{height:8,background:"rgba(255,255,255,0.08)",borderRadius:4,overflow:"hidden"}}>
+                    <div style={{height:"100%",width:`${creditPct}%`,background:creditPct>90?"#ef4444":creditPct>70?"#f59e0b":color,transition:"width 0.3s"}} />
+                  </div>
+                </div>
+              )}
+              <div>
+                {rows.map((r,i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"11px 0",borderBottom:i<rows.length-1?"1px solid rgba(255,255,255,0.06)":"none"}}>
+                    <span style={{fontSize:13,color:"rgba(255,255,255,0.45)"}}>{r.label}</span>
+                    <span style={{fontSize:13,fontWeight:600,color:"white",textAlign:"right",marginLeft:16}}>{r.value}</span>
+                  </div>
+                ))}
+              </div>
+              {!isCloud && (
+                <div style={{marginTop:16,fontSize:11,color:"rgba(255,255,255,0.3)",lineHeight:1.5}}>
+                  Quota assumes a {fmtBytes(d.limitBytes)} cluster (Atlas free-tier default). If you're on a different tier, set MONGODB_STORAGE_LIMIT_MB in your environment variables to match.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
 function AdminDashboard({ data, goTo }) {
   const bookings     = data.bookings     || [];
@@ -1636,11 +1779,35 @@ function AdminDashboard({ data, goTo }) {
     ...pendingBookings.map(b=>({label:`New booking — ${b.customerName}`,sub:`${b.vehicleName} · ${fmtDate(b.checkIn)}`,color:"#d4850a",tab:"bookings",type:"booking"})),
     ...pendingTours.map(b=>({label:`Tour request — ${b.customerName}`,sub:b.tourTitle||"Tour",color:"#7c3aed",tab:"tours",type:"tour"})),
   ].slice(0,6);
+
+  // Storage usage widgets (Cloudinary + MongoDB)
+  const [storage, setStorage] = useState(null);
+  const [storageLoading, setStorageLoading] = useState(true);
+  const [storageModal, setStorageModal] = useState(null); // "cloudinary" | "mongodb" | null
+  useEffect(() => {
+    api.get("/storage")
+      .then(setStorage)
+      .catch(()=>setStorage({ cloudinaryError:"Request failed", mongodbError:"Request failed" }))
+      .finally(()=>setStorageLoading(false));
+  }, []);
+
   return (
     <div>
       <div style={{marginBottom:24}}>
-        <h1 style={{fontSize:26,fontWeight:700,color:"#1a1a2e"}}>Welcome back 👋</h1>
+        <h1 style={{fontSize:26,fontWeight:700,color:"white"}}>Welcome back 👋</h1>
         <p style={{color:"#6b7280",fontSize:14,marginTop:4}}>Here's what's happening with Travel Engineers this month.</p>
+      </div>
+      <div style={{display:"flex",gap:10,marginBottom:24,flexWrap:"wrap"}}>
+        <StorageWidget icon="☁️" label="Cloudinary" color="#3b82f6"
+          used={storage?.cloudinary?.storageBytes}
+          total={storage?.cloudinary?.storageLimitBytes}
+          loading={storageLoading} error={!storageLoading && !!storage?.cloudinaryError}
+          onClick={()=>setStorageModal("cloudinary")} />
+        <StorageWidget icon="🍃" label="MongoDB" color="#16a34a"
+          used={storage?.mongodb?.storageSize}
+          total={storage?.mongodb?.limitBytes}
+          loading={storageLoading} error={!storageLoading && !!storage?.mongodbError}
+          onClick={()=>setStorageModal("mongodb")} />
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:16,marginBottom:24}}>
         {statCards.map(c=>(
@@ -1708,6 +1875,9 @@ function AdminDashboard({ data, goTo }) {
           ))}
         </div>
       </div>
+      {storageModal && (
+        <StorageDetailModal type={storageModal} storage={storage} onClose={()=>setStorageModal(null)} />
+      )}
     </div>
   );
 }
