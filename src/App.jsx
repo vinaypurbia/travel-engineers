@@ -2838,6 +2838,16 @@ function AccountingEditor({ data, api, reload, showSaved }) {
           <button onClick={()=>startAdd("income")} style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Income</button>
           <button onClick={()=>startAdd("expense")} style={{background:"rgba(255,100,100,0.15)",border:"1px solid rgba(255,100,100,0.3)",color:"#ff6b6b",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Expense</button>
           <button onClick={async()=>{ if(!window.confirm("Remove accounting entries linked to deleted bookings?")) return; const r=await api.delete("/bookings?cleanup=accounting"); alert(r.message||"Done"); await reload(); }} style={{background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.4)",border:"1px solid rgba(255,255,255,0.1)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>Clean Orphaned</button>
+          <button onClick={async()=>{
+            if(!window.confirm("This fixes bookings whose 'Booked on' date got incorrectly stamped as the import date instead of their real (checkIn) date. Run this BEFORE Regenerate Accounting if old entries are showing the wrong date. Continue?")) return;
+            try {
+              const r = await api.post("/bookings?fix_dates=true",{});
+              alert(r.message||"Done");
+              await reload();
+            } catch(e) {
+              alert("Failed: " + (e.message||"Unknown error"));
+            }
+          }} style={{background:"rgba(240,192,96,0.1)",color:"#f0c060",border:"1px solid rgba(240,192,96,0.3)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>📅 Fix Booking Dates</button>
           <button disabled={regenerating} onClick={async()=>{
             if(!window.confirm("This will DELETE all booking-linked accounting entries and rebuild ONE entry for EVERY booking (online + walk-in) from current data. Continue?")) return;
             setRegenerating(true);
@@ -3666,6 +3676,15 @@ function ImportBookingsModal({ onClose, api, reload, rentals=[] }) {
           }
         }
 
+        // Preserve the booking's real historical date. Without this, every
+        // imported booking gets stamped with "today" (the import date) by
+        // the schema default, which collapses all past bookings onto one
+        // date in Accounting. Prefer an explicit createdAt column; fall back
+        // to checkIn (the actual booking date) when the CSV has none.
+        const createdAtValue = r.createdAt?.trim()
+          ? new Date(r.createdAt).toISOString()
+          : (r.checkIn ? new Date(r.checkIn).toISOString() : undefined);
+
         const created = await api.post("/bookings", {
           customerName: r.customerName,
           phone: r.phone,
@@ -3684,6 +3703,7 @@ function ImportBookingsModal({ onClose, api, reload, rentals=[] }) {
           gender: r.gender || null,
           address: r.address || null,
           source,
+          ...(createdAtValue ? { createdAt: createdAtValue } : {}),
         });
         const newId = created?.booking?._id;
         // The create endpoint always sets status by source + ignores receivedAmount/
