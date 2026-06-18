@@ -1785,7 +1785,7 @@ function AdminDashboard({ data, goTo }) {
   const [storageLoading, setStorageLoading] = useState(true);
   const [storageModal, setStorageModal] = useState(null); // "cloudinary" | "mongodb" | null
   useEffect(() => {
-    api.get("/storage")
+    api.get("/upload?action=storage")
       .then(setStorage)
       .catch(()=>setStorage({ cloudinaryError:"Request failed", mongodbError:"Request failed" }))
       .finally(()=>setStorageLoading(false));
