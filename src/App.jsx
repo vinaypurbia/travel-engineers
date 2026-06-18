@@ -16,6 +16,76 @@ const api = {
   upload: async (file) => { const fd = new FormData(); fd.append("file", file); const r = await fetch(`${API}/upload`, { method:"POST", body:fd }); return r.json(); },
 };
 
+// ─── CSV helpers (bookings import / export) ───────────────────────────────────
+const BOOKING_CSV_HEADERS = [
+  "customerName","phone","email","vehicleName","checkIn","checkOut",
+  "stayAddress","notes","status","source","pricePerDay","receivedAmount",
+  "paymentMethod","idType","idNumber","nationality","dateOfBirth","gender",
+  "address","createdAt",
+];
+
+const csvEscape = (v) => {
+  if (v == null) return "";
+  const s = String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+};
+
+const csvDate = (d) => d ? new Date(d).toISOString().slice(0,10) : "";
+
+function bookingsToCSV(rows) {
+  const dateFields = new Set(["checkIn","checkOut","dateOfBirth","createdAt"]);
+  const lines = [BOOKING_CSV_HEADERS.join(",")];
+  rows.forEach(b => {
+    lines.push(BOOKING_CSV_HEADERS.map(h => csvEscape(dateFields.has(h) ? csvDate(b[h]) : b[h])).join(","));
+  });
+  return lines.join("\r\n");
+}
+
+function downloadTextFile(filename, content, mime="text/csv;charset=utf-8;") {
+  const blob = new Blob(["\uFEFF" + content], { type: mime }); // BOM for Excel
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Minimal RFC4180-ish CSV parser — handles quoted fields, escaped quotes,
+// commas/newlines inside quotes. Returns array of row objects keyed by header.
+function parseCSV(text) {
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+  const pushField = () => { row.push(field); field = ""; };
+  const pushRow = () => { rows.push(row); row = []; };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i+1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ",") {
+      pushField();
+    } else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i+1] === "\n") i++;
+      pushField(); pushRow();
+    } else {
+      field += c;
+    }
+  }
+  if (field !== "" || row.length) { pushField(); pushRow(); }
+  const nonEmpty = rows.filter(r => r.some(c => (c||"").trim() !== ""));
+  if (!nonEmpty.length) return [];
+  const headers = nonEmpty[0].map(h => h.trim());
+  return nonEmpty.slice(1).map(r => {
+    const obj = {};
+    headers.forEach((h, idx) => obj[h] = (r[idx] ?? "").trim());
+    return obj;
+  });
+}
+
 const fmtBytes = (bytes) => {
   if (bytes == null || isNaN(bytes)) return "—";
   const mb = bytes / (1024 * 1024);
@@ -3536,6 +3606,180 @@ const STATUS_CONFIG = {
   cancelled:         { color:"#ff6b6b", bg:"rgba(255,107,107,0.12)", border:"rgba(255,107,107,0.3)", label:"❌ Cancelled",           dot:"#ff6b6b" },
 };
 
+// ─── Import Bookings Modal (CSV) ────────────────────────────────────────────
+const VALID_BOOKING_STATUSES = ["pending","payment_requested","confirmed","cancelled","completed"];
+
+function ImportBookingsModal({ onClose, api, reload }) {
+  const fileRef = useRef(null);
+  const [fileName, setFileName] = useState("");
+  const [rows, setRows] = useState([]);
+  const [parseError, setParseError] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState({ done:0, total:0 });
+  const [results, setResults] = useState(null); // { ok, failed:[{row,name,reason}] }
+
+  const handleFile = (f) => {
+    if (!f) return;
+    setParseError(""); setResults(null); setRows([]);
+    setFileName(f.name);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const parsed = parseCSV(String(e.target.result || ""));
+        if (!parsed.length) { setParseError("No rows found in this file."); return; }
+        if (!("customerName" in parsed[0]) || !("phone" in parsed[0])) {
+          setParseError("CSV must include at least 'customerName' and 'phone' columns.");
+          return;
+        }
+        setRows(parsed);
+      } catch (err) {
+        setParseError("Couldn't read this file: " + err.message);
+      }
+    };
+    reader.readAsText(f);
+  };
+
+  const downloadTemplate = () => downloadTextFile("bookings-import-template.csv", BOOKING_CSV_HEADERS.join(","));
+
+  const runImport = async () => {
+    setImporting(true);
+    const failed = [];
+    let ok = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      try {
+        if (!r.customerName?.trim()) throw new Error("Missing customerName");
+        if (!r.phone?.trim()) throw new Error("Missing phone");
+        const source = (r.source || "walkin").toLowerCase() === "online" ? "online" : "walkin";
+        const created = await api.post("/bookings", {
+          customerName: r.customerName,
+          phone: r.phone,
+          email: r.email || null,
+          vehicleName: r.vehicleName || "",
+          checkIn:  r.checkIn  ? new Date(r.checkIn).toISOString()  : null,
+          checkOut: r.checkOut ? new Date(r.checkOut).toISOString() : null,
+          stayAddress: r.stayAddress || "",
+          notes: r.notes || "",
+          pricePerDay: Number(r.pricePerDay) || 0,
+          idType: r.idType || null,
+          idNumber: r.idNumber || null,
+          nationality: r.nationality || null,
+          dateOfBirth: r.dateOfBirth || null,
+          gender: r.gender || null,
+          address: r.address || null,
+          source,
+        });
+        const newId = created?.booking?._id;
+        // The create endpoint always sets status by source + ignores receivedAmount/
+        // paymentMethod, so apply any CSV overrides via a follow-up PUT.
+        const wantStatus = (r.status || "").toLowerCase().trim().replace(/\s+/g,"_");
+        const overrides = {};
+        if (VALID_BOOKING_STATUSES.includes(wantStatus)) overrides.status = wantStatus;
+        if (r.receivedAmount) overrides.receivedAmount = Number(r.receivedAmount) || 0;
+        if (r.paymentMethod) overrides.paymentMethod = r.paymentMethod;
+        if (newId && Object.keys(overrides).length) {
+          await api.put(`/bookings?id=${newId}`, overrides);
+        }
+        ok++;
+      } catch (err) {
+        failed.push({ row: i + 2, name: r.customerName || "(no name)", reason: err.message });
+      }
+      setProgress({ done: i + 1, total: rows.length });
+    }
+    setImporting(false);
+    setResults({ ok, failed });
+    reload();
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif"}}>
+      <div onClick={!importing ? onClose : undefined} style={{position:"absolute",inset:0,background:"rgba(6,14,26,0.7)",backdropFilter:"blur(4px)"}} />
+      <div style={{position:"relative",width:"100%",maxWidth:560,margin:"0 16px",background:"#0d1b2e",borderRadius:20,border:"1px solid rgba(255,255,255,0.1)",overflow:"hidden",maxHeight:"88vh",overflowY:"auto",boxShadow:"0 32px 80px rgba(0,0,0,0.5)"}}>
+        <div style={{padding:"24px 28px 20px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontFamily:"'Playfair Display'",fontSize:19,color:"white"}}>Import Bookings (CSV)</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginTop:3}}>Bulk-add bookings from a spreadsheet</div>
+          </div>
+          {!importing && <button onClick={onClose} style={{background:"rgba(255,255,255,0.06)",border:"none",color:"rgba(255,255,255,0.5)",width:32,height:32,borderRadius:8,cursor:"pointer",fontSize:16}}>✕</button>}
+        </div>
+        <div style={{padding:"24px 28px"}}>
+          {!results && (
+            <>
+              <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",lineHeight:1.6,marginBottom:16}}>
+                Required columns: <strong style={{color:"#f0c060"}}>customerName</strong>, <strong style={{color:"#f0c060"}}>phone</strong>.
+                Optional: vehicleName, checkIn/checkOut (YYYY-MM-DD), stayAddress, notes, pricePerDay, receivedAmount,
+                paymentMethod, status, source (online/walkin), idType, idNumber, nationality, dateOfBirth, gender, address.
+                <br/>Leave <strong>source</strong> blank for past/offline bookings — "online" triggers the usual notification email.
+              </div>
+              <button onClick={downloadTemplate} style={{fontSize:12,color:"#f0c060",background:"transparent",border:"none",cursor:"pointer",padding:0,marginBottom:18,textDecoration:"underline"}}>
+                ⬇ Download a blank template
+              </button>
+
+              <div onClick={()=>fileRef.current?.click()} style={{border:"1.5px dashed rgba(255,255,255,0.18)",borderRadius:12,padding:"28px 20px",textAlign:"center",cursor:"pointer",marginBottom:16,background:"rgba(255,255,255,0.02)"}}>
+                <div style={{fontSize:28,marginBottom:8}}>📄</div>
+                <div style={{fontSize:13,color:"rgba(255,255,255,0.6)"}}>{fileName || "Click to choose a .csv file"}</div>
+                <input ref={fileRef} type="file" accept=".csv,text/csv" style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])} />
+              </div>
+
+              {parseError && (
+                <div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:10,padding:"10px 14px",color:"#f87171",fontSize:13,marginBottom:16}}>{parseError}</div>
+              )}
+
+              {rows.length > 0 && !parseError && (
+                <div style={{background:"rgba(74,222,128,0.07)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:10,padding:"10px 14px",color:"#4ade80",fontSize:13,marginBottom:20}}>
+                  ✅ Found {rows.length} row{rows.length!==1?"s":""} ready to import.
+                </div>
+              )}
+
+              {importing ? (
+                <div>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,fontSize:13,color:"rgba(255,255,255,0.6)"}}>
+                    <span>Importing…</span><span>{progress.done} / {progress.total}</span>
+                  </div>
+                  <div style={{height:8,background:"rgba(255,255,255,0.08)",borderRadius:4,overflow:"hidden"}}>
+                    <div style={{height:"100%",width:`${progress.total?(progress.done/progress.total)*100:0}%`,background:"#d4850a",transition:"width 0.2s"}} />
+                  </div>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:10}}>Please don't close this window until it finishes.</div>
+                </div>
+              ) : (
+                <button onClick={runImport} disabled={!rows.length}
+                  style={{width:"100%",padding:"13px",background: rows.length ? "linear-gradient(135deg,#d4850a,#f0c060)" : "rgba(255,255,255,0.06)",border:"none",borderRadius:12,color: rows.length ? "#1a1a2e" : "rgba(255,255,255,0.3)",fontWeight:700,fontSize:14,cursor: rows.length ? "pointer" : "not-allowed",fontFamily:"'DM Sans'"}}>
+                  Import {rows.length || ""} Booking{rows.length!==1?"s":""}
+                </button>
+              )}
+            </>
+          )}
+
+          {results && (
+            <div>
+              <div style={{background:"rgba(74,222,128,0.07)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:10,padding:"14px 16px",color:"#4ade80",fontSize:14,marginBottom:14,fontWeight:600}}>
+                ✅ {results.ok} booking{results.ok!==1?"s":""} imported successfully
+              </div>
+              {results.failed.length > 0 && (
+                <>
+                  <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:10,padding:"14px 16px",color:"#f87171",fontSize:13,marginBottom:10,fontWeight:600}}>
+                    ⚠️ {results.failed.length} row{results.failed.length!==1?"s":""} failed
+                  </div>
+                  <div style={{maxHeight:180,overflowY:"auto",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10}}>
+                    {results.failed.map((f,i)=>(
+                      <div key={i} style={{padding:"8px 12px",fontSize:12,color:"rgba(255,255,255,0.5)",borderBottom:i<results.failed.length-1?"1px solid rgba(255,255,255,0.06)":"none"}}>
+                        Row {f.row} ({f.name}): {f.reason}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              <button onClick={onClose} style={{width:"100%",marginTop:18,padding:"12px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"white",fontWeight:600,fontSize:14,cursor:"pointer",fontFamily:"'DM Sans'"}}>
+                Done
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BookingsEditor({ data, api, reload, rentals=[] }) {
   const bookings = data.bookings || [];
   // Look up pricePerDay from the rentals list using vehicleId
@@ -3558,6 +3802,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   const [paymentModal, setPaymentModal] = useState(null);
   const [recordPaymentModal, setRecordPaymentModal] = useState(null); // { booking, suggestedAmount }
   const [showManualModal, setShowManualModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [editBooking, setEditBooking] = useState(null); // booking being edited
 
   // Auto-refresh every 20 seconds so new bookings appear without page reload
@@ -3745,10 +3990,21 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           <h2 style={{fontFamily:"'Playfair Display'",fontSize:30,marginBottom:4}}>Bookings</h2>
           <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>{bookings.length} total · {counts.pending} pending action</p>
         </div>
-        <button onClick={()=>setShowManualModal(true)}
-          style={{padding:"10px 20px",background:"linear-gradient(135deg,#d4850a,#f0c060)",border:"none",borderRadius:10,color:"white",fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",gap:8,whiteSpace:"nowrap"}}>
-          🏪 Walk-in Booking
-        </button>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button onClick={()=>downloadTextFile(`bookings-export-${new Date().toISOString().slice(0,10)}.csv`, bookingsToCSV(filtered))}
+            disabled={filtered.length===0}
+            style={{padding:"10px 16px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:10,color: filtered.length ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.25)",fontWeight:600,fontSize:13,cursor: filtered.length ? "pointer" : "not-allowed",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+            ⬇ Export ({filtered.length})
+          </button>
+          <button onClick={()=>setShowImportModal(true)}
+            style={{padding:"10px 16px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:10,color:"rgba(255,255,255,0.75)",fontWeight:600,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+            ⬆ Import CSV
+          </button>
+          <button onClick={()=>setShowManualModal(true)}
+            style={{padding:"10px 20px",background:"linear-gradient(135deg,#d4850a,#f0c060)",border:"none",borderRadius:10,color:"white",fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",gap:8,whiteSpace:"nowrap"}}>
+            🏪 Walk-in Booking
+          </button>
+        </div>
       </div>
 
       {/* Revenue Summary — pulled from booking data only */}
@@ -4107,6 +4363,15 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
             } catch(e) { console.warn("Walk-in accounting failed:", e); }
             await reload();
           }}
+        />
+      )}
+
+      {/* Import Bookings (CSV) Modal */}
+      {showImportModal && (
+        <ImportBookingsModal
+          api={api}
+          reload={reload}
+          onClose={()=>setShowImportModal(false)}
         />
       )}
     </div>
