@@ -515,6 +515,30 @@ module.exports = async (req, res) => {
         return res.json({ success: true });
       }
 
+      // POST ?resource=customers — manually create a new customer
+      if (req.method === "POST" && !req.query?.sync && !req.query?.backfill_kyc) {
+        const { name, phone, email, nationality, gender, dateOfBirth, idType, idNumber, address, source } = req.body;
+        if (!name || !phone) return res.status(400).json({ error: "name and phone are required" });
+        const existing = await Customer.findOne({ phone: String(phone).trim() });
+        if (existing) return res.status(409).json({ error: "A customer with this phone number already exists" });
+        const customer = await Customer.create({
+          name, phone: String(phone).trim(),
+          email: email || null,
+          nationality: nationality || null,
+          gender: gender || null,
+          dateOfBirth: dateOfBirth || null,
+          idType: idType || null,
+          idNumber: idNumber || null,
+          address: address || null,
+          source: source || "walkin",
+          totalBookings: 0,
+          totalSpent: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        return res.json(customer);
+      }
+
       // POST ?resource=customers&sync=true — build customer DB from ALL bookings
       if (req.method === "POST" && req.query?.sync === "true") {
         const allBookings = await Booking.find({}).lean();
@@ -878,31 +902,22 @@ module.exports = async (req, res) => {
       });
     }
 
-    // ── POST ?regen_accounting=true — regenerate entries for bookings ────────────
-    // Deletes and rebuilds entries for bookings in the given date range.
-    // Optional: ?from=YYYY-MM-DD&to=YYYY-MM-DD — limit to bookings in that range.
-    // If no range given, all bookings are processed.
+    // ── POST ?regen_accounting=true — TRUE regenerate, ALL bookings ────────────
+    // Deletes ALL accounting entries linked to any booking, then rebuilds an
+    // entry for EVERY booking in the system — no filtering by source, no
+    // skipping for missing price. Missing price just records as ₹0 so every
+    // booking is represented and visible in accounting.
     if (req.method === "POST" && req.query?.regen_accounting === "true") {
       const { connectDB: _, Transaction } = require("./_db");
 
-      // Optional date range filter (based on checkIn date)
-      const fromDate = req.query?.from ? new Date(req.query.from) : null;
-      const toDate   = req.query?.to   ? new Date(req.query.to + "T23:59:59.999Z") : null;
-      const isFiltered = !!(fromDate || toDate);
-
-      const bookingQuery = isFiltered ? {
-        checkIn: {
-          ...(fromDate ? { $gte: fromDate } : {}),
-          ...(toDate   ? { $lte: toDate   } : {}),
-        }
-      } : {};
-
-      // Step 1 — delete ONLY entries linked to bookings in this range
-      const allBookings = await Booking.find(bookingQuery).lean();
-      const bookingIds  = allBookings.map(b => String(b._id));
+      // Step 1 — delete ALL existing accounting entries linked to a booking
+      // (they'll be rebuilt fresh from current booking data below)
       const deleteResult = await Transaction.deleteMany({
-        linkedBookingId: { $in: bookingIds }
+        linkedBookingId: { $exists: true, $ne: "" }
       });
+
+      // Step 2 — rebuild an entry for every booking, regardless of source
+      const allBookings = await Booking.find({}).lean();
 
       let created = 0, zeroAmount = 0;
 
@@ -913,6 +928,10 @@ module.exports = async (req, res) => {
         //   1. pricePerDay × days  (set on booking — most accurate)
         //   2. receivedAmount      (what was actually collected — legacy imports)
         //   3. 0                   (no data at all — entry still created for visibility)
+        //
+        // NOTE: Notes field is intentionally NOT parsed. Legacy import notes like
+        // "Register import. Vehicle: 9659. Payment: ₹3000" record a daily cash
+        // batch total, NOT the individual booking amount — parsing them inflates totals.
         const ppd  = Number(b.pricePerDay) || 0;
         const days = (b.checkIn && b.checkOut)
           ? Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5))
@@ -962,13 +981,9 @@ module.exports = async (req, res) => {
         created++;
       }
 
-      const rangeMsg = isFiltered
-        ? ` (range: ${req.query.from || "start"} → ${req.query.to || "end"})`
-        : " (all time)";
-
       return res.json({
         success: true,
-        message: `Regenerated${rangeMsg}. ${deleteResult.deletedCount} old entries removed, ${created} entries created (${zeroAmount} with ₹0 — truly no price data found).`,
+        message: `Regenerated. ${deleteResult.deletedCount} old entries removed, ${created} entries created (${zeroAmount} with ₹0 — truly no price data found).`,
         deleted: deleteResult.deletedCount, created, zeroAmount, total: allBookings.length,
       });
     }
