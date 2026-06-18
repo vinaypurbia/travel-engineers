@@ -1596,6 +1596,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
     {id:"tours",       label:"Tours & Taxi", icon:"🗺", badge: (data.tourBookings||[]).filter(b=>b.status==="pending").length},
     {id:"accounting",  label:"Accounting",   icon:"💰"},
     {id:"bookings",    label:"Bookings",     icon:"📋", badge: (data.bookings||[]).filter(b=>b.status==="pending").length},
+    {id:"customers",   label:"Customers",    icon:"👥"},
     {id:"users",       label:"Users",        icon:"👤"},
   ];
   const goTo = (id) => { setAdminTab(id); reload(); };
@@ -1677,6 +1678,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
               {adminTab==="inventory"    &&<InventoryEditor    data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
               {adminTab==="accounting"   &&<AccountingEditor   data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
               {adminTab==="bookings"     &&<BookingsEditor     data={data} api={api} reload={reload} showSaved={showSavedLocal} rentals={data.rentals||[]}/>}
+              {adminTab==="customers"    &&<CustomersEditor    api={api} showSaved={showSavedLocal}/>}
               {adminTab==="tours"        &&<ToursEditor        data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
               {adminTab==="users"        &&<UsersEditor        data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
             </div>
@@ -2726,17 +2728,6 @@ function AccountingEditor({ data, api, reload, showSaved }) {
   const [editId, setEditId]       = useState(null);
   const [sortDir, setSortDir]     = useState("desc");
   const [regenerating, setRegenerating] = useState(false);
-  const [showRegenPanel, setShowRegenPanel] = useState(false);
-  const [regenFrom, setRegenFrom] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10));
-  const [regenTo,   setRegenTo]   = useState(new Date().toISOString().slice(0,10));
-  const applyRegenPreset = (preset) => {
-    const n = new Date();
-    if (preset === "thisMonth")  { setRegenFrom(new Date(n.getFullYear(),n.getMonth(),1).toISOString().slice(0,10)); setRegenTo(n.toISOString().slice(0,10)); }
-    if (preset === "lastMonth")  { const d=new Date(n.getFullYear(),n.getMonth()-1,1); setRegenFrom(d.toISOString().slice(0,10)); setRegenTo(new Date(n.getFullYear(),n.getMonth(),0).toISOString().slice(0,10)); }
-    if (preset === "last3")      { setRegenFrom(new Date(n.getFullYear(),n.getMonth()-2,1).toISOString().slice(0,10)); setRegenTo(n.toISOString().slice(0,10)); }
-    if (preset === "thisYear")   { setRegenFrom(`${n.getFullYear()}-01-01`); setRegenTo(`${n.getFullYear()}-12-31`); }
-    if (preset === "all")        { setRegenFrom("2020-01-01"); setRegenTo("2099-12-31"); }
-  };
 
   const blankForm = { type:"income", category:"vehicle_rental", amount:"", date:today, description:"", clientName:"", agencyName:"", paymentStatus:"paid", paymentMethod:"cash", notes:"", vendorName:"", assetTag:"", assetName:"", receiptUrl:"" };
   const [form, setForm] = useState({...blankForm});
@@ -2860,15 +2851,29 @@ function AccountingEditor({ data, api, reload, showSaved }) {
               alert("Failed: " + (e.message||"Unknown error"));
             }
           }} style={{background:"rgba(240,192,96,0.1)",color:"#f0c060",border:"1px solid rgba(240,192,96,0.3)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>📅 Fix Booking Dates</button>
-          <button onClick={()=>setShowRegenPanel(v=>!v)} style={{background:"rgba(96,165,250,0.12)",color:"#60a5fa",border:"1px solid rgba(96,165,250,0.3)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:7}}>
-            ↻ Regenerate Accounting
+          <button disabled={regenerating} onClick={async()=>{
+            if(!window.confirm("This will DELETE all booking-linked accounting entries and rebuild ONE entry for EVERY booking (online + walk-in) from current data. Continue?")) return;
+            setRegenerating(true);
+            try {
+              const r = await api.post("/bookings?regen_accounting=true",{});
+              alert(r.message||"Done");
+              await reload();
+            } catch(e) {
+              alert("Failed: " + (e.message||"Unknown error"));
+            }
+            setRegenerating(false);
+          }} style={{background:regenerating?"rgba(96,165,250,0.06)":"rgba(96,165,250,0.12)",color:regenerating?"rgba(96,165,250,0.5)":"#60a5fa",border:"1px solid rgba(96,165,250,0.3)",padding:"9px 14px",borderRadius:8,cursor:regenerating?"not-allowed":"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:7}}>
+            {regenerating
+              ? <><span style={{width:12,height:12,borderRadius:"50%",border:"2px solid rgba(96,165,250,0.3)",borderTopColor:"#60a5fa",animation:"spin 0.8s linear infinite",display:"inline-block"}}/>Regenerating…</>
+              : <>↻ Regenerate Accounting</>
+            }
           </button>
           {regenerating && (
             <div style={{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(2px)",display:"flex",alignItems:"center",justifyContent:"center"}}>
               <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes progressSlide{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}`}</style>
               <div style={{background:"#0d1b2e",border:"1px solid rgba(96,165,250,0.3)",borderRadius:16,padding:"28px 32px",minWidth:320,boxShadow:"0 24px 60px rgba(0,0,0,0.5)",textAlign:"center"}}>
                 <div style={{fontSize:15,fontWeight:700,color:"#60a5fa",marginBottom:6,fontFamily:"'DM Sans'"}}>Regenerating Accounting…</div>
-                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:18}}>Rebuilding entries for the selected date range.</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:18}}>Deleting old entries and rebuilding from all bookings. This may take a moment for large datasets.</div>
                 <div style={{width:"100%",height:6,background:"rgba(255,255,255,0.08)",borderRadius:10,overflow:"hidden",position:"relative"}}>
                   <div style={{position:"absolute",inset:0,width:"40%",background:"linear-gradient(90deg,#60a5fa,#a78bfa)",borderRadius:10,animation:"progressSlide 1.1s ease-in-out infinite"}}/>
                 </div>
@@ -2877,68 +2882,6 @@ function AccountingEditor({ data, api, reload, showSaved }) {
           )}
         </div>
       </div>
-
-      {/* ── Regenerate Panel ── */}
-      {showRegenPanel && (
-        <div style={{background:"rgba(96,165,250,0.05)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:14,padding:"18px 20px",marginBottom:24}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div>
-              <div style={{fontWeight:700,color:"#60a5fa",fontSize:14}}>↻ Regenerate Accounting Entries</div>
-              <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginTop:2}}>Deletes and rebuilds entries only for bookings in the selected date range</div>
-            </div>
-            <button onClick={()=>setShowRegenPanel(false)} style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.3)",cursor:"pointer",fontSize:18,lineHeight:1}}>✕</button>
-          </div>
-          {/* Quick-pick month buttons */}
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
-            {[
-              ["This Month",  "thisMonth"],
-              ["Last Month",  "lastMonth"],
-              ["Last 3 Months","last3"],
-              ["This Year",   "thisYear"],
-              ["All Time",    "all"],
-            ].map(([label, preset]) => (
-              <button key={preset} onClick={()=>applyRegenPreset(preset)}
-                style={{padding:"6px 14px",borderRadius:20,border:"1px solid rgba(96,165,250,0.3)",background:"rgba(96,165,250,0.08)",color:"#60a5fa",fontSize:12,fontWeight:600,cursor:"pointer"}}>
-                {label}
-              </button>
-            ))}
-          </div>
-          {/* Custom date range */}
-          <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap",marginBottom:16}}>
-            <div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>From</div>
-              <input type="date" value={regenFrom} onChange={e=>setRegenFrom(e.target.value)}
-                style={{padding:"8px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.12)",background:"#0d1b2e",color:"white",fontSize:13,colorScheme:"dark",outline:"none"}}/>
-            </div>
-            <div style={{color:"rgba(255,255,255,0.3)",paddingTop:20}}>→</div>
-            <div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>To</div>
-              <input type="date" value={regenTo} onChange={e=>setRegenTo(e.target.value)}
-                style={{padding:"8px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.12)",background:"#0d1b2e",color:"white",fontSize:13,colorScheme:"dark",outline:"none"}}/>
-            </div>
-            <div style={{paddingTop:20}}>
-              <button disabled={regenerating} onClick={async()=>{
-                if (!regenFrom||!regenTo) { alert("Please select a date range."); return; }
-                const isAll = regenFrom === "2020-01-01" && regenTo === "2099-12-31";
-                const msg = isAll
-                  ? "This will DELETE all booking-linked accounting entries and rebuild ONE entry for EVERY booking. Continue?"
-                  : `This will delete and rebuild accounting entries for bookings from ${regenFrom} to ${regenTo}. Continue?`;
-                if (!window.confirm(msg)) return;
-                setRegenerating(true);
-                try {
-                  const r = await api.post(`/bookings?regen_accounting=true&from=${regenFrom}&to=${regenTo}`,{});
-                  alert(r.message||"Done");
-                  await reload();
-                } catch(e) { alert("Failed: "+(e.message||"Unknown error")); }
-                setRegenerating(false);
-                setShowRegenPanel(false);
-              }} style={{padding:"9px 20px",borderRadius:8,border:"none",background:regenerating?"rgba(96,165,250,0.2)":"linear-gradient(135deg,#3b82f6,#60a5fa)",color:"white",fontWeight:700,fontSize:13,cursor:regenerating?"not-allowed":"pointer",opacity:regenerating?0.6:1}}>
-                {regenerating ? "Regenerating…" : "↻ Run Regenerate"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Date Range Filter ── */}
       <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 20px",marginBottom:20}}>
@@ -4894,6 +4837,366 @@ function PayPage() {
           ← Back to Travel Engineers
         </a>
       </div>
+    </div>
+  );
+}
+
+// ─── CustomersEditor ─────────────────────────────────────────────────────────
+const ID_TYPES_LIST = ["Aadhaar","PAN","Passport","Driving License","Voter ID","Emirates ID","Kuwait Civil ID","Other"];
+
+function CustomersEditor({ api, showSaved }) {
+  const [customers, setCustomers]   = useState([]);
+  const [total, setTotal]           = useState(0);
+  const [loading, setLoading]       = useState(true);
+  const [search, setSearch]         = useState("");
+  const [selected, setSelected]     = useState(null);   // full customer + bookings drawer
+  const [showForm, setShowForm]     = useState(false);  // add/edit modal
+  const [editCustomer, setEditCustomer] = useState(null);
+  const [syncing, setSyncing]       = useState(false);
+  const [deleting, setDeleting]     = useState(null);
+
+  const blankForm = { name:"", phone:"", email:"", nationality:"", gender:"", dateOfBirth:"", idType:"", idNumber:"", address:"", source:"walkin" };
+  const [form, setForm] = useState({...blankForm});
+  const setF = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const fi  = {width:"100%",padding:"10px 14px",background:"#0d1b2e",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:8,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",boxSizing:"border-box"};
+  const fiS = {...fi,cursor:"pointer",appearance:"none",WebkitAppearance:"none",backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23f0c060' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center",paddingRight:32};
+  const lb  = {display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:2,marginBottom:6};
+
+  const fetchCustomers = async (q="") => {
+    setLoading(true);
+    try {
+      const res = await api.get(`/bookings?resource=customers${q ? `&q=${encodeURIComponent(q)}` : ""}`);
+      setCustomers(res.customers || []);
+      setTotal(res.total || 0);
+    } catch(e) { console.error(e); }
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchCustomers(); }, []);
+
+  // Debounced search
+  useEffect(() => {
+    const t = setTimeout(() => fetchCustomers(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const openAdd = () => { setForm({...blankForm}); setEditCustomer(null); setShowForm(true); };
+  const openEdit = (c) => {
+    setForm({ name:c.name||"", phone:c.phone||"", email:c.email||"", nationality:c.nationality||"", gender:c.gender||"", dateOfBirth:c.dateOfBirth?c.dateOfBirth.slice(0,10):"", idType:c.idType||"", idNumber:c.idNumber||"", address:c.address||"", source:c.source||"walkin" });
+    setEditCustomer(c);
+    setShowForm(true);
+  };
+
+  const saveCustomer = async () => {
+    if (!form.name.trim()) { alert("Name is required."); return; }
+    if (!form.phone.trim()) { alert("Phone is required."); return; }
+    try {
+      if (editCustomer) {
+        await api.put(`/bookings?resource=customers&id=${editCustomer._id}`, form);
+        showSaved("✅ Customer updated");
+      } else {
+        await api.post("/bookings?resource=customers", form);
+        showSaved("✅ Customer added");
+      }
+      setShowForm(false);
+      await fetchCustomers(search);
+      if (selected && editCustomer && selected.customer?._id === editCustomer._id) {
+        const res = await api.get(`/bookings?resource=customers&phone=${encodeURIComponent(form.phone)}`);
+        setSelected(res);
+      }
+    } catch(e) { alert("Save failed: " + e.message); }
+  };
+
+  const deleteCustomer = async (c) => {
+    if (!window.confirm(`Delete customer "${c.name}"? This only removes their profile — bookings are kept.`)) return;
+    setDeleting(c._id);
+    try {
+      await api.delete(`/bookings?resource=customers&id=${c._id}`);
+      showSaved("🗑️ Customer deleted", "delete");
+      if (selected?.customer?._id === c._id) setSelected(null);
+      await fetchCustomers(search);
+    } catch(e) { alert("Delete failed: " + e.message); }
+    setDeleting(null);
+  };
+
+  const syncAll = async () => {
+    if (!window.confirm("Rebuild the entire customer database from all bookings? Existing profiles will be updated with latest booking data.")) return;
+    setSyncing(true);
+    try {
+      const r = await api.post("/bookings?resource=customers&sync=true", {});
+      alert(r.message || "Done");
+      await fetchCustomers(search);
+    } catch(e) { alert("Sync failed: " + e.message); }
+    setSyncing(false);
+  };
+
+  const openDrawer = async (c) => {
+    setSelected(null);
+    try {
+      const res = await api.get(`/bookings?resource=customers&phone=${encodeURIComponent(c.phone)}`);
+      setSelected(res);
+    } catch(e) { console.error(e); }
+  };
+
+  const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
+  const fmtMoney = (n) => n > 0 ? `₹${Number(n).toLocaleString("en-IN")}` : "—";
+  const sourceTag = (s) => s === "walkin"
+    ? <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"rgba(74,222,128,0.12)",border:"1px solid rgba(74,222,128,0.25)",color:"#4ade80",fontWeight:600}}>🏪 Walk-in</span>
+    : <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.25)",color:"#60a5fa",fontWeight:600}}>🌐 Online</span>;
+
+  return (
+    <div style={{position:"relative"}}>
+      {/* ── Header ── */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
+        <div>
+          <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,marginBottom:4}}>Customers</h2>
+          <p style={{fontSize:12,color:"rgba(255,255,255,0.35)"}}>{total} total customers in database</p>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button onClick={openAdd} style={{background:"rgba(74,222,128,0.15)",border:"1px solid rgba(74,222,128,0.3)",color:"#4ade80",padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Add Customer</button>
+          <button onClick={syncAll} disabled={syncing} style={{background:"rgba(240,192,96,0.1)",border:"1px solid rgba(240,192,96,0.3)",color:"#f0c060",padding:"9px 16px",borderRadius:8,cursor:syncing?"not-allowed":"pointer",fontSize:12,fontWeight:600,opacity:syncing?0.6:1}}>
+            {syncing ? "Syncing…" : "🔄 Sync from Bookings"}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Search ── */}
+      <div style={{marginBottom:20}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍  Search name, phone, email, ID number…"
+          style={{...fi,fontSize:14,padding:"11px 16px",borderColor:"rgba(255,255,255,0.1)"}}/>
+      </div>
+
+      {/* ── Customer List ── */}
+      {loading ? (
+        <div style={{textAlign:"center",padding:60,color:"rgba(255,255,255,0.3)"}}>Loading customers…</div>
+      ) : customers.length === 0 ? (
+        <div style={{textAlign:"center",padding:60,color:"rgba(255,255,255,0.3)"}}>
+          <div style={{fontSize:40,marginBottom:12}}>👥</div>
+          <div style={{fontSize:15,marginBottom:6}}>{search ? "No customers match your search" : "No customers yet"}</div>
+          <div style={{fontSize:12}}>{!search && "Click \"Sync from Bookings\" to build the database, or add a customer manually."}</div>
+        </div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:1}}>
+          {customers.map(c => (
+            <div key={c._id} onClick={()=>openDrawer(c)}
+              style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 18px",cursor:"pointer",display:"flex",alignItems:"center",gap:16,transition:"background 0.15s"}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(212,133,10,0.07)"}
+              onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}>
+              {/* Avatar */}
+              <div style={{width:44,height:44,borderRadius:"50%",background:"linear-gradient(135deg,#d4850a,#f0c060)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18,color:"#1a1a2e",fontWeight:700}}>
+                {(c.name||"?")[0].toUpperCase()}
+              </div>
+              {/* Info */}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3,flexWrap:"wrap"}}>
+                  <span style={{fontWeight:700,fontSize:15,color:"white"}}>{c.name||"—"}</span>
+                  {sourceTag(c.source)}
+                  {c.idType && <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"rgba(167,139,250,0.12)",border:"1px solid rgba(167,139,250,0.25)",color:"#a78bfa",fontWeight:600}}>{c.idType}</span>}
+                </div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.45)",display:"flex",gap:14,flexWrap:"wrap"}}>
+                  <span>📞 {c.phone||"—"}</span>
+                  {c.email && <span>✉️ {c.email}</span>}
+                  {c.nationality && <span>🌍 {c.nationality}</span>}
+                </div>
+              </div>
+              {/* Stats */}
+              <div style={{display:"flex",gap:20,flexShrink:0,textAlign:"center"}}>
+                <div>
+                  <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginBottom:2}}>Bookings</div>
+                  <div style={{fontSize:16,fontWeight:700,color:"#f0c060"}}>{c.totalBookings||0}</div>
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginBottom:2}}>Total Spent</div>
+                  <div style={{fontSize:16,fontWeight:700,color:"#4ade80"}}>{fmtMoney(c.totalSpent)}</div>
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginBottom:2}}>Last Booking</div>
+                  <div style={{fontSize:12,color:"rgba(255,255,255,0.6)"}}>{fmt(c.lastBooking)}</div>
+                </div>
+              </div>
+              {/* Actions */}
+              <div style={{display:"flex",gap:6,flexShrink:0}} onClick={e=>e.stopPropagation()}>
+                <button onClick={()=>openEdit(c)} style={{padding:"6px 11px",borderRadius:7,border:"1px solid rgba(212,133,10,0.3)",background:"rgba(212,133,10,0.1)",color:"#f0c060",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️</button>
+                <button onClick={()=>deleteCustomer(c)} disabled={deleting===c._id} style={{padding:"6px 11px",borderRadius:7,border:"1px solid rgba(255,80,80,0.2)",background:"rgba(255,80,80,0.08)",color:"#ff6b6b",cursor:"pointer",fontSize:12}}>🗑</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Customer Drawer ── */}
+      {selected !== null && (
+        <div style={{position:"fixed",inset:0,zIndex:2000,display:"flex"}}>
+          <div style={{flex:1,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(3px)"}} onClick={()=>setSelected(null)}/>
+          <div style={{width:"min(520px,100vw)",background:"#0d1b2e",borderLeft:"1px solid rgba(212,133,10,0.2)",overflowY:"auto",display:"flex",flexDirection:"column"}}>
+            {selected === null ? (
+              <div style={{padding:40,textAlign:"center",color:"rgba(255,255,255,0.3)"}}>Loading…</div>
+            ) : (
+              <>
+                {/* Drawer header */}
+                <div style={{padding:"20px 24px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",gap:14,position:"sticky",top:0,background:"#0d1b2e",zIndex:1}}>
+                  <div style={{width:52,height:52,borderRadius:"50%",background:"linear-gradient(135deg,#d4850a,#f0c060)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,color:"#1a1a2e",fontWeight:700,flexShrink:0}}>
+                    {(selected.customer?.name||"?")[0].toUpperCase()}
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:700,fontSize:18,color:"white"}}>{selected.customer?.name||"—"}</div>
+                    <div style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>{selected.customer?.phone} {selected.customer?.email ? `· ${selected.customer.email}` : ""}</div>
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={()=>{ openEdit(selected.customer); setSelected(null); }} style={{padding:"7px 13px",borderRadius:8,border:"1px solid rgba(212,133,10,0.3)",background:"rgba(212,133,10,0.1)",color:"#f0c060",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
+                    <button onClick={()=>setSelected(null)} style={{width:32,height:32,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",cursor:"pointer",color:"rgba(255,255,255,0.4)",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                  </div>
+                </div>
+                <div style={{padding:"20px 24px",flex:1}}>
+                  {/* Stats row */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:20}}>
+                    {[
+                      ["Bookings",    selected.customer?.totalBookings||0,  "#f0c060"],
+                      ["Total Spent", fmtMoney(selected.customer?.totalSpent), "#4ade80"],
+                      ["Last Vehicle",selected.customer?.lastVehicle||"—",  "#60a5fa"],
+                    ].map(([l,v,col])=>(
+                      <div key={l} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
+                        <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:4,textTransform:"uppercase",letterSpacing:1}}>{l}</div>
+                        <div style={{fontSize:16,fontWeight:700,color:col}}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Profile details */}
+                  <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 18px",marginBottom:20}}>
+                    <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>Profile</div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                      {[
+                        ["Source",      selected.customer?.source==="walkin"?"🏪 Walk-in":"🌐 Online"],
+                        ["Nationality", selected.customer?.nationality||"—"],
+                        ["Gender",      selected.customer?.gender||"—"],
+                        ["Date of Birth",fmt(selected.customer?.dateOfBirth)],
+                        ["ID Type",     selected.customer?.idType||"—"],
+                        ["ID Number",   selected.customer?.idNumber||"—"],
+                        ["First Booking",fmt(selected.customer?.firstBooking)],
+                        ["Last Booking", fmt(selected.customer?.lastBooking)],
+                      ].map(([l,v])=>(
+                        <div key={l}>
+                          <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>{l}</div>
+                          <div style={{fontSize:13,color:"rgba(255,255,255,0.8)"}}>{v}</div>
+                        </div>
+                      ))}
+                      {selected.customer?.address && (
+                        <div style={{gridColumn:"1/-1"}}>
+                          <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>Address</div>
+                          <div style={{fontSize:13,color:"rgba(255,255,255,0.8)"}}>{selected.customer.address}</div>
+                        </div>
+                      )}
+                    </div>
+                    {/* ID image */}
+                    {selected.customer?.idImageUrl && (
+                      <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid rgba(255,255,255,0.06)"}}>
+                        <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>ID Document</div>
+                        <a href={selected.customer.idImageUrl} target="_blank" rel="noreferrer">
+                          <img src={selected.customer.idImageUrl} alt="ID" style={{maxHeight:140,maxWidth:"100%",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",objectFit:"contain",display:"block"}}/>
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                  {/* Booking history */}
+                  <div>
+                    <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>Booking History ({(selected.bookings||[]).length})</div>
+                    {(selected.bookings||[]).length === 0 ? (
+                      <div style={{fontSize:13,color:"rgba(255,255,255,0.3)",textAlign:"center",padding:"20px 0"}}>No bookings found</div>
+                    ) : (
+                      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                        {(selected.bookings||[]).map(b=>{
+                          const days = (b.checkIn&&b.checkOut)?Math.max(1,Math.round((new Date(b.checkOut)-new Date(b.checkIn))/864e5)):null;
+                          const total = b.pricePerDay&&days ? b.pricePerDay*days : null;
+                          const statusCol = {pending:"#f0c060",confirmed:"#4ade80",completed:"#60a5fa",cancelled:"#ff6b6b",payment_requested:"#fb923c"}[b.status]||"#f0c060";
+                          return (
+                            <div key={b._id} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:10,padding:"12px 14px"}}>
+                              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                                <div style={{fontWeight:600,fontSize:14,color:"white"}}>{b.vehicleName||"—"}</div>
+                                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                                  {total&&<span style={{fontSize:13,fontWeight:700,color:"#4ade80"}}>₹{total.toLocaleString("en-IN")}</span>}
+                                  <span style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:`${statusCol}18`,border:`1px solid ${statusCol}40`,color:statusCol,fontWeight:600,textTransform:"capitalize"}}>{b.status}</span>
+                                </div>
+                              </div>
+                              <div style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>
+                                {fmt(b.checkIn)} → {fmt(b.checkOut)}{days?` (${days}d)`:""} · {b.source==="walkin"?"Walk-in":"Online"}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Add / Edit Modal ── */}
+      {showForm && (
+        <div style={{position:"fixed",inset:0,zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)"}} onClick={()=>setShowForm(false)}/>
+          <div style={{position:"relative",background:"#0d1b2e",border:"1px solid rgba(212,133,10,0.3)",borderRadius:20,width:"100%",maxWidth:560,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.7)"}}>
+            <style>{`.te-cust-sel option,.te-cust-sel optgroup{background:#0d1b2e!important;color:#fff!important;}`}</style>
+            <div style={{padding:"18px 24px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,background:"#0d1b2e",zIndex:10}}>
+              <div style={{fontFamily:"'Playfair Display'",fontSize:18,fontWeight:700,color:"#f0c060"}}>{editCustomer ? "✏️ Edit Customer" : "➕ Add Customer"}</div>
+              <button onClick={()=>setShowForm(false)} style={{background:"rgba(255,255,255,0.06)",border:"none",color:"rgba(255,255,255,0.4)",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+            </div>
+            <div style={{padding:"22px 24px 28px",display:"flex",flexDirection:"column",gap:14}}>
+              {/* Basic Info */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                <div style={{gridColumn:"1/-1"}}><label style={lb}>Full Name *</label><input style={fi} value={form.name} onChange={e=>setF("name",e.target.value)} placeholder="Customer full name"/></div>
+                <div><label style={lb}>Phone *</label><input style={fi} value={form.phone} onChange={e=>setF("phone",e.target.value)} placeholder="+91 / +965…" type="tel"/></div>
+                <div><label style={lb}>Email</label><input style={fi} value={form.email} onChange={e=>setF("email",e.target.value)} placeholder="Optional" type="email"/></div>
+              </div>
+              {/* Identity */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                <div>
+                  <label style={lb}>ID Type</label>
+                  <select className="te-cust-sel" style={fiS} value={form.idType} onChange={e=>setF("idType",e.target.value)}>
+                    <option value="">— Select —</option>
+                    {ID_TYPES_LIST.map(t=><option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div><label style={lb}>ID Number</label><input style={fi} value={form.idNumber} onChange={e=>setF("idNumber",e.target.value)} placeholder="Document number"/></div>
+              </div>
+              {/* Demographics */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14}}>
+                <div>
+                  <label style={lb}>Gender</label>
+                  <select className="te-cust-sel" style={fiS} value={form.gender} onChange={e=>setF("gender",e.target.value)}>
+                    <option value="">— Select —</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div><label style={lb}>Nationality</label><input style={fi} value={form.nationality} onChange={e=>setF("nationality",e.target.value)} placeholder="Indian"/></div>
+                <div><label style={lb}>Date of Birth</label><input type="date" style={{...fi,colorScheme:"dark"}} value={form.dateOfBirth} onChange={e=>setF("dateOfBirth",e.target.value)}/></div>
+              </div>
+              {/* Source */}
+              <div>
+                <label style={lb}>Source</label>
+                <select className="te-cust-sel" style={fiS} value={form.source} onChange={e=>setF("source",e.target.value)}>
+                  <option value="walkin">🏪 Walk-in</option>
+                  <option value="online">🌐 Online</option>
+                </select>
+              </div>
+              {/* Address */}
+              <div><label style={lb}>Address</label><textarea rows={2} style={{...fi,resize:"vertical",lineHeight:1.6}} value={form.address} onChange={e=>setF("address",e.target.value)} placeholder="Home / hotel address"/></div>
+              {/* Buttons */}
+              <div style={{display:"flex",gap:10,marginTop:4}}>
+                <button onClick={()=>setShowForm(false)} style={{flex:1,padding:"12px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,color:"rgba(255,255,255,0.5)",fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans'"}}>Cancel</button>
+                <button onClick={saveCustomer} style={{flex:2,padding:"12px",background:"linear-gradient(135deg,#d4850a,#f0c060)",border:"none",borderRadius:10,color:"#1a1a2e",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"'DM Sans'"}}>
+                  {editCustomer ? "💾 Save Changes" : "➕ Add Customer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
