@@ -4269,7 +4269,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                   <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:3}}>
                     <span style={{fontWeight:700,fontSize:15}}>{b.customerName}</span>
                     <span style={{fontSize:11,padding:"2px 9px",borderRadius:10,background:sc.bg,border:`1px solid ${sc.border}`,color:sc.color}}>{sc.label}</span>
-                    {b.vehicleName&&<span style={{fontSize:11,background:"rgba(255,255,255,0.06)",padding:"2px 8px",borderRadius:10,color:"rgba(255,255,255,0.4)"}}>🛵 {b.vehicleName}</span>}
+                    {b.vehicleName&&<span style={{fontSize:11,background:"rgba(255,255,255,0.06)",padding:"2px 8px",borderRadius:10,color:"rgba(255,255,255,0.4)"}}>🛵 {b.vehicleName}{getVehicleNo(b)?<span style={{marginLeft:5,background:"rgba(212,133,10,0.2)",color:"#f0c060",padding:"1px 6px",borderRadius:6,fontWeight:700}}>#{getVehicleNo(b)}</span>:null}</span>}
                     {isWalkin(b)&&<span style={{fontSize:10,background:"rgba(212,133,10,0.15)",padding:"2px 8px",borderRadius:10,color:"#f0c060",border:"1px solid rgba(212,133,10,0.3)"}}>🏪 Walk-in</span>}
                     {!isWalkin(b)&&<span style={{fontSize:10,background:"rgba(96,165,250,0.1)",padding:"2px 8px",borderRadius:10,color:"#60a5fa",border:"1px solid rgba(96,165,250,0.2)"}}>🌐 Online</span>}
                   </div>
@@ -4320,7 +4320,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                   {[
                     ["Customer", b.customerName],
                     ["Phone", b.phone],
-                    ["Vehicle", b.vehicleName||"—"],
+                    ["Vehicle", b.vehicleName ? `${b.vehicleName}${getVehicleNo(b) ? ` (#${getVehicleNo(b)})` : ""}` : "—"],
                     ["Check-in", fmt(b.checkIn)],
                     ["Check-out", fmt(b.checkOut)],
                     ["Duration", d?`${d} day${d!==1?"s":""}` :"—"],
