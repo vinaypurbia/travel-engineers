@@ -40,8 +40,8 @@ module.exports = async (req, res) => {
         Villa.findOne(),
         // Get all active/confirmed bookings that overlap with today or future
         Booking.find({
-          status: { $in: ["pending", "confirmed", "payment_requested"] },
-          checkOut: { $gte: today },
+          status: { $in: ["pending", "confirmed", "payment_requested", "completed"] },
+          checkOut: { $gt: today },
         }),
       ]);
 
@@ -69,7 +69,7 @@ module.exports = async (req, res) => {
         const isBookedNow = bookings.some(b => {
           const from = b.from ? new Date(b.from) : null;
           const to   = b.to   ? new Date(b.to)   : null;
-          return from && to && today >= from && today <= to;
+          return from && to && today >= from && today < to;
         });
         // Check if booked in future
         const hasUpcomingBooking = bookings.length > 0;
