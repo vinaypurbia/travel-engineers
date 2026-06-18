@@ -831,6 +831,53 @@ module.exports = async (req, res) => {
       });
     }
 
+    // ── POST ?fix_dates=true — one-time migration: correct createdAt using checkIn ──
+    // CSV-imported bookings were created via POST /bookings before that route
+    // accepted a createdAt override, so Mongoose's schema default (Date.now)
+    // stamped EVERY imported booking with the date it was imported, not the
+    // date it actually happened. This collapses all historical bookings onto
+    // a single wrong date in Accounting once regenerated.
+    //
+    // Fix: for any booking whose createdAt falls on or after the supplied
+    // cutoff date (the day the bad import ran) AND has a checkIn date that's
+    // clearly earlier, replace createdAt with checkIn. Bookings created
+    // normally (no checkIn override needed, or checkIn is genuinely close to
+    // createdAt) are left untouched.
+    //
+    // Usage: POST /api/bookings?fix_dates=true&cutoff=2026-06-08
+    // (cutoff = the date your bad import/regenerate ran; defaults to today)
+    if (req.method === "POST" && req.query?.fix_dates === "true") {
+      const cutoff = req.query.cutoff ? new Date(req.query.cutoff) : new Date();
+      cutoff.setHours(0, 0, 0, 0);
+
+      const all = await Booking.find({}).lean();
+      let fixed = 0, skipped = 0, noCheckIn = 0;
+
+      for (const b of all) {
+        const created = b.createdAt ? new Date(b.createdAt) : null;
+        const checkIn = b.checkIn ? new Date(b.checkIn) : null;
+
+        // Only touch bookings whose createdAt is on/after the cutoff (i.e.
+        // suspiciously matches the bad import date) — leave normally-created
+        // bookings (today's real walk-ins/online bookings) untouched.
+        if (!created || created < cutoff) { skipped++; continue; }
+        if (!checkIn) { noCheckIn++; continue; }
+        // If checkIn is already basically the same as createdAt, there's
+        // nothing to fix (a booking genuinely made today, for today).
+        if (Math.abs(created - checkIn) < 36e5) { skipped++; continue; } // <1hr apart
+
+        await Booking.findByIdAndUpdate(b._id, { createdAt: checkIn });
+        fixed++;
+      }
+
+      return res.json({
+        success: true,
+        message: `Done. ${fixed} bookings had createdAt corrected to their checkIn date. ${skipped} left untouched, ${noCheckIn} had no checkIn date to use.`,
+        fixed, skipped, noCheckIn, total: all.length,
+        cutoffUsed: cutoff.toISOString(),
+      });
+    }
+
     // ── POST ?regen_accounting=true — TRUE regenerate, ALL bookings ────────────
     // Deletes ALL accounting entries linked to any booking, then rebuilds an
     // entry for EVERY booking in the system — no filtering by source, no
@@ -895,7 +942,11 @@ module.exports = async (req, res) => {
           category:        "vehicle_rental",
           amount:          amt,
           currency:        "INR",
-          date:            b.createdAt || new Date(),
+          // Prefer checkIn — it's the real historical booking date from CSV
+          // imports. createdAt can't be trusted here: any booking imported
+          // before the createdAt-override fix below was stamped with the
+          // import date ("today"), not the booking's actual date.
+          date:            b.checkIn || b.createdAt || new Date(),
           description:     `${isWalkin ? "Walk-in" : "Online"} rental — ${b.vehicleName || "vehicle"} / ${b.customerName || "Customer"}`,
           clientName:      b.customerName || "Customer",
           linkedBookingId: bid,
@@ -923,7 +974,7 @@ module.exports = async (req, res) => {
         customerName, phone, vehicleName, vehicleId,
         checkIn, checkOut, stayAddress, notes, pricePerDay,
         idType, idNumber, idImageUrl, email, nationality,
-        dateOfBirth, gender, address, source,
+        dateOfBirth, gender, address, source, createdAt,
       } = req.body;
 
       const days_ = (checkIn && checkOut)
@@ -931,6 +982,14 @@ module.exports = async (req, res) => {
         : 1;
       const totalAmt   = (pricePerDay || 0) * days_;
       const advanceAmt = totalAmt > 0 ? Math.ceil(totalAmt * 0.5) : 0;
+
+      // createdAt is normally left to the schema default (Date.now — the
+      // actual moment the record is created). The ONLY legitimate reason to
+      // override it is bulk/CSV import of historical bookings, where the
+      // booking really happened on a past date and accounting/sorting needs
+      // to reflect that real date instead of "today" (the import date).
+      const createdAtOverride = createdAt ? new Date(createdAt) : undefined;
+      const isValidOverride = createdAtOverride && !isNaN(createdAtOverride.getTime());
 
       const booking = await Booking.create({
         customerName, phone, vehicleName,
@@ -951,6 +1010,7 @@ module.exports = async (req, res) => {
         gender:      gender      || null,
         address:     address     || null,
         source:      source      || "online",
+        ...(isValidOverride ? { createdAt: createdAtOverride } : {}),
       });
 
       const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" }) : "—";
