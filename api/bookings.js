@@ -703,10 +703,10 @@ module.exports = async (req, res) => {
       if (req.method === "DELETE") {
         await Booking.findByIdAndDelete(id);
         try {
-          const mongoose = require("mongoose");
-          const AccSchema = new mongoose.Schema({}, { strict: false });
-          const Acc = mongoose.models.Accounting || mongoose.model("Accounting", AccSchema);
-          await Acc.deleteMany({ linkedBookingId: id });
+          // NOTE: accounting entries for bookings live in the Transaction
+          // model (see _db.js), not a separate "Accounting" collection.
+          const { Transaction } = require("./_db");
+          await Transaction.deleteMany({ linkedBookingId: String(id) });
         } catch(e) { console.error("Accounting cleanup error:", e.message); }
         return res.json({ success: true });
       }
@@ -714,15 +714,13 @@ module.exports = async (req, res) => {
 
     if (req.method === "DELETE" && req.query.cleanup === "accounting") {
       try {
-        const mongoose = require("mongoose");
-        const AccSchema = new mongoose.Schema({}, { strict: false });
-        const Acc = mongoose.models.Accounting || mongoose.model("Accounting", AccSchema);
+        const { Transaction } = require("./_db");
         const allBookingIds = (await Booking.find({}, "_id").lean()).map(b => String(b._id));
-        const allEntries = await Acc.find({ linkedBookingId: { $exists: true, $ne: null } }).lean();
+        const allEntries = await Transaction.find({ linkedBookingId: { $exists: true, $ne: "" } }).lean();
         let deleted = 0;
         for (const entry of allEntries) {
           if (!allBookingIds.includes(String(entry.linkedBookingId))) {
-            await Acc.findByIdAndDelete(entry._id);
+            await Transaction.findByIdAndDelete(entry._id);
             deleted++;
           }
         }
@@ -730,6 +728,71 @@ module.exports = async (req, res) => {
       } catch(e) {
         return res.status(500).json({ error: e.message });
       }
+    }
+
+    // ── Verify admin password by calling the SAME /api/auth endpoint used
+    // for the admin login screen, so this always matches whatever credential
+    // source auth.js actually checks against (env var, DB, etc.) — no
+    // duplicated / guessed logic here.
+    async function verifyAdminPassword(req, password) {
+      if (!password) return false;
+      try {
+        const proto = req.headers["x-forwarded-proto"] || "https";
+        const host  = req.headers.host;
+        const authRes = await fetch(`${proto}://${host}/api/auth`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
+        });
+        const data = await authRes.json();
+        return !!data?.success;
+      } catch (e) {
+        console.error("Admin password verification failed:", e.message);
+        return false;
+      }
+    }
+
+    // ── DELETE ?ids=id1,id2,id3 — bulk delete SELECTED bookings ───────────────
+    // Body: { password }. Requires the admin password and removes every
+    // Transaction entry linked to any of the deleted bookings.
+    if (req.method === "DELETE" && req.query?.ids) {
+      const password = req.body?.password || "";
+      const ok = await verifyAdminPassword(req, password);
+      if (!ok) return res.status(401).json({ error: "Incorrect admin password" });
+
+      const ids = String(req.query.ids).split(",").map(s => s.trim()).filter(Boolean);
+      if (!ids.length) return res.status(400).json({ error: "No booking ids provided" });
+
+      const { Transaction } = require("./_db");
+      const delResult = await Booking.deleteMany({ _id: { $in: ids } });
+      const txResult  = await Transaction.deleteMany({ linkedBookingId: { $in: ids.map(String) } });
+
+      return res.json({
+        success: true,
+        message: `${delResult.deletedCount} booking(s) and ${txResult.deletedCount} linked accounting entr${txResult.deletedCount===1?"y":"ies"} deleted.`,
+        deletedBookings: delResult.deletedCount,
+        deletedTransactions: txResult.deletedCount,
+      });
+    }
+
+    // ── DELETE ?deleteAll=true — delete ALL bookings ───────────────────────────
+    // Body: { password }. Requires the admin password and removes every
+    // Transaction entry linked to any booking (all booking-related accounting).
+    if (req.method === "DELETE" && req.query?.deleteAll === "true") {
+      const password = req.body?.password || "";
+      const ok = await verifyAdminPassword(req, password);
+      if (!ok) return res.status(401).json({ error: "Incorrect admin password" });
+
+      const { Transaction } = require("./_db");
+      const delResult = await Booking.deleteMany({});
+      const txResult  = await Transaction.deleteMany({ linkedBookingId: { $exists: true, $ne: "" } });
+
+      return res.json({
+        success: true,
+        message: `All bookings deleted (${delResult.deletedCount}) along with ${txResult.deletedCount} linked accounting entr${txResult.deletedCount===1?"y":"ies"}.`,
+        deletedBookings: delResult.deletedCount,
+        deletedTransactions: txResult.deletedCount,
+      });
     }
 
     // ── POST ?fix_sources=true — one-time migration: stamp source on all bookings ──
