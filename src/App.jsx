@@ -2538,6 +2538,7 @@ function InventoryEditor({ data, api, reload, showSaved }) {
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:4}}>
                     <span style={{fontWeight:600,fontSize:15}}>{item.name}</span>
+                    {item.vehicleNo&&<span style={{fontSize:11,background:"rgba(212,133,10,0.15)",padding:"2px 8px",borderRadius:10,color:"#f0c060",fontWeight:700}}>#{item.vehicleNo}</span>}
                     <span style={{fontSize:10,background:"rgba(255,255,255,0.06)",padding:"2px 8px",borderRadius:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1}}>{icon} {item.type}</span>
                     <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:ss.bg,border:`1px solid ${ss.border}`,color:ss.color,display:"flex",alignItems:"center",gap:4}}>
                       <span style={{width:5,height:5,borderRadius:"50%",background:ss.dot,display:"inline-block"}}/>
