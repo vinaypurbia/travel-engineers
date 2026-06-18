@@ -3796,6 +3796,70 @@ function ImportBookingsModal({ onClose, api, reload, rentals=[] }) {
   );
 }
 
+// ─── Admin Password Confirmation Modal ───────────────────────────────────────
+// Generic password-gated confirmation used for destructive bulk actions
+// (e.g. delete all bookings, delete selected bookings). Verifies the typed
+// password live via onConfirm (caller hits the server, which checks it
+// against /api/auth) rather than trusting any locally-cached admin session.
+function AdminPasswordConfirmModal({ title, message, onCancel, onConfirm }) {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const submit = async () => {
+    if (!password) { setError("Please enter the admin password."); return; }
+    setBusy(true); setError("");
+    try {
+      await onConfirm(password);
+    } catch (e) {
+      setError(e.message || "Incorrect password or something went wrong.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}
+      onClick={e=>{ if (e.target===e.currentTarget && !busy) onCancel(); }}>
+      <div style={{background:"#10182b",border:"1px solid rgba(255,80,80,0.25)",borderRadius:16,padding:"26px 26px 22px",width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+          <span style={{fontSize:22}}>⚠️</span>
+          <h3 style={{fontFamily:"'Playfair Display'",fontSize:19,color:"#ff6b6b",margin:0}}>{title}</h3>
+        </div>
+        <p style={{fontSize:13,color:"rgba(255,255,255,0.5)",lineHeight:1.5,marginBottom:18}}>{message}</p>
+
+        <label style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"1.5px",display:"block",marginBottom:8}}>
+          Admin Password
+        </label>
+        <input
+          ref={inputRef}
+          type="password"
+          value={password}
+          onChange={e=>{ setPassword(e.target.value); setError(""); }}
+          onKeyDown={e=>{ if (e.key==="Enter" && !busy) submit(); }}
+          placeholder="Enter admin password to confirm"
+          disabled={busy}
+          style={{width:"100%",boxSizing:"border-box",padding:"11px 14px",background:"rgba(255,255,255,0.06)",border:`1.5px solid ${error?"#ff6b6b":"rgba(255,255,255,0.12)"}`,borderRadius:9,color:"white",fontFamily:"'DM Sans'",fontSize:14,outline:"none",marginBottom:8}}
+        />
+        {error && <div style={{fontSize:12,color:"#ff6b6b",marginBottom:8}}>{error}</div>}
+
+        <div style={{display:"flex",gap:10,marginTop:16}}>
+          <button onClick={onCancel} disabled={busy}
+            style={{flex:1,padding:"12px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:10,color:"rgba(255,255,255,0.7)",fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"'DM Sans'",fontSize:14}}>
+            Cancel
+          </button>
+          <button onClick={submit} disabled={busy}
+            style={{flex:1,padding:"12px",background: busy ? "rgba(255,107,107,0.4)" : "#ef4444",border:"none",borderRadius:10,color:"white",fontWeight:700,cursor:busy?"default":"pointer",fontFamily:"'DM Sans'",fontSize:14}}>
+            {busy ? "Deleting…" : "Confirm Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BookingsEditor({ data, api, reload, rentals=[] }) {
   const bookings = data.bookings || [];
   // Look up pricePerDay from the rentals list using vehicleId
@@ -3833,6 +3897,16 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   const [showManualModal, setShowManualModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [editBooking, setEditBooking] = useState(null); // booking being edited
+
+  // ── Bulk selection + password-gated bulk delete ────────────────────────────
+  const [selectedIds, setSelectedIds] = useState([]); // array of booking _id
+  const [bulkDeleteMode, setBulkDeleteMode] = useState(null); // null | "selected" | "all"
+  const toggleSelect = (id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev, id]);
+  const toggleSelectAllVisible = () => {
+    const visibleIds = filtered.map(b => b._id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.includes(id));
+    setSelectedIds(allSelected ? selectedIds.filter(id => !visibleIds.includes(id)) : [...new Set([...selectedIds, ...visibleIds])]);
+  };
 
   // Auto-refresh every 20 seconds so new bookings appear without page reload
   useEffect(() => {
@@ -3955,6 +4029,33 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
     await api.delete(`/bookings?id=${id}`); await reload(); showSaved("🗑️ Booking deleted","delete");
   };
 
+  // Called by the password-confirm modal once the admin types the correct password.
+  // mode: "selected" → delete only selectedIds, "all" → delete every booking.
+  const runBulkDelete = async (mode, password) => {
+    if (mode === "all") {
+      const res = await fetch(`/api/bookings?deleteAll=true`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      }).then(r => r.json());
+      if (!res.success) throw new Error(res.error || "Failed to delete bookings");
+      setSelectedIds([]);
+      await reload();
+      showSaved(`🗑️ ${res.message || "All bookings deleted"}`, "delete");
+    } else {
+      if (!selectedIds.length) throw new Error("No bookings selected");
+      const res = await fetch(`/api/bookings?ids=${selectedIds.join(",")}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      }).then(r => r.json());
+      if (!res.success) throw new Error(res.error || "Failed to delete bookings");
+      setSelectedIds([]);
+      await reload();
+      showSaved(`🗑️ ${res.message || "Selected bookings deleted"}`, "delete");
+    }
+  };
+
   // Builds UPI payment link for exact 50% advance amount
   const buildUpiLink = (b) => {
     const priceMatch = getPricePerDay(b) || b.amount || 0;
@@ -4020,6 +4121,17 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>{bookings.length} total · {counts.pending} pending action</p>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {selectedIds.length > 0 && (
+            <button onClick={()=>setBulkDeleteMode("selected")}
+              style={{padding:"10px 16px",background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.3)",borderRadius:10,color:"#ff6b6b",fontWeight:700,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+              🗑 Delete Selected ({selectedIds.length})
+            </button>
+          )}
+          <button onClick={()=>setBulkDeleteMode("all")}
+            disabled={bookings.length===0}
+            style={{padding:"10px 16px",background:"rgba(255,80,80,0.06)",border:"1px solid rgba(255,80,80,0.2)",borderRadius:10,color: bookings.length ? "#ff6b6b" : "rgba(255,107,107,0.3)",fontWeight:600,fontSize:13,cursor: bookings.length ? "pointer" : "not-allowed",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+            🗑 Delete All Bookings
+          </button>
           <button onClick={()=>downloadTextFile(`bookings-export-${new Date().toISOString().slice(0,10)}.csv`, bookingsToCSV(filtered.map(b => ({ ...b, vehicleNumber: getVehicleNo(b) }))))}
             disabled={filtered.length===0}
             style={{padding:"10px 16px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:10,color: filtered.length ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.25)",fontWeight:600,fontSize:13,cursor: filtered.length ? "pointer" : "not-allowed",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
@@ -4089,6 +4201,13 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
 
       {/* Search + Sort */}
       <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center"}}>
+        <label title="Select all visible bookings" style={{display:"flex",alignItems:"center",gap:6,cursor:filtered.length?"pointer":"default",padding:"9px 10px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,flexShrink:0}}>
+          <input type="checkbox" disabled={filtered.length===0}
+            checked={filtered.length>0 && filtered.every(b=>selectedIds.includes(b._id))}
+            onChange={toggleSelectAllVisible}
+            style={{width:15,height:15,cursor:filtered.length?"pointer":"default"}}/>
+          <span style={{fontSize:12,color:"rgba(255,255,255,0.5)",whiteSpace:"nowrap"}}>Select all</span>
+        </label>
         <div style={{flex:1,position:"relative"}}>
           <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",opacity:0.4,pointerEvents:"none"}}>🔍</span>
           <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name, phone, vehicle…"
@@ -4099,6 +4218,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           Date {sortDir==="desc"?"↓":"↑"}
         </button>
       </div>
+
 
       {/* Bookings List */}
       <div style={{display:"grid",gap:10}}>
@@ -4118,6 +4238,10 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
               onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.07)"}>
               {/* Main row */}
               <div style={{padding:"14px 18px",display:"flex",gap:14,alignItems:"center",cursor:"pointer"}} onClick={()=>setExpanded(isExpanded?null:b._id)}>
+                <input type="checkbox" checked={selectedIds.includes(b._id)}
+                  onClick={e=>e.stopPropagation()}
+                  onChange={()=>toggleSelect(b._id)}
+                  style={{width:16,height:16,flexShrink:0,cursor:"pointer"}}/>
                 <div style={{width:44,height:44,borderRadius:10,background:sc.bg,border:`1px solid ${sc.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
                   {b.status==="pending"?"⏳":b.status==="confirmed"?"✅":b.status==="completed"?"🏁":"❌"}
                 </div>
@@ -4402,6 +4526,21 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           reload={reload}
           rentals={data.rentals || rentals || []}
           onClose={()=>setShowImportModal(false)}
+        />
+      )}
+
+      {/* Password-gated bulk delete confirmation */}
+      {bulkDeleteMode && (
+        <AdminPasswordConfirmModal
+          title={bulkDeleteMode==="all" ? "Delete ALL Bookings" : `Delete ${selectedIds.length} Selected Booking${selectedIds.length!==1?"s":""}`}
+          message={bulkDeleteMode==="all"
+            ? "This permanently deletes EVERY booking and all of their linked accounting entries. This cannot be undone."
+            : `This permanently deletes the ${selectedIds.length} selected booking${selectedIds.length!==1?"s":""} and their linked accounting entries. This cannot be undone.`}
+          onCancel={()=>setBulkDeleteMode(null)}
+          onConfirm={async (password) => {
+            await runBulkDelete(bulkDeleteMode, password);
+            setBulkDeleteMode(null);
+          }}
         />
       )}
     </div>
