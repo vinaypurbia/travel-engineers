@@ -1,11 +1,16 @@
 const cloudinary = require("cloudinary").v2;
 const multer = require("multer");
+const { connectDB } = require("./_db");
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
+
+// Optional: set MONGODB_STORAGE_LIMIT_MB in env vars if you're not on the
+// 512MB Atlas M0 free tier. Defaults to 512MB.
+const MONGO_LIMIT_BYTES = (Number(process.env.MONGODB_STORAGE_LIMIT_MB) || 512) * 1024 * 1024;
 
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -113,15 +118,69 @@ async function handleUpload(req, res) {
   }
 }
 
+// ── Storage usage handler (Cloudinary + MongoDB) ──────────────────────────
+// Piggybacks on this function (rather than a new api file) to stay within
+// Vercel's Serverless Function limit. Called as GET /api/upload?action=storage
+async function handleStorage(req, res) {
+  const result = { cloudinary: null, mongodb: null, cloudinaryError: null, mongodbError: null };
+
+  try {
+    const usage = await cloudinary.api.usage();
+    result.cloudinary = {
+      plan: usage.plan || null,
+      storageBytes: usage.storage?.usage ?? 0,
+      storageLimitBytes: usage.storage?.limit ?? null,
+      bandwidthBytes: usage.bandwidth?.usage ?? 0,
+      bandwidthLimitBytes: usage.bandwidth?.limit ?? null,
+      objects: usage.objects?.usage ?? null,
+      derivedResources: usage.derived_resources ?? null,
+      transformations: usage.transformations?.usage ?? null,
+      requests: usage.requests ?? null,
+      credits: usage.credits ? { usage: usage.credits.usage, limit: usage.credits.limit } : null,
+      lastUpdated: usage.last_updated || null,
+    };
+  } catch (err) {
+    console.error("Cloudinary usage error:", err);
+    result.cloudinaryError = err.message || "Failed to fetch Cloudinary usage";
+  }
+
+  try {
+    const conn = await connectDB();
+    const stats = await conn.connection.db.stats();
+    result.mongodb = {
+      dbName: stats.db,
+      dataSize: stats.dataSize,
+      storageSize: stats.storageSize,
+      indexSize: stats.indexSize,
+      collections: stats.collections,
+      indexes: stats.indexes,
+      objects: stats.objects,
+      limitBytes: MONGO_LIMIT_BYTES,
+    };
+  } catch (err) {
+    console.error("MongoDB stats error:", err);
+    result.mongodbError = err.message || "Failed to fetch MongoDB stats";
+  }
+
+  return res.json(result);
+}
+
 // ── Main handler — routes by ?action= query param ─────────────────────────
 // Usage:
-//   POST /api/upload           → file upload (default, backward compatible)
-//   POST /api/upload?action=chat → AI chat via Gemini
+//   POST /api/upload              → file upload (default, backward compatible)
+//   POST /api/upload?action=chat  → AI chat via Gemini
+//   GET  /api/upload?action=storage → Cloudinary + MongoDB usage stats
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "POST,GET,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") return res.status(200).end();
+
+  if (req.query.action === "storage") {
+    if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
+    return handleStorage(req, res);
+  }
+
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   // Route to chat handler if ?action=chat
