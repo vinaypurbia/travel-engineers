@@ -2726,6 +2726,17 @@ function AccountingEditor({ data, api, reload, showSaved }) {
   const [editId, setEditId]       = useState(null);
   const [sortDir, setSortDir]     = useState("desc");
   const [regenerating, setRegenerating] = useState(false);
+  const [showRegenPanel, setShowRegenPanel] = useState(false);
+  const [regenFrom, setRegenFrom] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10));
+  const [regenTo,   setRegenTo]   = useState(new Date().toISOString().slice(0,10));
+  const applyRegenPreset = (preset) => {
+    const n = new Date();
+    if (preset === "thisMonth")  { setRegenFrom(new Date(n.getFullYear(),n.getMonth(),1).toISOString().slice(0,10)); setRegenTo(n.toISOString().slice(0,10)); }
+    if (preset === "lastMonth")  { const d=new Date(n.getFullYear(),n.getMonth()-1,1); setRegenFrom(d.toISOString().slice(0,10)); setRegenTo(new Date(n.getFullYear(),n.getMonth(),0).toISOString().slice(0,10)); }
+    if (preset === "last3")      { setRegenFrom(new Date(n.getFullYear(),n.getMonth()-2,1).toISOString().slice(0,10)); setRegenTo(n.toISOString().slice(0,10)); }
+    if (preset === "thisYear")   { setRegenFrom(`${n.getFullYear()}-01-01`); setRegenTo(`${n.getFullYear()}-12-31`); }
+    if (preset === "all")        { setRegenFrom("2020-01-01"); setRegenTo("2099-12-31"); }
+  };
 
   const blankForm = { type:"income", category:"vehicle_rental", amount:"", date:today, description:"", clientName:"", agencyName:"", paymentStatus:"paid", paymentMethod:"cash", notes:"", vendorName:"", assetTag:"", assetName:"", receiptUrl:"" };
   const [form, setForm] = useState({...blankForm});
@@ -2849,29 +2860,15 @@ function AccountingEditor({ data, api, reload, showSaved }) {
               alert("Failed: " + (e.message||"Unknown error"));
             }
           }} style={{background:"rgba(240,192,96,0.1)",color:"#f0c060",border:"1px solid rgba(240,192,96,0.3)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>📅 Fix Booking Dates</button>
-          <button disabled={regenerating} onClick={async()=>{
-            if(!window.confirm("This will DELETE all booking-linked accounting entries and rebuild ONE entry for EVERY booking (online + walk-in) from current data. Continue?")) return;
-            setRegenerating(true);
-            try {
-              const r = await api.post("/bookings?regen_accounting=true",{});
-              alert(r.message||"Done");
-              await reload();
-            } catch(e) {
-              alert("Failed: " + (e.message||"Unknown error"));
-            }
-            setRegenerating(false);
-          }} style={{background:regenerating?"rgba(96,165,250,0.06)":"rgba(96,165,250,0.12)",color:regenerating?"rgba(96,165,250,0.5)":"#60a5fa",border:"1px solid rgba(96,165,250,0.3)",padding:"9px 14px",borderRadius:8,cursor:regenerating?"not-allowed":"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:7}}>
-            {regenerating
-              ? <><span style={{width:12,height:12,borderRadius:"50%",border:"2px solid rgba(96,165,250,0.3)",borderTopColor:"#60a5fa",animation:"spin 0.8s linear infinite",display:"inline-block"}}/>Regenerating…</>
-              : <>↻ Regenerate Accounting</>
-            }
+          <button onClick={()=>setShowRegenPanel(v=>!v)} style={{background:"rgba(96,165,250,0.12)",color:"#60a5fa",border:"1px solid rgba(96,165,250,0.3)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:7}}>
+            ↻ Regenerate Accounting
           </button>
           {regenerating && (
             <div style={{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(2px)",display:"flex",alignItems:"center",justifyContent:"center"}}>
               <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes progressSlide{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}`}</style>
               <div style={{background:"#0d1b2e",border:"1px solid rgba(96,165,250,0.3)",borderRadius:16,padding:"28px 32px",minWidth:320,boxShadow:"0 24px 60px rgba(0,0,0,0.5)",textAlign:"center"}}>
                 <div style={{fontSize:15,fontWeight:700,color:"#60a5fa",marginBottom:6,fontFamily:"'DM Sans'"}}>Regenerating Accounting…</div>
-                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:18}}>Deleting old entries and rebuilding from all bookings. This may take a moment for large datasets.</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:18}}>Rebuilding entries for the selected date range.</div>
                 <div style={{width:"100%",height:6,background:"rgba(255,255,255,0.08)",borderRadius:10,overflow:"hidden",position:"relative"}}>
                   <div style={{position:"absolute",inset:0,width:"40%",background:"linear-gradient(90deg,#60a5fa,#a78bfa)",borderRadius:10,animation:"progressSlide 1.1s ease-in-out infinite"}}/>
                 </div>
@@ -2880,6 +2877,68 @@ function AccountingEditor({ data, api, reload, showSaved }) {
           )}
         </div>
       </div>
+
+      {/* ── Regenerate Panel ── */}
+      {showRegenPanel && (
+        <div style={{background:"rgba(96,165,250,0.05)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:14,padding:"18px 20px",marginBottom:24}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div>
+              <div style={{fontWeight:700,color:"#60a5fa",fontSize:14}}>↻ Regenerate Accounting Entries</div>
+              <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginTop:2}}>Deletes and rebuilds entries only for bookings in the selected date range</div>
+            </div>
+            <button onClick={()=>setShowRegenPanel(false)} style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.3)",cursor:"pointer",fontSize:18,lineHeight:1}}>✕</button>
+          </div>
+          {/* Quick-pick month buttons */}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
+            {[
+              ["This Month",  "thisMonth"],
+              ["Last Month",  "lastMonth"],
+              ["Last 3 Months","last3"],
+              ["This Year",   "thisYear"],
+              ["All Time",    "all"],
+            ].map(([label, preset]) => (
+              <button key={preset} onClick={()=>applyRegenPreset(preset)}
+                style={{padding:"6px 14px",borderRadius:20,border:"1px solid rgba(96,165,250,0.3)",background:"rgba(96,165,250,0.08)",color:"#60a5fa",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {/* Custom date range */}
+          <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap",marginBottom:16}}>
+            <div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>From</div>
+              <input type="date" value={regenFrom} onChange={e=>setRegenFrom(e.target.value)}
+                style={{padding:"8px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.12)",background:"#0d1b2e",color:"white",fontSize:13,colorScheme:"dark",outline:"none"}}/>
+            </div>
+            <div style={{color:"rgba(255,255,255,0.3)",paddingTop:20}}>→</div>
+            <div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>To</div>
+              <input type="date" value={regenTo} onChange={e=>setRegenTo(e.target.value)}
+                style={{padding:"8px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.12)",background:"#0d1b2e",color:"white",fontSize:13,colorScheme:"dark",outline:"none"}}/>
+            </div>
+            <div style={{paddingTop:20}}>
+              <button disabled={regenerating} onClick={async()=>{
+                if (!regenFrom||!regenTo) { alert("Please select a date range."); return; }
+                const isAll = regenFrom === "2020-01-01" && regenTo === "2099-12-31";
+                const msg = isAll
+                  ? "This will DELETE all booking-linked accounting entries and rebuild ONE entry for EVERY booking. Continue?"
+                  : `This will delete and rebuild accounting entries for bookings from ${regenFrom} to ${regenTo}. Continue?`;
+                if (!window.confirm(msg)) return;
+                setRegenerating(true);
+                try {
+                  const r = await api.post(`/bookings?regen_accounting=true&from=${regenFrom}&to=${regenTo}`,{});
+                  alert(r.message||"Done");
+                  await reload();
+                } catch(e) { alert("Failed: "+(e.message||"Unknown error")); }
+                setRegenerating(false);
+                setShowRegenPanel(false);
+              }} style={{padding:"9px 20px",borderRadius:8,border:"none",background:regenerating?"rgba(96,165,250,0.2)":"linear-gradient(135deg,#3b82f6,#60a5fa)",color:"white",fontWeight:700,fontSize:13,cursor:regenerating?"not-allowed":"pointer",opacity:regenerating?0.6:1}}>
+                {regenerating ? "Regenerating…" : "↻ Run Regenerate"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Date Range Filter ── */}
       <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"16px 20px",marginBottom:20}}>
@@ -4329,21 +4388,11 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                   <select value={b.status} onChange={e=>{e.stopPropagation();updateStatus(b._id,e.target.value,b);}}
                     onClick={e=>e.stopPropagation()}
                     style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${sc.border}`,background:"#0d1b2e",color:sc.color,fontSize:11,cursor:"pointer",fontWeight:600,outline:"none",appearance:"none",WebkitAppearance:"none",paddingRight:24,backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23f0c060' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",backgroundRepeat:"no-repeat",backgroundPosition:"right 6px center"}}>
-                    {isWalkin(b) ? (
-                      <>
-                        <option value="confirmed" style={{background:"#0d1b2e",color:"white"}}>✅ Confirmed</option>
-                        <option value="completed" style={{background:"#0d1b2e",color:"white"}}>🏁 Completed</option>
-                        <option value="cancelled" style={{background:"#0d1b2e",color:"white"}}>❌ Cancelled</option>
-                      </>
-                    ) : (
-                      <>
-                        <option value="pending" style={{background:"#0d1b2e",color:"white"}}>⏳ Pending</option>
-                        <option value="payment_requested" style={{background:"#0d1b2e",color:"white"}}>💳 Request Payment</option>
-                        <option value="confirmed" style={{background:"#0d1b2e",color:"white"}}>✅ Confirmed</option>
-                        <option value="completed" style={{background:"#0d1b2e",color:"white"}}>🏁 Completed</option>
-                        <option value="cancelled" style={{background:"#0d1b2e",color:"white"}}>❌ Cancelled</option>
-                      </>
-                    )}
+                    <option value="pending" style={{background:"#0d1b2e",color:"white"}}>⏳ Pending</option>
+                    <option value="payment_requested" style={{background:"#0d1b2e",color:"white"}}>💳 Request Payment</option>
+                    <option value="confirmed" style={{background:"#0d1b2e",color:"white"}}>✅ Confirmed</option>
+                    <option value="completed" style={{background:"#0d1b2e",color:"white"}}>🏁 Completed</option>
+                    <option value="cancelled" style={{background:"#0d1b2e",color:"white"}}>❌ Cancelled</option>
                   </select>
                   <button onClick={e=>{e.stopPropagation();setEditBooking(b);}} title="Edit booking details"
                     style={{background:"rgba(212,133,10,0.1)",border:"1px solid rgba(212,133,10,0.3)",color:"#f0c060",padding:"6px 10px",borderRadius:7,cursor:"pointer",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>✏️ Edit</button>
@@ -4480,7 +4529,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
         <RecordPaymentModal
           booking={recordPaymentModal}
           totalAmount={getPricePerDay(recordPaymentModal) * ((recordPaymentModal.checkIn && recordPaymentModal.checkOut) ? Math.max(1, Math.round((new Date(recordPaymentModal.checkOut) - new Date(recordPaymentModal.checkIn)) / 864e5)) : 1)}
-          onSave={async(received, totalAmt, paymentDate, payMethod)=>{
+          onSave={async(received, totalAmt)=>{
             // 1. Update booking receivedAmount
             const bid = String(recordPaymentModal._id||"");
             const days_ = (recordPaymentModal.checkIn&&recordPaymentModal.checkOut)?Math.max(1,Math.round((new Date(recordPaymentModal.checkOut)-new Date(recordPaymentModal.checkIn))/864e5)):1;
@@ -4488,27 +4537,22 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
             const alreadyReceived = recordPaymentModal.receivedAmount||0;
             const newReceived = alreadyReceived + Number(received);
             const newStatus = newReceived >= orderTotal && orderTotal>0 ? "completed" : "confirmed";
-            const isWalkinBooking = recordPaymentModal.source === "walkin" || (recordPaymentModal.customerName||"").toLowerCase() === "walk-in customer";
-            await api.put(`/bookings?id=${bid}`, { receivedAmount: newReceived, status: newStatus, paymentMethod: payMethod });
+            await api.put(`/bookings?id=${bid}`, { receivedAmount: newReceived, status: newStatus });
             if (newStatus === "confirmed"||newStatus==="completed") await syncInventory(recordPaymentModal, newStatus);
             // 2. Auto-create accounting transaction for this payment
             const balanceRemaining = Math.max(0, orderTotal - newReceived);
-            const txDate = paymentDate ? new Date(paymentDate).toISOString() : new Date().toISOString();
-            const descPrefix = isWalkinBooking
-              ? (alreadyReceived > 0 ? "Balance payment" : "Walk-in cash")
-              : (alreadyReceived > 0 ? "Balance payment" : "Advance payment");
             try {
               // Record the received payment
               await api.post("/accounting", {
                 type: "income",
                 category: "vehicle_rental",
                 amount: Number(received),
-                description: `${descPrefix} — ${recordPaymentModal.vehicleName||"vehicle"} booking for ${recordPaymentModal.customerName}`,
+                description: `${alreadyReceived>0?"Balance payment":"Advance payment"} — ${recordPaymentModal.vehicleName||"vehicle"} booking for ${recordPaymentModal.customerName}`,
                 clientName: recordPaymentModal.customerName,
                 linkedBookingId: bid,
                 paymentStatus: balanceRemaining > 0 ? "partial" : "paid",
-                paymentMethod: payMethod || "cash",
-                date: txDate,
+                paymentMethod: "upi",
+                date: new Date().toISOString(),
                 notes: `Order total: ₹${orderTotal} | Paid so far: ₹${newReceived} | Remaining: ₹${balanceRemaining}`,
               });
               // If balance still due, create a pending entry so accounting shows the outstanding amount
@@ -4517,12 +4561,12 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                   type: "income",
                   category: "vehicle_rental",
                   amount: balanceRemaining,
-                  description: `Balance due — ${recordPaymentModal.vehicleName||"vehicle"} booking for ${recordPaymentModal.customerName}`,
+                  description: `Balance due at pickup — ${recordPaymentModal.vehicleName||"vehicle"} booking for ${recordPaymentModal.customerName}`,
                   clientName: recordPaymentModal.customerName,
                   linkedBookingId: bid,
                   paymentStatus: "pending",
-                  paymentMethod: payMethod || "cash",
-                  date: txDate,
+                  paymentMethod: "upi",
+                  date: new Date().toISOString(),
                   notes: `Order total: ₹${orderTotal} | Already received: ₹${newReceived} | Balance pending: ₹${balanceRemaining}`,
                 });
               }
@@ -4554,6 +4598,30 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           onClose={()=>setShowManualModal(false)}
           onCreated={async (booking)=>{
             setShowManualModal(false);
+            try {
+              const rental = (data.rentals||[]).find(r => String(r._id) === String(booking?.vehicleId));
+              const ppd = booking?.pricePerDay > 0 ? Number(booking.pricePerDay)
+                        : rental ? Number(rental.price||0)
+                        : (booking?.tokenAmount||0)*2;
+              const bDays = (booking?.checkIn && booking?.checkOut)
+                ? Math.max(1, Math.round((new Date(booking.checkOut)-new Date(booking.checkIn))/864e5))
+                : 1;
+              const amt = ppd * bDays;
+              if (amt > 0) {
+                await api.post("/accounting", {
+                  type: "income",
+                  category: "vehicle_rental",
+                  amount: amt,
+                  description: `Walk-in cash — ${booking?.vehicleName||"vehicle"} / ${booking?.customerName||"Walk-in Customer"}`,
+                  clientName: booking?.customerName || "Walk-in Customer",
+                  linkedBookingId: String(booking?._id||""),
+                  paymentStatus: "paid",
+                  paymentMethod: booking?.paymentMethod || "cash",
+                  date: booking?.checkIn || new Date().toISOString(),
+                  notes: `Walk-in booking. Vehicle: ${booking?.vehicleName} | ₹${ppd}/day × ${bDays}d = ₹${amt}`
+                });
+              }
+            } catch(e) { console.warn("Walk-in accounting failed:", e); }
             await reload();
           }}
         />
@@ -4721,34 +4789,29 @@ function PaymentTokenModal({ booking, suggestedAmount, total, days, onSend, onAp
 // ─── Record Payment Modal ────────────────────────────────────────────────────
 function RecordPaymentModal({ booking, totalAmount=0, onSave, onClose }) {
   const [received, setReceived] = useState(String(booking.receivedAmount || booking.tokenAmount || ""));
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0,10));
-  const [paymentMethod, setPaymentMethod] = useState(booking.paymentMethod || "cash");
   const [error, setError] = useState("");
   const requested = booking.tokenAmount || 0;
+  // Remaining = total order value minus what's already been received
   const alreadyReceived = booking.receivedAmount || 0;
   const orderTotal = totalAmount > 0 ? totalAmount : requested;
-  const isWalkin = booking.source === "walkin" || (booking.customerName||"").toLowerCase() === "walk-in customer";
+  const remaining = Math.max(0, orderTotal - alreadyReceived - (Number(received) || 0) + alreadyReceived);
 
   const handleSave = () => {
     const num = Number(received);
     if (!received || isNaN(num) || num < 0) { setError("Please enter a valid amount."); return; }
-    if (!paymentDate) { setError("Please select the payment date."); return; }
-    onSave(num, orderTotal, paymentDate, paymentMethod);
+    onSave(num, orderTotal);
   };
-
-  const fi = {width:"100%",padding:"12px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.06)",color:"white",fontSize:14,boxSizing:"border-box",fontFamily:"'DM Sans',sans-serif",outline:"none"};
-  const lb = {fontSize:12,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:6};
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
-      <div style={{background:"#1a1d2e",border:"1px solid rgba(240,192,96,0.2)",borderRadius:16,padding:28,width:"100%",maxWidth:420}}>
+      <div style={{background:"#1a1d2e",border:"1px solid rgba(240,192,96,0.2)",borderRadius:16,padding:28,width:"100%",maxWidth:400}}>
         <h3 style={{color:"#f0c060",fontFamily:"'Playfair Display'",margin:"0 0 4px"}}>💰 Record Payment</h3>
         <p style={{color:"rgba(255,255,255,0.4)",fontSize:13,margin:"0 0 20px"}}>{booking.customerName} · {booking.vehicleName||"—"}</p>
 
-        {!isWalkin && requested > 0 && (
+        {requested > 0 && (
           <div style={{display:"flex",gap:12,marginBottom:20}}>
             <div style={{flex:1,background:"rgba(251,146,60,0.1)",border:"1px solid rgba(251,146,60,0.2)",borderRadius:10,padding:"10px 14px",textAlign:"center"}}>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:4}}>Advance Requested</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:4}}>Requested</div>
               <div style={{fontSize:18,fontWeight:700,color:"#fb923c"}}>₹{requested.toLocaleString("en-IN")}</div>
             </div>
             <div style={{flex:1,background:"rgba(240,192,96,0.08)",border:"1px solid rgba(240,192,96,0.2)",borderRadius:10,padding:"10px 14px",textAlign:"center"}}>
@@ -4758,48 +4821,23 @@ function RecordPaymentModal({ booking, totalAmount=0, onSave, onClose }) {
           </div>
         )}
 
-        {orderTotal > 0 && isWalkin && (
-          <div style={{background:"rgba(240,192,96,0.08)",border:"1px solid rgba(240,192,96,0.2)",borderRadius:10,padding:"10px 14px",textAlign:"center",marginBottom:20}}>
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:4}}>Order Total</div>
-            <div style={{fontSize:22,fontWeight:700,color:"#f0c060"}}>₹{orderTotal.toLocaleString("en-IN")}</div>
-          </div>
-        )}
-
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
-          <div>
-            <label style={lb}>Amount Received (₹)</label>
-            <input type="number" value={received} onChange={e=>{setReceived(e.target.value);setError("");}}
-              placeholder="Enter amount" style={fi} autoFocus />
-          </div>
-          <div>
-            <label style={lb}>Payment Date</label>
-            <input type="date" value={paymentDate} onChange={e=>setPaymentDate(e.target.value)}
-              style={{...fi,colorScheme:"dark"}} />
-          </div>
-        </div>
-
-        <div style={{marginBottom:14}}>
-          <label style={lb}>Payment Method</label>
-          <select value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)}
-            style={{...fi,cursor:"pointer",appearance:"none",WebkitAppearance:"none",backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23f0c060' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center",paddingRight:32}}>
-            <option value="cash" style={{background:"#0d1b2e"}}>💵 Cash</option>
-            <option value="upi" style={{background:"#0d1b2e"}}>📱 UPI</option>
-            <option value="card" style={{background:"#0d1b2e"}}>💳 Card</option>
-            <option value="bank_transfer" style={{background:"#0d1b2e"}}>🏦 Bank Transfer</option>
-            <option value="other" style={{background:"#0d1b2e"}}>💰 Other</option>
-          </select>
-        </div>
-
+        <label style={{fontSize:12,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1,display:"block",marginBottom:6}}>Amount Received (₹)</label>
+        <input
+          type="number" value={received} onChange={e=>{setReceived(e.target.value);setError("");}}
+          placeholder="Enter amount received"
+          style={{width:"100%",padding:"12px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.06)",color:"white",fontSize:16,boxSizing:"border-box",marginBottom:8}}
+          autoFocus
+        />
         {error&&<div style={{color:"#ff6b6b",fontSize:12,marginBottom:8}}>{error}</div>}
         {Number(received)>0&&orderTotal>0&&(
           <div style={{background:"rgba(240,192,96,0.06)",border:"1px solid rgba(240,192,96,0.15)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"rgba(255,255,255,0.6)",marginBottom:12,display:"flex",justifyContent:"space-between"}}>
-            <span>Balance remaining</span>
-            <span style={{color:"#f0c060",fontWeight:700}}>₹{Math.max(0, orderTotal - alreadyReceived - Number(received)).toLocaleString("en-IN")}</span>
+            <span>Balance due at pickup</span>
+            <span style={{color:"#f0c060",fontWeight:700}}>₹{Math.max(0, orderTotal - Number(received)).toLocaleString("en-IN")}</span>
           </div>
         )}
-        {Number(received)>0&&orderTotal>0&&(alreadyReceived+Number(received))>=orderTotal&&(
+        {Number(received)>0&&requested>0&&Number(received)>=requested&&(
           <div style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#4ade80",marginBottom:12}}>
-            ✅ Fully paid — booking will be marked Completed
+            ✅ Full advance received — booking will be marked Confirmed
           </div>
         )}
         <div style={{display:"flex",gap:10,marginTop:8}}>
