@@ -3260,7 +3260,7 @@ function QRPayStep({ total, setStep }) {
 // ─── Booking Modal (public site) ─────────────────────────────────────────────
 function BookingModal({ vehicle, whatsapp, api, onClose }) {
   const today = new Date().toISOString().slice(0,10);
-  const [form, setForm] = useState({ customerName:"", phone:"", checkIn:today, checkOut:"", stayAddress:"", notes:"", idType:"", idNumber:"", idImageUrl:"", dateOfBirth:"", gender:"", nationality:"", address:"" });
+  const [form, setForm] = useState({ customerName:"", phone:"", email:"", checkIn:today, checkOut:"", stayAddress:"", notes:"", idType:"", idNumber:"", idImageUrl:"", dateOfBirth:"", gender:"", nationality:"", address:"" });
   const [step, setStep] = useState("form"); // form | qr | success
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -3271,17 +3271,19 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
 
   // Auto-fills from the ID scan. Never overwrites name/phone/address that the
   // customer already typed — those stay theirs to control; everything else
-  // (nationality, ID type/number, DOB, gender) only fills in if still blank.
+  // (nationality, ID type/number, DOB, gender, phone if printed) only fills
+  // in if still blank.
   const handleScanned = (result) => {
     setScanDone(true);
-    // Gemini returns "Passport"/"Driving License"/etc; this form's dropdown
-    // uses lowercase enum values — map so the scan lands in the right option
-    // instead of falling through to the free-text "Other" field.
+    // Gemini returns "Passport"/"Driving License"/"Aadhaar"/"PAN"/"National ID"/
+    // "Voter ID"; this form's dropdown uses lowercase enum values — map so the
+    // scan lands in the right option instead of falling through to free text.
     const idTypeMap = {
       "Passport": "passport",
       "Driving License": "driving_license",
       "Aadhaar": "national_id",
-      "Kuwait Civil ID": "civil_id",
+      "National ID": "national_id",
+      "PAN": "pan",
       "Voter ID": "voter_id",
     };
     const mappedIdType = result.idType ? (idTypeMap[result.idType] || result.idType) : "";
@@ -3293,10 +3295,21 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
       gender:      result.gender      || f.gender,
       nationality: f.nationality || result.nationality || "",
       address:     f.address     || result.address     || "",
+      phone:       (!f.phone || f.phone.trim()==="") ? (result.phone || f.phone) : f.phone,
       customerName: (!f.customerName || f.customerName.trim()==="")
         ? (result.fullName || f.customerName)
         : f.customerName,
     }));
+  };
+
+  // Called when the customer clicks ✕ on the scanned ID preview — they don't
+  // want to give us the photo. Clears the stored image URL and the "Scanned"
+  // badge so it's visually obvious nothing is being submitted, while keeping
+  // any text fields the scan already filled in (those came from THEIR
+  // document, the photo itself is the only thing being withdrawn).
+  const handleScanRemoved = () => {
+    setScanDone(false);
+    set("idImageUrl", "");
   };
 
   const days = form.checkIn && form.checkOut
@@ -3315,10 +3328,12 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
       `*Vehicle:* ${vehicle.name}`,
       `*Customer:* ${form.customerName}`,
       `*Phone:* ${form.phone}`,
+      `*Email:* ${form.email||"—"}`,
       `*Check-in:* ${fmt(form.checkIn)}`,
       `*Check-out:* ${fmt(form.checkOut)}`,
       `*Duration:* ${d} day${d!==1?"s":""}`,
       `*Stay Address:* ${form.stayAddress||"—"}`,
+      `*Home Address:* ${form.address||"—"}`,
       form.notes ? `*Notes:* ${form.notes}` : null,
     ].filter(Boolean).join("\n");
     const num = (whatsapp||"").replace(/[^0-9]/g,"");
@@ -3328,6 +3343,8 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
   const submit = async () => {
     if (!form.customerName.trim()) { setError("Please enter your name."); return; }
     if (!form.phone.trim() || form.phone.length < 7) { setError("Please enter a valid phone number."); return; }
+    if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) { setError("Please enter a valid email address."); return; }
+    if (!form.address.trim()) { setError("Please enter your home address."); return; }
     if (!form.checkIn) { setError("Please select a check-in date."); return; }
     if (!form.checkOut) { setError("Please select a check-out date."); return; }
     if (new Date(form.checkOut) <= new Date(form.checkIn)) { setError("Check-out must be after check-in."); return; }
@@ -3410,6 +3427,10 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
                       <input value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="+965 / +91 with country code" type="tel" style={fi}/>
                     </div>
                   </div>
+                  <div>
+                    <label style={lbl2}>Email *</label>
+                    <input value={form.email} onChange={e=>set("email",e.target.value)} placeholder="you@example.com" type="email" style={fi}/>
+                  </div>
 
                   {/* ID Scan — optional shortcut. Scanning fills nationality, ID
                       type/number, DOB, gender (and name, only if still blank)
@@ -3419,10 +3440,15 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
                       <label style={{...lbl2,marginBottom:0}}>🪪 Scan your ID (optional — autofills details below)</label>
                       {scanDone && <span style={{fontSize:11,color:"#4ade80",fontWeight:600}}>✅ Scanned</span>}
                     </div>
-                    <ScanPanel customerName={form.customerName} onScanned={handleScanned} onImageUrl={(url)=>set("idImageUrl",url)} />
+                    <ScanPanel customerName={form.customerName} onScanned={handleScanned} onImageUrl={(url)=>set("idImageUrl",url)} onRemoved={handleScanRemoved} />
                     <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",margin:"-4px 0 10px"}}>
                       Don't want to scan? No problem — just fill in the fields below manually.
                     </div>
+                  </div>
+
+                  <div>
+                    <label style={lbl2}>Home address *</label>
+                    <input value={form.address} onChange={e=>set("address",e.target.value)} placeholder="Your permanent address" style={fi}/>
                   </div>
 
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
@@ -3449,16 +3475,16 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
                     </div>
                     <div>
                       <label style={lbl2}>ID Type</label>
-                      <select value={["passport","driving_license","national_id","civil_id","voter_id",""].includes(form.idType||"")?(form.idType||""):"__other__"} onChange={e=>set("idType",e.target.value==="__other__"?"":e.target.value)} style={fiSel}>
+                      <select value={["passport","driving_license","national_id","pan","voter_id",""].includes(form.idType||"")?(form.idType||""):"__other__"} onChange={e=>set("idType",e.target.value==="__other__"?"":e.target.value)} style={fiSel}>
                         <option value="">Select ID type…</option>
+                        <option value="national_id">Aadhaar / National ID</option>
+                        <option value="pan">PAN Card</option>
                         <option value="passport">Passport</option>
                         <option value="driving_license">Driving Licence</option>
-                        <option value="national_id">National ID / Aadhar</option>
-                        <option value="civil_id">Civil ID (Kuwait)</option>
                         <option value="voter_id">Voter ID</option>
                         <option value="__other__">Other (type below)</option>
                       </select>
-                      {!["passport","driving_license","national_id","civil_id","voter_id",""].includes(form.idType||"") && (
+                      {!["passport","driving_license","national_id","pan","voter_id",""].includes(form.idType||"") && (
                         <input value={form.idType||""} onChange={e=>set("idType",e.target.value)} placeholder="Describe your ID…" style={{...fi,marginTop:6}}/>
                       )}
                     </div>
@@ -4936,7 +4962,7 @@ function PayPage() {
 }
 
 // ─── CustomersEditor ─────────────────────────────────────────────────────────
-const ID_TYPES_LIST = ["Aadhaar","PAN","Passport","Driving License","Voter ID","Emirates ID","Kuwait Civil ID","Other"];
+const ID_TYPES_LIST = ["Aadhaar","PAN","Passport","Driving License","Voter ID","National ID","Other"];
 
 function CustomersEditor({ api, showSaved }) {
   const [customers, setCustomers]   = useState([]);
