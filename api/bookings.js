@@ -80,7 +80,7 @@ Return only the JSON, no explanation, no markdown.`;
               { inline_data: { mime_type: mimeType || "image/jpeg", data: imageBase64 } }
             ]
           }],
-          generationConfig: { temperature: 0, maxOutputTokens: 512 }
+          generationConfig: { temperature: 0, maxOutputTokens: 1024 }
         }),
       }
     );
@@ -108,8 +108,19 @@ Return only the JSON, no explanation, no markdown.`;
         rawText,
       };
     } catch(parseErr) {
-      // Gemini returned text but not valid JSON — fall back to regex parser
+      // Gemini's response wasn't valid JSON (often a sign it was cut off
+      // mid-response) — fall back to the regex parser on the raw text.
       const parsed = parseIdText(rawText);
+      // If even the fallback found nothing usable, don't pretend this was a
+      // clean success — surface it so the customer knows to fill in by hand
+      // rather than silently submitting a booking with blank fields.
+      if (!parsed.fullName && !parsed.idNumber) {
+        return {
+          ...parsed,
+          rawText,
+          warning: "Couldn't clearly read this document. Please check the photo is sharp and well-lit, or fill in the details manually below.",
+        };
+      }
       return { ...parsed, rawText };
     }
 
