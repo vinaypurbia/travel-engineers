@@ -184,7 +184,7 @@ function IdFormFields({ form, setForm }) {
 // Scan Panel — reusable camera/upload + OCR section
 // Used inside both CustomerIdPanel and ManualBookingModal
 // ─────────────────────────────────────────────────────────────────────────────
-function ScanPanel({ customerName, onScanned, onImageUrl }) {
+export function ScanPanel({ customerName, onScanned, onImageUrl }) {
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState("");
   const [previewUrl, setPreviewUrl] = useState(null);
