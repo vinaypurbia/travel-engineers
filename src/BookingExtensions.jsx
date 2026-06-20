@@ -215,6 +215,11 @@ export function ScanPanel({ customerName, onScanned, onImageUrl, onRemoved }) {
           // be visible, otherwise idType/idNumber look fine while idImageUrl
           // silently stays empty.
           setScanError("⚠️ ID details extracted, but the photo failed to save: " + result.imageUploadError);
+        } else if (result.warning) {
+          // Scan "succeeded" but extracted nothing usable — tell the customer
+          // instead of silently leaving every field blank after a green
+          // "Scanned" badge, which looks broken even though nothing crashed.
+          setScanError("⚠️ " + result.warning);
         }
         if (onScanned) onScanned(result);
       }
@@ -467,7 +472,8 @@ export function CustomerIdPanel({ booking, onUpdated }) {
 
   // Called when Google Vision returns scan results
   const handleScanned = (result) => {
-    setScanDone(true);
+    const extractedSomething = !!(result.fullName || result.idNumber || result.address || result.phone || result.dateOfBirth);
+    setScanDone(extractedSomething);
     setForm(f => ({
       ...f,
       idType:      result.idType      || f.idType,
@@ -476,6 +482,7 @@ export function CustomerIdPanel({ booking, onUpdated }) {
       gender:      result.gender      || f.gender,
       nationality: result.nationality || f.nationality,
       address:     result.address     || f.address,
+      phone:       result.phone       || f.phone,
       // Only overwrite name if blank
       customerName: (!f.customerName || f.customerName.trim() === "")
         ? (result.fullName || f.customerName)
@@ -747,7 +754,8 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated, checkConf
   };
 
   const handleScanned = (result) => {
-    setScanDone(true);
+    const extractedSomething = !!(result.fullName || result.idNumber || result.address || result.phone || result.dateOfBirth);
+    setScanDone(extractedSomething);
     setForm(f => ({
       ...f,
       idType:      result.idType      || f.idType,
@@ -756,6 +764,7 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated, checkConf
       gender:      result.gender      || f.gender,
       nationality: result.nationality || f.nationality,
       address:     result.address     || f.address,
+      phone:       result.phone       || f.phone,
       customerName: (!f.customerName || f.customerName.trim() === "")
         ? (result.fullName || f.customerName)
         : f.customerName,
