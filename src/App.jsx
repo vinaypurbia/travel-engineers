@@ -1,6 +1,6 @@
 // v4
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ManualBookingModal, CustomerIdPanel } from "./BookingExtensions";
+import { ManualBookingModal, CustomerIdPanel, ScanPanel } from "./BookingExtensions";
 import TravelAssistant from "./TravelAssistant";
 import TourCalculator from "./TourCalculator";
 
@@ -3260,13 +3260,44 @@ function QRPayStep({ total, setStep }) {
 // ─── Booking Modal (public site) ─────────────────────────────────────────────
 function BookingModal({ vehicle, whatsapp, api, onClose }) {
   const today = new Date().toISOString().slice(0,10);
-  const [form, setForm] = useState({ customerName:"", phone:"", checkIn:today, checkOut:"", stayAddress:"", notes:"" });
+  const [form, setForm] = useState({ customerName:"", phone:"", checkIn:today, checkOut:"", stayAddress:"", notes:"", idType:"", idNumber:"", idImageUrl:"", dateOfBirth:"", gender:"", nationality:"", address:"" });
   const [step, setStep] = useState("form"); // form | qr | success
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [waUrl, setWaUrl] = useState("");
   const [bookingId, setBookingId] = useState("");
+  const [scanDone, setScanDone] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  // Auto-fills from the ID scan. Never overwrites name/phone/address that the
+  // customer already typed — those stay theirs to control; everything else
+  // (nationality, ID type/number, DOB, gender) only fills in if still blank.
+  const handleScanned = (result) => {
+    setScanDone(true);
+    // Gemini returns "Passport"/"Driving License"/etc; this form's dropdown
+    // uses lowercase enum values — map so the scan lands in the right option
+    // instead of falling through to the free-text "Other" field.
+    const idTypeMap = {
+      "Passport": "passport",
+      "Driving License": "driving_license",
+      "Aadhaar": "national_id",
+      "Kuwait Civil ID": "civil_id",
+      "Voter ID": "voter_id",
+    };
+    const mappedIdType = result.idType ? (idTypeMap[result.idType] || result.idType) : "";
+    setForm(f => ({
+      ...f,
+      idType:      f.idType || mappedIdType,
+      idNumber:    result.idNumber    || f.idNumber,
+      dateOfBirth: result.dateOfBirth || f.dateOfBirth,
+      gender:      result.gender      || f.gender,
+      nationality: f.nationality || result.nationality || "",
+      address:     f.address     || result.address     || "",
+      customerName: (!f.customerName || f.customerName.trim()==="")
+        ? (result.fullName || f.customerName)
+        : f.customerName,
+    }));
+  };
 
   const days = form.checkIn && form.checkOut
     ? Math.max(0, Math.round((new Date(form.checkOut) - new Date(form.checkIn)) / 864e5))
@@ -3379,6 +3410,21 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
                       <input value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="+965 / +91 with country code" type="tel" style={fi}/>
                     </div>
                   </div>
+
+                  {/* ID Scan — optional shortcut. Scanning fills nationality, ID
+                      type/number, DOB, gender (and name, only if still blank)
+                      below, so the customer can skip typing all of that by hand. */}
+                  <div style={{border:"1px solid rgba(240,192,96,0.18)",borderRadius:12,padding:"14px 14px 4px",background:"rgba(240,192,96,0.04)"}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                      <label style={{...lbl2,marginBottom:0}}>🪪 Scan your ID (optional — autofills details below)</label>
+                      {scanDone && <span style={{fontSize:11,color:"#4ade80",fontWeight:600}}>✅ Scanned</span>}
+                    </div>
+                    <ScanPanel customerName={form.customerName} onScanned={handleScanned} onImageUrl={(url)=>set("idImageUrl",url)} />
+                    <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",margin:"-4px 0 10px"}}>
+                      Don't want to scan? No problem — just fill in the fields below manually.
+                    </div>
+                  </div>
+
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                     <div>
                       <label style={lbl2}>Check-in *</label>
