@@ -53,16 +53,17 @@ async function scanWithGoogleVision(imageBase64, mimeType) {
   if (!apiKey) return { error: "GEMINI_API_KEY not set in Vercel env vars" };
 
   try {
-    const prompt = `You are an ID document scanner. Extract all information from this ID document image.
+    const prompt = `You are an ID document scanner. Extract all information from this ID document image. It may be an Indian document (Aadhaar, PAN, Driving Licence, Voter ID) or an international document (Passport, National ID, Driving Licence) from any country.
 Return ONLY a valid JSON object with these exact fields (use null if not found):
 {
-  "idType": "Aadhaar|PAN|Passport|Driving License|Voter ID|Emirates ID|Kuwait Civil ID|Other",
+  "idType": "Aadhaar|PAN|Passport|Driving License|Voter ID|National ID|Other",
   "idNumber": "the document number",
   "fullName": "full name on document",
   "dateOfBirth": "YYYY-MM-DD format or null",
   "gender": "Male|Female|Other or null",
   "nationality": "nationality or null",
   "address": "full address if present or null",
+  "phone": "mobile/phone number printed on the document, if any, or null",
   "expiryDate": "YYYY-MM-DD format or null"
 }
 Return only the JSON, no explanation, no markdown.`;
@@ -102,6 +103,7 @@ Return only the JSON, no explanation, no markdown.`;
         gender:      parsed.gender      || null,
         nationality: parsed.nationality || null,
         address:     parsed.address     || null,
+        phone:       parsed.phone       || null,
         expiryDate:  parsed.expiryDate  || null,
         rawText,
       };
@@ -130,8 +132,12 @@ function parseIdText(text) {
   let address = null;
   let expiryDate = null;
   let nationality = null;
+  let phone = null;
 
   // ── Detect ID type ──────────────────────────────────────────────────────────
+  // Detection patterns stay specific (different countries print very different
+  // formats), but the labels shown to the user stay generic — "National ID"
+  // covers any government ID card that isn't Aadhaar/PAN/Passport/DL/Voter ID.
   if (fullText.includes("AADHAAR") || fullText.includes("UIDAI") || fullText.includes("आधार")) {
     idType = "Aadhaar";
   } else if (fullText.includes("INCOME TAX") || fullText.includes("PERMANENT ACCOUNT") || /[A-Z]{5}[0-9]{4}[A-Z]/.test(text)) {
@@ -142,10 +148,8 @@ function parseIdText(text) {
     idType = "Driving License";
   } else if (fullText.includes("ELECTION") || fullText.includes("VOTER") || fullText.includes("ELECTORAL")) {
     idType = "Voter ID";
-  } else if (fullText.includes("EMIRATES") || fullText.includes("UNITED ARAB EMIRATES") || fullText.includes("الإمارات")) {
-    idType = "Emirates ID";
-  } else if (fullText.includes("KUWAIT") || fullText.includes("CIVIL ID") || fullText.includes("الكويت")) {
-    idType = "Kuwait Civil ID";
+  } else if (fullText.includes("NATIONAL ID") || fullText.includes("IDENTITY CARD") || /\b784-?\d{4}-?\d{7}-?\d\b/.test(text) || /\b\d{12}\b/.test(text)) {
+    idType = "National ID";
   }
 
   // ── Extract ID number ───────────────────────────────────────────────────────
@@ -165,13 +169,10 @@ function parseIdText(text) {
     const match = text.match(/\b(DL-?[0-9A-Z\-]{8,20})\b/i) ||
                   text.match(/\b([A-Z]{2}[0-9]{2}\s?[0-9]{4}\s?[0-9]{7})\b/);
     if (match) idNumber = match[1];
-  } else if (idType === "Emirates ID") {
-    // Emirates ID: 784-YYYY-XXXXXXX-X
-    const match = text.match(/\b(784-?\d{4}-?\d{7}-?\d)\b/);
-    if (match) idNumber = match[1];
-  } else if (idType === "Kuwait Civil ID") {
-    // Kuwait Civil ID: 12 digits
-    const match = text.match(/\b(\d{12})\b/);
+  } else if (idType === "National ID") {
+    // Covers various national ID card formats (e.g. 784-YYYY-XXXXXXX-X or a
+    // plain 12-digit number) without singling out any one country.
+    const match = text.match(/\b(784-?\d{4}-?\d{7}-?\d)\b/) || text.match(/\b(\d{12})\b/);
     if (match) idNumber = match[1];
   } else if (idType === "Voter ID") {
     // Voter ID: 3 letters + 7 digits
@@ -181,6 +182,20 @@ function parseIdText(text) {
     // Generic: try any prominent number sequence
     const match = text.match(/\b(\d{8,16})\b/);
     if (match) idNumber = match[1];
+  }
+
+  // ── Extract phone number, if printed on the document ───────────────────────
+  // Looks for a labelled phone/mobile field first, then falls back to any
+  // standalone 10-15 digit sequence that looks like a phone number (with an
+  // optional leading +countrycode) and isn't already captured as the ID number.
+  const phoneLabelMatch = text.match(/(?:Phone|Mobile|Mob|Tel|Contact)[:\s]+(\+?[0-9][0-9\s\-]{7,16})/i);
+  if (phoneLabelMatch) {
+    phone = phoneLabelMatch[1].replace(/\s+/g, "").trim();
+  } else {
+    const looseMatch = text.match(/\+?\d{1,3}[\s\-]?\d{9,12}\b/);
+    if (looseMatch && looseMatch[0].replace(/\D/g,"") !== (idNumber||"").replace(/\D/g,"")) {
+      phone = looseMatch[0].replace(/\s+/g, "").trim();
+    }
   }
 
   // ── Extract name ────────────────────────────────────────────────────────────
@@ -244,12 +259,9 @@ function parseIdText(text) {
     const match = text.match(/Nationality[:\s]+([A-Z]+)/i);
     if (match) nationality = match[1];
     else if (fullText.includes("INDIAN")) nationality = "Indian";
-  } else if (idType === "Emirates ID") {
-    nationality = "UAE Resident";
+  } else if (idType === "National ID") {
     const match = text.match(/Nationality[:\s]+([A-Z]+)/i);
     if (match) nationality = match[1];
-  } else if (idType === "Kuwait Civil ID") {
-    nationality = "Kuwait Resident";
   } else {
     nationality = "Indian";
   }
@@ -262,7 +274,7 @@ function parseIdText(text) {
     }
   }
 
-  // ── Extract expiry (Passport, DL, Emirates) ─────────────────────────────────
+  // ── Extract expiry (Passport, Driving Licence, National ID) ────────────────
   const expMatch = text.match(/(?:Expiry|Expiration|Valid Until|Date of Expiry)[:\s]+(\d{2}[\/\-]\d{2}[\/\-]\d{4})/i);
   if (expMatch) {
     const parts = expMatch[1].split(/[\/\-]/);
@@ -276,6 +288,7 @@ function parseIdText(text) {
     dateOfBirth,
     gender,
     address,
+    phone,
     expiryDate,
     nationality,
   };
