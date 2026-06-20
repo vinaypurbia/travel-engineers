@@ -3274,7 +3274,11 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
   // (nationality, ID type/number, DOB, gender, phone if printed) only fills
   // in if still blank.
   const handleScanned = (result) => {
-    setScanDone(true);
+    // Only show the green "Scanned" badge if we actually got something
+    // useful — otherwise a customer sees ✅ next to a form that's still
+    // entirely blank, which looks broken even though nothing crashed.
+    const extractedSomething = !!(result.fullName || result.idNumber || result.address || result.phone || result.dateOfBirth);
+    setScanDone(extractedSomething);
     // Gemini returns "Passport"/"Driving License"/"Aadhaar"/"PAN"/"National ID"/
     // "Voter ID"; this form's dropdown uses lowercase enum values — map so the
     // scan lands in the right option instead of falling through to free text.
