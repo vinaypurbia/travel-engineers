@@ -20,7 +20,7 @@ const apiCall = {
     }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
 };
 
-const ID_TYPES = ["Aadhaar", "PAN", "Passport", "Driving License", "Voter ID", "Emirates ID", "Kuwait Civil ID", "Other"];
+const ID_TYPES = ["Aadhaar", "PAN", "Passport", "Driving License", "Voter ID", "National ID", "Other"];
 
 // Shared input / label styles (matches App.jsx dark admin theme)
 const inp = {
@@ -184,7 +184,7 @@ function IdFormFields({ form, setForm }) {
 // Scan Panel — reusable camera/upload + OCR section
 // Used inside both CustomerIdPanel and ManualBookingModal
 // ─────────────────────────────────────────────────────────────────────────────
-export function ScanPanel({ customerName, onScanned, onImageUrl }) {
+export function ScanPanel({ customerName, onScanned, onImageUrl, onRemoved }) {
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState("");
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -278,7 +278,7 @@ export function ScanPanel({ customerName, onScanned, onImageUrl }) {
         borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 12,
         color: "rgba(255,255,255,0.5)", lineHeight: 1.7,
       }}>
-        📋 Supports Aadhaar, PAN, Passport, Driving Licence, Voter ID, Emirates ID, Kuwait Civil ID.
+        📋 Works for Indian documents (Aadhaar, PAN, Driving Licence, Voter ID) and international documents (Passport, National ID, Driving Licence).
         Image is automatically compressed and saved securely to Cloudinary.
         <strong style={{ color: "rgba(255,255,255,0.7)" }}> Free scans</strong> via Gemini AI (no billing needed).
       </div>
@@ -377,13 +377,19 @@ export function ScanPanel({ customerName, onScanned, onImageUrl }) {
             </div>
           )}
           {!scanning && (
-            <button onClick={() => { setPreviewUrl(null); setCompressionInfo(null); }} style={{
+            <button onClick={() => {
+              setPreviewUrl(null);
+              setCompressionInfo(null);
+              setScanError("");
+              if (onImageUrl) onImageUrl("");   // clear stored image URL in parent
+              if (onRemoved) onRemoved();        // let parent reset any "Scanned" badge/state
+            }} style={{
               position: "absolute", top: 8, right: 8,
               background: "rgba(0,0,0,0.6)", border: "none",
               color: "white", width: 26, height: 26, borderRadius: "50%",
               cursor: "pointer", fontSize: 13, display: "flex",
               alignItems: "center", justifyContent: "center",
-            }}>✕</button>
+            }} title="Remove this photo — it won't be sent">✕</button>
           )}
         </div>
       )}
@@ -593,6 +599,7 @@ export function CustomerIdPanel({ booking, onUpdated }) {
               customerName={booking.customerName}
               onScanned={handleScanned}
               onImageUrl={(url) => setForm(f => ({ ...f, idImageUrl: url }))}
+              onRemoved={() => { setScanDone(false); setForm(f => ({ ...f, idImageUrl: "" })); }}
             />
             {scanDone && (
               <div>
@@ -1037,6 +1044,7 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated, checkConf
                     customerName={form.customerName}
                     onScanned={(result) => { handleScanned(result); setReplaceId(false); }}
                     onImageUrl={(url) => { set("idImageUrl", url); setReplaceId(false); }}
+                    onRemoved={() => { setScanDone(false); set("idImageUrl", ""); }}
                   />
                 </div>
 
@@ -1047,6 +1055,7 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated, checkConf
                     customerName={form.customerName}
                     onScanned={handleScanned}
                     onImageUrl={(url) => set("idImageUrl", url)}
+                    onRemoved={() => { setScanDone(false); set("idImageUrl", ""); }}
                   />
 
                   {scanDone && (
