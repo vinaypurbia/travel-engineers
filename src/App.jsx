@@ -6,14 +6,20 @@ import TourCalculator from "./TourCalculator";
 
 const API = "/api";
 
+const adminHeaders = () => {
+  const token = (typeof sessionStorage !== "undefined" && sessionStorage.getItem("adminToken"))
+    || (typeof localStorage !== "undefined" && localStorage.getItem("adminToken"))
+    || "";
+  return token ? { "x-admin-token": token } : {};
+};
 
 const api = {
-  get: (path) => fetch(`${API}${path}`).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
-  post: (path, body) => fetch(`${API}${path}`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
-  put: (path, body) => fetch(`${API}${path}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
-  delete: (path) => fetch(`${API}${path}`, { method:"DELETE" }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
-  patch: (path, body) => fetch(`${API}${path}`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
-  upload: async (file) => { const fd = new FormData(); fd.append("file", file); const r = await fetch(`${API}/upload`, { method:"POST", body:fd }); return r.json(); },
+  get: (path) => fetch(`${API}${path}`, { headers: adminHeaders() }).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
+  post: (path, body) => fetch(`${API}${path}`, { method:"POST", headers:{"Content-Type":"application/json", ...adminHeaders()}, body:JSON.stringify(body) }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
+  put: (path, body) => fetch(`${API}${path}`, { method:"PUT", headers:{"Content-Type":"application/json", ...adminHeaders()}, body:JSON.stringify(body) }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
+  delete: (path) => fetch(`${API}${path}`, { method:"DELETE", headers: adminHeaders() }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
+  patch: (path, body) => fetch(`${API}${path}`, { method:"PATCH", headers:{"Content-Type":"application/json", ...adminHeaders()}, body:JSON.stringify(body) }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
+  upload: async (file) => { const fd = new FormData(); fd.append("file", file); const r = await fetch(`${API}/upload`, { method:"POST", headers: adminHeaders(), body:fd }); return r.json(); },
 };
 
 // ─── CSV helpers (bookings import / export) ───────────────────────────────────
@@ -550,6 +556,12 @@ export default function App() {
             sessionStorage.setItem("adminToken", loginInput); // fallback if exchange fails
           }
           setView("admin"); setLoginError(""); setLoginInput("");
+          // Data was already loaded once on page mount, before login —
+          // back then there was no adminToken yet, so every now-protected
+          // endpoint (bookings, accounting, inventory, users) came back
+          // empty. Reload now that the token is set, so the admin panel
+          // isn't blank on first login.
+          loadAllData();
         }
         else setLoginError("Wrong password!");
       } catch { setLoginError("Error connecting. Try again."); }
@@ -1837,12 +1849,30 @@ function AdminDashboard({ data, goTo }) {
   const income     = accData.summary?.totalIncome  || 0;
   const expense    = accData.summary?.totalExpense || 0;
   const profit     = income - expense;
-  const available  = rentals.filter(r=>r.available).length;
+  // "Vehicles Available" should mean "free to rent out right now" — not
+  // "has the show-on-website toggle on" (that's r.available, a visibility
+  // flag, and was previously what this stat counted, so it could read
+  // "3 of 3 available" even while every vehicle was out on an active
+  // booking). A vehicle is actually busy if it has a booking whose stay
+  // covers today and whose status hasn't been cancelled/completed yet.
+  const todayMid = new Date(); todayMid.setHours(0,0,0,0);
+  const activeBookingStatuses = ["pending","payment_requested","confirmed"];
+  const busyVehicleIds = new Set(
+    bookings
+      .filter(b => activeBookingStatuses.includes(b.status) && b.vehicleId && b.checkIn && b.checkOut)
+      .filter(b => {
+        const ci = new Date(b.checkIn), co = new Date(b.checkOut);
+        return ci <= todayMid && co >= todayMid;
+      })
+      .map(b => String(b.vehicleId))
+  );
+  const visibleRentals = rentals.filter(r=>r.available);
+  const available = visibleRentals.filter(r => !busyVehicleIds.has(String(r._id))).length;
   const fmt      = (n) => `₹${Number(n||0).toLocaleString("en-IN")}`;
   const fmtDate  = (d) => d?new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short"}):"—";
   const statCards = [
     {label:"Total Bookings",     value:bookings.length,     sub:`${pendingBookings.length} pending`,   color:"#d4850a",bg:"#fff8ec",icon:"📋",tab:"bookings"},
-    {label:"Vehicles Available", value:available,           sub:`of ${rentals.length} total`,          color:"#2563eb",bg:"#eff6ff",icon:"🛵",tab:"rentals"},
+    {label:"Vehicles Available", value:available,           sub:`of ${visibleRentals.length} listed`,  color:"#2563eb",bg:"#eff6ff",icon:"🛵",tab:"rentals"},
     {label:"Net Profit",         value:fmt(profit),         sub:`Income ${fmt(income)}`,               color:"#16a34a",bg:"#f0fdf4",icon:"💰",tab:"accounting"},
     {label:"Tour Bookings",      value:tourBookings.length, sub:`${pendingTours.length} need action`,  color:"#7c3aed",bg:"#f5f3ff",icon:"🗺",tab:"tours"},
   ];
@@ -3549,9 +3579,9 @@ function EditBookingModal({ booking, rentals, api, onClose, onSaved }) {
               <option value="">— Select vehicle —</option>
               {/* Current vehicle first if it's not in available list */}
               {currentVehicle && !currentVehicle.available && (
-                <option key={currentVehicle._id} value={currentVehicle._id}>{currentVehicle.name} (currently unavailable)</option>
+                <option key={currentVehicle._id} value={currentVehicle._id}>{currentVehicle.name}{currentVehicle.vehicleNo?` (#${currentVehicle.vehicleNo})`:""} — {currentVehicle.price}{currentVehicle.period||""} (currently unavailable)</option>
               )}
-              {available.map(r=><option key={r._id} value={r._id}>{r.name} — {r.price}{r.period||""}</option>)}
+              {available.map(r=><option key={r._id} value={r._id}>{r.name}{r.vehicleNo?` (#${r.vehicleNo})`:""} — {r.price}{r.period||""}</option>)}
               <option value="__custom__">Other (type manually)</option>
             </select>
           </div>
