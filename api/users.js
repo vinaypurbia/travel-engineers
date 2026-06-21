@@ -1,4 +1,4 @@
-const { connectDB } = require("./_db");
+const { connectDB, signStaffToken } = require("./_db");
 const mongoose = require("mongoose");
 const crypto = require("crypto");
 
@@ -96,8 +96,17 @@ module.exports = async function handler(req, res) {
     if (!user) { recordFailedAttempt(ip); return res.status(401).json({ error: "Invalid username or password" }); }
     if (user.password !== hash(password)) { recordFailedAttempt(ip); return res.status(401).json({ error: "Invalid username or password" }); }
     clearAttempts(ip);
+    // Sign a staff token scoped to this user's permissions, so every other
+    // API route can verify "this is really a logged-in staff member, and
+    // here's exactly what they're allowed to touch" — without ever handing
+    // out the all-powerful admin token. Previously staff login returned only
+    // the user object with no token at all, so every subsequent API call
+    // from the staff panel had nothing valid to authenticate with and was
+    // silently rejected (403) by every protected route.
+    const staffToken = signStaffToken(String(user._id), user.permissions);
     return res.json({
       success: true,
+      staffToken,
       user: {
         _id: String(user._id),
         name: user.name,
