@@ -2,6 +2,32 @@ const { connectDB } = require("./_db");
 const mongoose = require("mongoose");
 const crypto = require("crypto");
 
+// Same rate-limit approach as auth.js — applies here too since this file has
+// its own two password-checking entry points (admin-token exchange, staff
+// login) that are just as guessable if left unprotected.
+const attempts = new Map();
+const WINDOW_MS = 15 * 60 * 1000;
+const MAX_ATTEMPTS = 8;
+function getClientIp(req) {
+  const fwd = req.headers["x-forwarded-for"];
+  if (fwd) return String(fwd).split(",")[0].trim();
+  return req.socket?.remoteAddress || "unknown";
+}
+function isRateLimited(ip) {
+  const now = Date.now();
+  const record = attempts.get(ip);
+  if (!record) return false;
+  if (now - record.firstAttempt > WINDOW_MS) { attempts.delete(ip); return false; }
+  return record.count >= MAX_ATTEMPTS;
+}
+function recordFailedAttempt(ip) {
+  const now = Date.now();
+  const record = attempts.get(ip);
+  if (!record || now - record.firstAttempt > WINDOW_MS) attempts.set(ip, { count: 1, firstAttempt: now });
+  else record.count++;
+}
+function clearAttempts(ip) { attempts.delete(ip); }
+
 const MODULES = ["dashboard","agency","rentals","villa","testimonials","inventory","tours","accounting","bookings"];
 
 const UserSchema = new mongoose.Schema({
@@ -47,19 +73,29 @@ module.exports = async function handler(req, res) {
   // Frontend sends the admin login password, gets back ADMIN_SECRET.
   // ADMIN_SECRET is what's used for all subsequent admin API calls.
   if (method === "POST" && query.action === "admin-token") {
+    const ip = getClientIp(req);
+    if (isRateLimited(ip)) {
+      return res.status(429).json({ error: "Too many attempts. Please wait 15 minutes and try again." });
+    }
     const { password } = body || {};
     const ADMIN_PASS = process.env.ADMIN_PASSWORD || "admin123"; // matches auth.js
-    if (!password || password !== ADMIN_PASS) return res.status(403).json({ error: "Invalid password" });
+    if (!password || password !== ADMIN_PASS) { recordFailedAttempt(ip); return res.status(403).json({ error: "Invalid password" }); }
+    clearAttempts(ip);
     return res.json({ success: true, adminToken: ADMIN_SECRET });
   }
 
   // ── Staff login (public) ──────────────────────────────────────────────────
   if (method === "POST" && query.action === "login") {
+    const ip = getClientIp(req);
+    if (isRateLimited(ip)) {
+      return res.status(429).json({ error: "Too many attempts. Please wait 15 minutes and try again." });
+    }
     const { username, password } = body || {};
     if (!username || !password) return res.status(400).json({ error: "Missing credentials" });
     const user = await User.findOne({ username: username.toLowerCase(), active: true });
-    if (!user) return res.status(401).json({ error: "Invalid username or password" });
-    if (user.password !== hash(password)) return res.status(401).json({ error: "Invalid username or password" });
+    if (!user) { recordFailedAttempt(ip); return res.status(401).json({ error: "Invalid username or password" }); }
+    if (user.password !== hash(password)) { recordFailedAttempt(ip); return res.status(401).json({ error: "Invalid username or password" }); }
+    clearAttempts(ip);
     return res.json({
       success: true,
       user: {
