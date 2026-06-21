@@ -806,7 +806,9 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated, checkConf
     custTimer.current = setTimeout(async () => {
       setCustLoading(true);
       try {
-        const res = await fetch(`/api/bookings?resource=customers&q=${encodeURIComponent(q)}`).then(r => r.json());
+        const res = await fetch(`/api/bookings?resource=customers&q=${encodeURIComponent(q)}`, {
+          headers: authHeaders(),
+        }).then(r => r.json());
         const list = Array.isArray(res) ? res : (res.customers || []);
         const mapped = list
           .filter(c => c.name && c.name !== "Walk-in Customer")
