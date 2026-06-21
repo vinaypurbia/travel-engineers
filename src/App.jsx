@@ -3787,7 +3787,7 @@ function MyAccountModal({ api, onClose }) {
   useEffect(() => {
     if (token) loadMe();
     else setView("login");
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleLogin = async () => {
     if (!identifier.trim() || !password) { setError("Enter your phone/email and password."); return; }
