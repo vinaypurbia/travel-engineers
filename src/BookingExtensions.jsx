@@ -441,6 +441,111 @@ export function ScanPanel({ customerName, onScanned, onImageUrl, onRemoved }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TwoSidedScanPanel
+// Wraps ScanPanel to capture FRONT then BACK of an ID document. Most IDs carry
+// the address and phone number on the back, so scanning only the front (the
+// old behaviour) left those fields blank. This walks the customer through
+// both sides and merges whichever side actually found each field — front
+// fields (name, ID number, DOB, gender, ID type) normally win since the back
+// rarely repeats them, while back-only fields (address, phone) come through
+// even though the front scan returned null for them.
+// ─────────────────────────────────────────────────────────────────────────────
+export function TwoSidedScanPanel({ customerName, onScanned, onImageUrl, onImageUrlBack, onRemoved }) {
+  const [side, setSide] = useState("front"); // "front" | "back" | "done"
+  const [frontDone, setFrontDone] = useState(false);
+  const mergedRef = useRef({});
+
+  const mergeAndEmit = (result) => {
+    // Merge: any field this side found fills in a gap; never overwrite a
+    // value the other side already supplied.
+    const merged = { ...mergedRef.current };
+    Object.keys(result || {}).forEach(k => {
+      if (k === "rawText" || k === "warning") return;
+      if (result[k] && !merged[k]) merged[k] = result[k];
+    });
+    mergedRef.current = merged;
+    if (onScanned) onScanned(merged);
+  };
+
+  const handleFrontScanned = (result) => {
+    mergeAndEmit(result);
+    setFrontDone(true);
+  };
+
+  const handleBackScanned = (result) => {
+    mergeAndEmit(result);
+  };
+
+  const skipBack = () => {
+    setSide("done");
+  };
+
+  const resetAll = () => {
+    mergedRef.current = {};
+    setFrontDone(false);
+    setSide("front");
+    if (onRemoved) onRemoved();
+  };
+
+  if (side === "done") {
+    return (
+      <div>
+        <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)", color: "#4ade80", fontSize: 12, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>✅ Front{frontDone ? " & back" : ""} scanned</span>
+          <button onClick={resetAll} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: 11, textDecoration: "underline" }}>Rescan</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Side indicator */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <div style={{ flex: 1, textAlign: "center", padding: "6px 0", borderRadius: 8, fontSize: 11, fontWeight: 700, fontFamily: "'DM Sans'", background: side === "front" ? "rgba(212,133,10,0.18)" : "rgba(74,222,128,0.1)", color: side === "front" ? "#f0c060" : "#4ade80", border: `1px solid ${side === "front" ? "rgba(212,133,10,0.35)" : "rgba(74,222,128,0.25)"}` }}>
+          {side === "front" ? "① Front side" : "✓ Front scanned"}
+        </div>
+        <div style={{ flex: 1, textAlign: "center", padding: "6px 0", borderRadius: 8, fontSize: 11, fontWeight: 700, fontFamily: "'DM Sans'", background: side === "back" ? "rgba(212,133,10,0.18)" : "rgba(255,255,255,0.04)", color: side === "back" ? "#f0c060" : "rgba(255,255,255,0.3)", border: `1px solid ${side === "back" ? "rgba(212,133,10,0.35)" : "rgba(255,255,255,0.1)"}` }}>
+          ② Back side
+        </div>
+      </div>
+
+      {side === "front" && (
+        <div>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginBottom: 10 }}>
+            Scan the <strong style={{ color: "rgba(255,255,255,0.7)" }}>front</strong> of your ID first.
+          </div>
+          <ScanPanel
+            customerName={customerName}
+            onScanned={handleFrontScanned}
+            onImageUrl={(url) => { if (onImageUrl) onImageUrl(url); if (url) setSide("back"); }}
+            onRemoved={resetAll}
+          />
+        </div>
+      )}
+
+      {side === "back" && (
+        <div>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginBottom: 10 }}>
+            Now scan the <strong style={{ color: "rgba(255,255,255,0.7)" }}>back</strong> — this usually has your address and phone number.
+          </div>
+          <ScanPanel
+            customerName={customerName}
+            onScanned={(result) => { handleBackScanned(result); setSide("done"); }}
+            onImageUrl={(url) => { if (onImageUrlBack) onImageUrlBack(url); }}
+            onRemoved={() => { if (onImageUrlBack) onImageUrlBack(""); }}
+          />
+          <button onClick={skipBack} style={{ marginTop: 8, width: "100%", padding: "9px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: 12, fontFamily: "'DM Sans'" }}>
+            Skip back side
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CustomerIdPanel
@@ -463,6 +568,7 @@ export function CustomerIdPanel({ booking, onUpdated }) {
     nationality:  booking.nationality  || "",
     address:      booking.address      || "",
     idImageUrl:   booking.idImageUrl   || "",
+    idImageUrlBack: booking.idImageUrlBack || "",
   });
 
   const showToast = (msg, ok = true) => {
@@ -501,6 +607,7 @@ export function CustomerIdPanel({ booking, onUpdated }) {
         idType:       form.idType       || null,
         idNumber:     form.idNumber     || null,
         idImageUrl:   form.idImageUrl   || null,
+        idImageUrlBack: form.idImageUrlBack || null,
         dateOfBirth:  form.dateOfBirth  || null,
         gender:       form.gender       || null,
         nationality:  form.nationality  || null,
@@ -586,14 +693,25 @@ export function CustomerIdPanel({ booking, onUpdated }) {
                 </div>
               ))}
             </div>
-            {/* Show stored ID image if exists */}
-            {booking.idImageUrl && (
+            {/* Show stored ID image(s) if they exist */}
+            {(booking.idImageUrl || booking.idImageUrlBack) && (
               <div style={{ marginTop: 12 }}>
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 6 }}>Stored ID Image</div>
-                <a href={booking.idImageUrl} target="_blank" rel="noreferrer">
-                  <img src={booking.idImageUrl} alt="ID document" style={{ maxHeight: 140, maxWidth: "100%", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", objectFit: "contain", background: "rgba(0,0,0,0.3)", cursor: "pointer" }} />
-                </a>
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", marginTop: 4 }}>Click to open full size</div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 6 }}>Stored ID Image{booking.idImageUrlBack ? "s" : ""}</div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {booking.idImageUrl && (
+                    <a href={booking.idImageUrl} target="_blank" rel="noreferrer" style={{ flex: "1 1 120px", minWidth: 120 }}>
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", marginBottom: 3 }}>Front</div>
+                      <img src={booking.idImageUrl} alt="ID front" style={{ maxHeight: 140, width: "100%", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", objectFit: "contain", background: "rgba(0,0,0,0.3)", cursor: "pointer" }} />
+                    </a>
+                  )}
+                  {booking.idImageUrlBack && (
+                    <a href={booking.idImageUrlBack} target="_blank" rel="noreferrer" style={{ flex: "1 1 120px", minWidth: 120 }}>
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", marginBottom: 3 }}>Back</div>
+                      <img src={booking.idImageUrlBack} alt="ID back" style={{ maxHeight: 140, width: "100%", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", objectFit: "contain", background: "rgba(0,0,0,0.3)", cursor: "pointer" }} />
+                    </a>
+                  )}
+                </div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", marginTop: 4 }}>Click an image to open full size</div>
               </div>
             )}
           </div>
