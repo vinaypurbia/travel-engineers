@@ -657,7 +657,13 @@ module.exports = async (req, res) => {
 
       // GET ?resource=customers — list all customers, searchable, enriched with idImageUrl from bookings
       if (req.method === "GET") {
-        const q = req.query?.q || "";
+        // q can theoretically arrive as an array if the client ever sends the
+        // same query param twice — coerce defensively so $regex always gets
+        // a plain string, never an array (which Mongo would reject/ignore).
+        let q = req.query?.q || "";
+        if (Array.isArray(q)) q = q[0] || "";
+        q = String(q).trim();
+
         // idNumber is encrypted, so it can't be substring-matched directly —
         // exact-match search works via idNumberHash instead (see _db.js).
         // We always include it in the $or; if q doesn't match any real ID
@@ -672,6 +678,28 @@ module.exports = async (req, res) => {
             ...(qHash ? [{ idNumberHash: qHash }] : []),
           ]
         } : {};
+
+        // ?debug=true — surface exactly what's being queried and what the
+        // raw (pre-enrichment) match looks like, to diagnose search issues
+        // without needing direct DB access. Safe to leave in: admin-only
+        // (this whole resource block is already gated by isAdmin above) and
+        // returns no more PII than the normal response already would.
+        if (req.query?.debug === "true") {
+          const totalCustomers = await Customer.countDocuments({});
+          const rawMatches = await Customer.find(filter).lean();
+          const allNames = await Customer.find({}, "name phone").limit(20).lean();
+          return res.json({
+            receivedQuery: req.query?.q,
+            normalizedQ: q,
+            qType: typeof req.query?.q,
+            filterUsed: filter,
+            totalCustomersInDb: totalCustomers,
+            matchCountForThisFilter: rawMatches.length,
+            matchedNames: rawMatches.map(c => c.name),
+            sampleOfAllNames: allNames.map(c => ({ name: c.name, phone: c.phone })),
+          });
+        }
+
         const customers = await Customer.find(filter).sort({ lastBooking: -1 }).lean();
         // Enrich each customer with idImageUrl from their most recent booking that has one
         const enriched = await Promise.all(customers.map(async (c) => {
