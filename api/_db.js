@@ -209,6 +209,51 @@ function verifyCustomerToken(token) {
   return customerId;
 }
 
+// ── Staff session tokens ────────────────────────────────────────────────────
+// Same HMAC-signed, stateless approach as customer tokens above, but carries
+// the staff user's id + permissions in the payload so every API route can
+// check both "is this a real logged-in staff member" AND "are they actually
+// allowed to touch this module" — without a DB lookup per request, and
+// without giving staff the all-powerful admin token.
+// Format: <userId>.<permissionsCSV>.<expiryTimestamp>.<signature>
+// STAFF_TOKEN_SECRET falls back to ENCRYPTION_KEY (like the customer token)
+// so there's always a real secret even if a dedicated one was never set.
+const STAFF_TOKEN_SECRET = process.env.STAFF_TOKEN_SECRET || process.env.ENCRYPTION_KEY || "";
+const STAFF_TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours — staff are on shared/shop devices more often than customers, so a shorter session is safer
+
+function signStaffToken(userId, permissions) {
+  if (!STAFF_TOKEN_SECRET) {
+    console.error("STAFF_TOKEN_SECRET / ENCRYPTION_KEY not set — staff logins are not safely signable!");
+  }
+  const permsCsv = Array.isArray(permissions) ? permissions.join(",") : "";
+  const expiry = Date.now() + STAFF_TOKEN_TTL_MS;
+  const payload = `${userId}.${permsCsv}.${expiry}`;
+  const sig = crypto.createHmac("sha256", STAFF_TOKEN_SECRET || "insecure-fallback").update(payload).digest("hex");
+  return `${payload}.${sig}`;
+}
+
+// Returns { userId, permissions } if valid, otherwise null. Permissions come
+// straight from the signed token (not re-fetched from the DB on every
+// request) — if an admin changes a staff member's permissions, that staff
+// member's CURRENT session keeps its old permissions until the token expires
+// (max 12h) or they log in again. This is the standard tradeoff for
+// stateless tokens; acceptable here given the short TTL.
+function verifyStaffToken(token) {
+  if (!token || typeof token !== "string") return null;
+  const parts = token.split(".");
+  if (parts.length !== 4) return null;
+  const [userId, permsCsv, expiryStr, sig] = parts;
+  const expiry = Number(expiryStr);
+  if (!userId || !expiry || !sig) return null;
+  if (Date.now() > expiry) return null; // expired
+  const expectedSig = crypto.createHmac("sha256", STAFF_TOKEN_SECRET || "insecure-fallback").update(`${userId}.${permsCsv}.${expiryStr}`).digest("hex");
+  const a = Buffer.from(sig, "hex");
+  const b = Buffer.from(expectedSig, "hex");
+  if (a.length !== b.length) return null;
+  if (!crypto.timingSafeEqual(a, b)) return null;
+  return { userId, permissions: permsCsv ? permsCsv.split(",") : [] };
+}
+
 // ── Agency Model ─────────────────────────────────────────────────────────────
 // strict: false so extra fields (like stats) are never silently dropped
 const agencySchema = new mongoose.Schema({
@@ -423,6 +468,8 @@ module.exports = {
   verifyPassword,
   signCustomerToken,
   verifyCustomerToken,
+  signStaffToken,
+  verifyStaffToken,
   Agency:      mongoose.models.Agency      || mongoose.model("Agency",      agencySchema),
   Rental:      mongoose.models.Rental      || mongoose.model("Rental",      rentalSchema),
   Villa:       mongoose.models.Villa       || mongoose.model("Villa",       villaSchema),
