@@ -342,6 +342,7 @@ const bookingSchema = new mongoose.Schema({
   phone:        { type: String, required: true },
   email:        { type: String, default: null },
   vehicleName:  { type: String, default: "" },
+  vehicleType:  { type: String, default: "" },  // category requested online: "scooty" | "bike" | "car" — set on creation, vehicleId stays null until admin allots a specific unit
   vehicleId:    { type: mongoose.Schema.Types.ObjectId, ref: "Rental", default: null },
   checkIn:      { type: Date, default: null },
   checkOut:     { type: Date, default: null },
