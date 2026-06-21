@@ -139,7 +139,7 @@ function ImageUpload({ value, onChange, label="Image" }) {
 }
 
 // ─── Mobile-Responsive Navbar ─────────────────────────────────────────────────
-function MobileNav({ agency, activeNav, setActiveNav }) {
+function MobileNav({ agency, activeNav, setActiveNav, onMyAccount }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const scrollTo = (id) => {
     document.getElementById(`sec-${id}`)?.scrollIntoView({behavior:"smooth"});
@@ -176,6 +176,7 @@ function MobileNav({ agency, activeNav, setActiveNav }) {
               onClick={()=>scrollTo(n)}>{n}</span>
           ))}
           <button onClick={()=>scrollTo("calculator")} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",borderRadius:8,padding:"8px 16px",fontFamily:"'DM Sans'",fontWeight:700,fontSize:13,textTransform:"uppercase",letterSpacing:1.5,cursor:"pointer",whiteSpace:"nowrap"}}>🧮 Fare Calculator</button>
+          <button onClick={onMyAccount} style={{background:"transparent",color:"rgba(255,255,255,0.7)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:8,padding:"8px 16px",fontFamily:"'DM Sans'",fontWeight:600,fontSize:13,textTransform:"uppercase",letterSpacing:1.5,cursor:"pointer",whiteSpace:"nowrap"}}>👤 My Account</button>
         </div>
         <button onClick={()=>setMenuOpen(o=>!o)} className="hamburger"
           style={{background:"transparent",border:"none",color:"#f0c060",fontSize:24,cursor:"pointer",padding:"4px 8px",display:"none"}}>
@@ -194,6 +195,10 @@ function MobileNav({ agency, activeNav, setActiveNav }) {
           <button onClick={()=>{ scrollTo("calculator"); setMenuOpen(false); }}
             style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",border:"none",color:"#1a1a2e",padding:"14px 5%",textAlign:"left",fontFamily:"'DM Sans'",fontSize:15,fontWeight:700,textTransform:"uppercase",letterSpacing:2,cursor:"pointer"}}>
             🧮 Fare Calculator
+          </button>
+          <button onClick={()=>{ onMyAccount(); setMenuOpen(false); }}
+            style={{background:"transparent",border:"none",borderTop:"1px solid rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.7)",padding:"14px 5%",textAlign:"left",fontFamily:"'DM Sans'",fontSize:15,fontWeight:600,textTransform:"uppercase",letterSpacing:2,cursor:"pointer"}}>
+            👤 My Account
           </button>
         </div>
       )}
@@ -464,6 +469,7 @@ export default function App() {
   const [toast, setToast] = useState(null); // { msg, type: "success"|"error"|"delete" }
   const showToast = (msg, type="success") => { setToast({ msg, type }); setTimeout(() => setToast(null), 2500); };
   const [bookingVehicle, setBookingVehicle] = useState(null); // vehicle being booked
+  const [myAccountOpen, setMyAccountOpen] = useState(false); // My Account modal visibility
 
   const safeGet = async (path, fallback) => {
     try {
@@ -620,7 +626,7 @@ export default function App() {
       `}</style>
 
       {/* NAVBAR */}
-      <MobileNav agency={agency} activeNav={activeNav} setActiveNav={setActiveNav} />
+      <MobileNav agency={agency} activeNav={activeNav} setActiveNav={setActiveNav} onMyAccount={()=>setMyAccountOpen(true)} />
 
       {/* HERO */}
       <section id="sec-home" style={{height:"100vh",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
@@ -886,6 +892,14 @@ export default function App() {
           whatsapp={agency.whatsapp}
           api={api}
           onClose={()=>setBookingVehicle(null)}
+        />
+      )}
+
+      {/* ── My Account Modal ── */}
+      {myAccountOpen && (
+        <MyAccountModal
+          api={api}
+          onClose={()=>setMyAccountOpen(false)}
         />
       )}
 
@@ -3269,6 +3283,77 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
   const [scanDone, setScanDone] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
+  // ── Returning-customer detection ────────────────────────────────────────
+  // accountStatus: "idle" (haven't checked yet) | "checking" | "none" (no
+  // account for this phone) | "found" (account exists, show login prompt) |
+  // "loggedIn" (they authenticated, form is pre-filled from their account)
+  const [accountStatus, setAccountStatus] = useState("idle");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [wantsAccount, setWantsAccount] = useState(false); // guest ticked "save my info" / set a password
+  const [newAccountPassword, setNewAccountPassword] = useState("");
+  const [loggedInCustomerId, setLoggedInCustomerId] = useState(null);
+
+  // Debounced check — fires a moment after the customer stops typing their
+  // phone number, not on every keystroke (avoids hammering the API while
+  // they're still mid-entry).
+  const phoneCheckTimer = useRef(null);
+  const checkAccountExists = (phone) => {
+    clearTimeout(phoneCheckTimer.current);
+    const trimmed = phone.trim();
+    if (trimmed.length < 7) { setAccountStatus("idle"); return; }
+    phoneCheckTimer.current = setTimeout(async () => {
+      setAccountStatus("checking");
+      try {
+        const res = await api.post("/bookings?resource=account&action=check-exists", { identifier: trimmed });
+        setAccountStatus(res?.exists ? "found" : "none");
+      } catch (e) {
+        setAccountStatus("none"); // fail open — never block booking over a lookup hiccup
+      }
+    }, 600);
+  };
+
+  const handleLogin = async () => {
+    if (!loginPassword) { setLoginError("Enter your password."); return; }
+    setLoginLoading(true);
+    setLoginError("");
+    try {
+      const res = await api.post("/bookings?resource=account&action=login", {
+        identifier: form.phone.trim(),
+        password: loginPassword,
+      });
+      // Pre-fill the form from their saved account — never overwrite a name
+      // they may have already typed differently, but everything else is
+      // exactly what "log in to skip re-entering your details" should do.
+      const c = res.customer || {};
+      setForm(f => ({
+        ...f,
+        customerName: c.name || f.customerName,
+        email:        c.email || f.email,
+        idType:       c.idType || f.idType,
+        idNumber:     c.idNumber || f.idNumber,
+        idImageUrl:   c.idImageUrl || f.idImageUrl,
+        dateOfBirth:  c.dateOfBirth || f.dateOfBirth,
+        gender:       c.gender || f.gender,
+        nationality:  c.nationality || f.nationality,
+        address:      c.address || f.address,
+      }));
+      setLoggedInCustomerId(c._id || null);
+      setAccountStatus("loggedIn");
+      try { localStorage.setItem("te_customer_token", res.token); } catch (e) {}
+    } catch (e) {
+      setLoginError("Incorrect password. You can keep going as a guest below — just fill in your details.");
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const continueAsGuest = () => {
+    setAccountStatus("none"); // collapses the login prompt, form continues as normal entry
+    setLoginError("");
+  };
+
   // Auto-fills from the ID scan. Never overwrites name/phone/address that the
   // customer already typed — those stay theirs to control; everything else
   // (nationality, ID type/number, DOB, gender, phone if printed) only fills
@@ -3353,15 +3438,31 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
     if (!form.checkOut) { setError("Please select a check-out date."); return; }
     if (new Date(form.checkOut) <= new Date(form.checkIn)) { setError("Check-out must be after check-in."); return; }
     if (!form.stayAddress.trim()) { setError("Please enter your hotel or stay address."); return; }
+    if (wantsAccount && accountStatus !== "loggedIn" && newAccountPassword.length < 6) { setError("Please choose a password of at least 6 characters, or untick \"save my details\"."); return; }
     setError("");
     setLoading(true);
     // Open WhatsApp BEFORE the await - browsers block window.open after async calls
     const waWin = window.open(buildWaUrl(), "_blank");
     try {
-      const result = await api.post("/bookings", { ...form, vehicleName: vehicle.name, vehicleId: vehicle._id, pricePerDay: vehicle.priceNum || 0 });
+      const result = await api.post("/bookings", {
+        ...form,
+        vehicleName: vehicle.name,
+        vehicleId: vehicle._id,
+        pricePerDay: vehicle.priceNum || 0,
+        // Only send a password if they're a NEW customer who chose to set
+        // one — never sent if they already logged in (accountStatus
+        // "loggedIn"), since that would be redundant and the backend
+        // already refuses to touch an existing account through this path.
+        ...(wantsAccount && newAccountPassword.length >= 6 && accountStatus !== "loggedIn"
+          ? { accountPassword: newAccountPassword }
+          : {}),
+      });
       // Update the already-open window with the server URL if available
       if (result?.whatsappUrl && waWin && !waWin.closed) {
         waWin.location.href = result.whatsappUrl;
+      }
+      if (result?.accountToken) {
+        try { localStorage.setItem("te_customer_token", result.accountToken); } catch (e) {}
       }
       setBookingId(result?.booking?._id || "");
       setStep("success"); // Show thank you message - payment request comes from admin
@@ -3399,6 +3500,9 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
             <div style={{fontSize:14,color:"rgba(255,255,255,0.6)",lineHeight:1.8,marginBottom:12}}>
               Your booking request for <strong style={{color:"white"}}>{vehicle.name}</strong> has been successfully received.
             </div>
+            {wantsAccount && newAccountPassword.length >= 6 && accountStatus !== "loggedIn" && (
+              <div style={{fontSize:13,color:"#4ade80",marginBottom:12}}>✅ Your account has been created — log in any time with your phone/email and password to see your bookings.</div>
+            )}
             <div style={{background:"rgba(240,192,96,0.08)",border:"1px solid rgba(240,192,96,0.2)",borderRadius:12,padding:"16px 20px",marginBottom:20,textAlign:"left"}}>
               <div style={{fontSize:13,color:"rgba(255,255,255,0.7)",lineHeight:1.9}}>
                 📋 <strong style={{color:"#f0c060"}}>What happens next?</strong><br/>
@@ -3428,9 +3532,39 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
                     </div>
                     <div>
                       <label style={lbl2}>Phone (WhatsApp) *</label>
-                      <input value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="+965 / +91 with country code" type="tel" style={fi}/>
+                      <input value={form.phone} onChange={e=>{ set("phone",e.target.value); checkAccountExists(e.target.value); }} placeholder="+965 / +91 with country code" type="tel" style={fi}/>
                     </div>
                   </div>
+
+                  {/* Returning customer detected — offer to log in instead of re-typing everything */}
+                  {accountStatus === "found" && (
+                    <div style={{background:"rgba(212,133,10,0.08)",border:"1px solid rgba(212,133,10,0.3)",borderRadius:10,padding:"14px 16px"}}>
+                      <div style={{fontSize:13,fontWeight:700,color:"#f0c060",marginBottom:8}}>👋 Welcome back — this number is registered</div>
+                      <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",marginBottom:10}}>Enter your password to skip re-typing your details, or continue as a guest below.</div>
+                      <div style={{display:"flex",gap:8}}>
+                        <input
+                          type="password"
+                          value={loginPassword}
+                          onChange={e=>setLoginPassword(e.target.value)}
+                          onKeyDown={e=>{ if (e.key==="Enter") handleLogin(); }}
+                          placeholder="Your password"
+                          style={{...fi,flex:1}}
+                        />
+                        <button onClick={handleLogin} disabled={loginLoading} style={{padding:"0 18px",borderRadius:8,background:"#d4850a",border:"none",color:"white",fontWeight:700,fontSize:13,cursor:loginLoading?"default":"pointer",opacity:loginLoading?0.6:1}}>
+                          {loginLoading ? "..." : "Log in"}
+                        </button>
+                      </div>
+                      {loginError && <div style={{fontSize:12,color:"#ff8a8a",marginTop:8}}>{loginError}</div>}
+                      <button onClick={continueAsGuest} style={{marginTop:10,background:"transparent",border:"none",color:"rgba(255,255,255,0.4)",fontSize:12,textDecoration:"underline",cursor:"pointer",padding:0}}>
+                        Continue as guest instead
+                      </button>
+                    </div>
+                  )}
+                  {accountStatus === "loggedIn" && (
+                    <div style={{background:"rgba(74,222,128,0.08)",border:"1px solid rgba(74,222,128,0.25)",borderRadius:10,padding:"10px 14px",fontSize:13,color:"#4ade80",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <span>✅ Logged in — your saved details have been filled in below</span>
+                    </div>
+                  )}
                   <div>
                     <label style={lbl2}>Email *</label>
                     <input value={form.email} onChange={e=>set("email",e.target.value)} placeholder="you@example.com" type="email" style={fi}/>
@@ -3524,6 +3658,27 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
               );
             })()}
 
+            {/* Optional: set a password to save details for next time — only
+                shown if they're not already logged in (logging in already
+                means they have an account). */}
+            {accountStatus !== "loggedIn" && (
+              <div style={{margin:"14px 0",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:10,padding:"12px 16px"}}>
+                <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,color:"rgba(255,255,255,0.6)"}}>
+                  <input type="checkbox" checked={wantsAccount} onChange={e=>setWantsAccount(e.target.checked)} />
+                  Save my details &amp; create an account for faster booking next time
+                </label>
+                {wantsAccount && (
+                  <input
+                    type="password"
+                    value={newAccountPassword}
+                    onChange={e=>setNewAccountPassword(e.target.value)}
+                    placeholder="Choose a password (min 6 characters)"
+                    style={{...fi,marginTop:10}}
+                  />
+                )}
+              </div>
+            )}
+
             {/* Price summary */}
             {days>0&&priceNum>0&&(
               <div style={{margin:"16px 0",background:"rgba(212,133,10,0.08)",border:"1px solid rgba(212,133,10,0.2)",borderRadius:10,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -3543,6 +3698,300 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ─── MyAccountModal ──────────────────────────────────────────────────────────
+// Standalone customer-facing account modal — reachable from the nav at any
+// time, independent of the booking flow. Uses its own fetch calls with
+// x-customer-token rather than the shared `api` helper, since that helper
+// always attaches the ADMIN token and must never be reused here.
+function MyAccountModal({ api, onClose }) {
+  const [token, setToken] = useState(() => {
+    try { return localStorage.getItem("te_customer_token") || ""; } catch (e) { return ""; }
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [profile, setProfile] = useState(null);
+  const [bookings, setBookings] = useState([]);
+  const [view, setView] = useState("loading"); // loading | login | account | editProfile | changePassword
+
+  // Login form state
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+
+  // Edit profile form state
+  const [editForm, setEditForm] = useState({});
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+
+  // Change password form state
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [pwError, setPwError] = useState("");
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwSuccess, setPwSuccess] = useState(false);
+
+  const customerFetch = async (path, opts = {}) => {
+    const res = await fetch(`${API}${path}`, {
+      ...opts,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { "x-customer-token": token } : {}),
+        ...(opts.headers || {}),
+      },
+    });
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : {};
+    if (!res.ok) {
+      const err = new Error(data.error || `HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  };
+
+  const loadMe = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await customerFetch("/bookings?resource=account&action=me");
+      setProfile(data.customer);
+      setBookings(data.bookings || []);
+      setEditForm({
+        name: data.customer.name || "",
+        email: data.customer.email || "",
+        address: data.customer.address || "",
+        nationality: data.customer.nationality || "",
+      });
+      setView("account");
+    } catch (e) {
+      if (e.status === 401) {
+        // Token genuinely invalid/expired — drop it and show login.
+        try { localStorage.removeItem("te_customer_token"); } catch (err) {}
+        setToken("");
+        setView("login");
+      } else {
+        // Network/server hiccup — the token may still be perfectly valid,
+        // don't log the customer out over a connectivity blip. Let them
+        // retry instead of silently losing their session.
+        setError("Couldn't load your account right now. Please check your connection and try again.");
+        setView("login");
+      }
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (token) loadMe();
+    else setView("login");
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleLogin = async () => {
+    if (!identifier.trim() || !password) { setError("Enter your phone/email and password."); return; }
+    setLoading(true);
+    setError("");
+    try {
+      const res = await customerFetch("/bookings?resource=account&action=login", {
+        method: "POST",
+        body: JSON.stringify({ identifier: identifier.trim(), password }),
+      });
+      setToken(res.token);
+      try { localStorage.setItem("te_customer_token", res.token); } catch (e) {}
+      setProfile(res.customer);
+      // Token state update won't be visible to loadMe() in this same tick
+      // (React state updates are async), so fetch bookings directly here
+      // instead of relying on the useEffect re-running.
+      const meData = await fetch(`${API}/bookings?resource=account&action=me`, {
+        headers: { "x-customer-token": res.token },
+      }).then(r => r.json());
+      setBookings(meData.bookings || []);
+      setEditForm({
+        name: res.customer.name || "",
+        email: res.customer.email || "",
+        address: res.customer.address || "",
+        nationality: res.customer.nationality || "",
+      });
+      setView("account");
+    } catch (e) {
+      setError(e.message === "Incorrect phone/email or password" ? e.message : "Login failed. Please try again.");
+    }
+    setLoading(false);
+  };
+
+  const handleLogout = () => {
+    try { localStorage.removeItem("te_customer_token"); } catch (e) {}
+    setToken("");
+    setProfile(null);
+    setBookings([]);
+    setView("login");
+  };
+
+  const saveProfile = async () => {
+    setEditSaving(true);
+    setEditError("");
+    try {
+      const res = await customerFetch("/bookings?resource=account&action=update-profile", {
+        method: "PUT",
+        body: JSON.stringify(editForm),
+      });
+      setProfile(res.customer);
+      setView("account");
+    } catch (e) {
+      setEditError("Couldn't save changes. Please try again.");
+    }
+    setEditSaving(false);
+  };
+
+  const changePassword = async () => {
+    if (!currentPw || !newPw) { setPwError("Fill in both fields."); return; }
+    if (newPw.length < 6) { setPwError("New password must be at least 6 characters."); return; }
+    setPwSaving(true);
+    setPwError("");
+    try {
+      await customerFetch("/bookings?resource=account&action=change-password", {
+        method: "POST",
+        body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
+      });
+      setPwSuccess(true);
+      setCurrentPw(""); setNewPw("");
+      setTimeout(() => { setPwSuccess(false); setView("account"); }, 1500);
+    } catch (e) {
+      setPwError(e.message === "Current password is incorrect" ? e.message : "Couldn't change password. Please try again.");
+    }
+    setPwSaving(false);
+  };
+
+  const overlay = {position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",padding:16};
+  const card = {background:"#0a1628",border:"1px solid rgba(212,133,10,0.25)",borderRadius:16,maxWidth:480,width:"100%",maxHeight:"88vh",overflowY:"auto",fontFamily:"'DM Sans'",color:"white"};
+  const fi = {width:"100%",padding:"10px 14px",background:"#0d1b2e",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:8,color:"#ffffff",fontFamily:"'DM Sans'",fontSize:14,outline:"none",boxSizing:"border-box",colorScheme:"dark"};
+  const lbl = {display:"block",fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:6};
+  const btnPrimary = {width:"100%",padding:"12px",background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"};
+  const btnGhost = {width:"100%",padding:"11px",background:"transparent",border:"1px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.7)",borderRadius:10,fontWeight:600,fontSize:13,cursor:"pointer"};
+
+  return (
+    <div style={overlay} onClick={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
+      <div style={card}>
+        <div style={{padding:"18px 22px",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontFamily:"'Playfair Display'",fontSize:19,color:"#f0c060"}}>
+            {view==="login" ? "Log In" : view==="editProfile" ? "Edit Details" : view==="changePassword" ? "Change Password" : "My Account"}
+          </div>
+          <button onClick={onClose} style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.5)",fontSize:20,cursor:"pointer"}}>✕</button>
+        </div>
+
+        <div style={{padding:"20px 22px"}}>
+          {loading && view==="loading" && (
+            <div style={{textAlign:"center",padding:"30px 0",color:"rgba(255,255,255,0.4)",fontSize:14}}>Loading…</div>
+          )}
+
+          {view==="login" && (
+            <div style={{display:"grid",gap:14}}>
+              <div>
+                <label style={lbl}>Phone or Email</label>
+                <input value={identifier} onChange={e=>setIdentifier(e.target.value)} placeholder="Phone or email" style={fi} onKeyDown={e=>{ if(e.key==="Enter") handleLogin(); }}/>
+              </div>
+              <div>
+                <label style={lbl}>Password</label>
+                <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Your password" style={fi} onKeyDown={e=>{ if(e.key==="Enter") handleLogin(); }}/>
+              </div>
+              {error && <div style={{fontSize:13,color:"#ff8a8a"}}>{error}</div>}
+              <button onClick={handleLogin} disabled={loading} style={{...btnPrimary,opacity:loading?0.6:1}}>{loading?"Logging in…":"Log In"}</button>
+              <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",textAlign:"center",lineHeight:1.6}}>
+                Don't have an account yet? Accounts are created automatically the first time you book — just tick "save my details" on the booking form.
+              </div>
+            </div>
+          )}
+
+          {view==="account" && profile && (
+            <div style={{display:"grid",gap:18}}>
+              <div style={{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"14px 16px"}}>
+                <div style={{fontSize:16,fontWeight:700,marginBottom:4}}>{profile.name || "—"}</div>
+                <div style={{fontSize:13,color:"rgba(255,255,255,0.5)"}}>{profile.phone}{profile.email ? ` · ${profile.email}` : ""}</div>
+                {profile.address && <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginTop:6}}>{profile.address}</div>}
+              </div>
+
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>setView("editProfile")} style={{...btnGhost,flex:1}}>Edit Details</button>
+                <button onClick={()=>setView("changePassword")} style={{...btnGhost,flex:1}}>Change Password</button>
+              </div>
+
+              <div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>
+                  Your Bookings ({bookings.length})
+                </div>
+                {bookings.length === 0 ? (
+                  <div style={{fontSize:13,color:"rgba(255,255,255,0.35)",textAlign:"center",padding:"20px 0"}}>No bookings yet.</div>
+                ) : (
+                  <div style={{display:"grid",gap:10}}>
+                    {bookings.map(b => {
+                      const statusColor = b.status==="completed" ? "#4ade80" : b.status==="cancelled" ? "#ff6b6b" : b.status==="confirmed" ? "#60a5fa" : "#f0c060";
+                      const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
+                      return (
+                        <div key={b._id} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:10,padding:"12px 14px"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                            <span style={{fontWeight:700,fontSize:14}}>{b.vehicleName || "Vehicle"}</span>
+                            <span style={{fontSize:11,fontWeight:700,color:statusColor,textTransform:"capitalize",background:`${statusColor}22`,padding:"2px 8px",borderRadius:8}}>{b.status}</span>
+                          </div>
+                          <div style={{fontSize:12,color:"rgba(255,255,255,0.45)"}}>{fmt(b.checkIn)} → {fmt(b.checkOut)}</div>
+                          {b.stayAddress && <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginTop:4}}>📍 {b.stayAddress}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <button onClick={handleLogout} style={{...btnGhost,borderColor:"rgba(255,80,80,0.25)",color:"#ff8a8a"}}>Log Out</button>
+            </div>
+          )}
+
+          {view==="editProfile" && (
+            <div style={{display:"grid",gap:14}}>
+              <div>
+                <label style={lbl}>Name</label>
+                <input value={editForm.name||""} onChange={e=>setEditForm(f=>({...f,name:e.target.value}))} style={fi}/>
+              </div>
+              <div>
+                <label style={lbl}>Email</label>
+                <input type="email" value={editForm.email||""} onChange={e=>setEditForm(f=>({...f,email:e.target.value}))} style={fi}/>
+              </div>
+              <div>
+                <label style={lbl}>Address</label>
+                <input value={editForm.address||""} onChange={e=>setEditForm(f=>({...f,address:e.target.value}))} style={fi}/>
+              </div>
+              <div>
+                <label style={lbl}>Nationality</label>
+                <input value={editForm.nationality||""} onChange={e=>setEditForm(f=>({...f,nationality:e.target.value}))} style={fi}/>
+              </div>
+              {editError && <div style={{fontSize:13,color:"#ff8a8a"}}>{editError}</div>}
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>setView("account")} style={{...btnGhost,flex:1}}>Cancel</button>
+                <button onClick={saveProfile} disabled={editSaving} style={{...btnPrimary,flex:1,opacity:editSaving?0.6:1}}>{editSaving?"Saving…":"Save"}</button>
+              </div>
+            </div>
+          )}
+
+          {view==="changePassword" && (
+            <div style={{display:"grid",gap:14}}>
+              <div>
+                <label style={lbl}>Current Password</label>
+                <input type="password" value={currentPw} onChange={e=>setCurrentPw(e.target.value)} style={fi}/>
+              </div>
+              <div>
+                <label style={lbl}>New Password</label>
+                <input type="password" value={newPw} onChange={e=>setNewPw(e.target.value)} style={fi} placeholder="Min 6 characters"/>
+              </div>
+              {pwError && <div style={{fontSize:13,color:"#ff8a8a"}}>{pwError}</div>}
+              {pwSuccess && <div style={{fontSize:13,color:"#4ade80"}}>✅ Password changed successfully.</div>}
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>setView("account")} style={{...btnGhost,flex:1}}>Cancel</button>
+                <button onClick={changePassword} disabled={pwSaving} style={{...btnPrimary,flex:1,opacity:pwSaving?0.6:1}}>{pwSaving?"Saving…":"Change Password"}</button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
