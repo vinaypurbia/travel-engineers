@@ -10,7 +10,15 @@ const adminHeaders = () => {
   const token = (typeof sessionStorage !== "undefined" && sessionStorage.getItem("adminToken"))
     || (typeof localStorage !== "undefined" && localStorage.getItem("adminToken"))
     || "";
-  return token ? { "x-admin-token": token } : {};
+  const staffToken = (typeof sessionStorage !== "undefined" && sessionStorage.getItem("staffToken")) || "";
+  const headers = {};
+  if (token) headers["x-admin-token"] = token;
+  // Staff are a separate identity from admin, not a fallback — send both
+  // when both exist (e.g. an admin who's also testing the staff panel in
+  // the same browser) so the backend can authorize whichever is valid for
+  // the specific route being called.
+  if (staffToken) headers["x-staff-token"] = staffToken;
+  return headers;
 };
 
 const api = {
@@ -584,6 +592,7 @@ export default function App() {
       onExit={() => {
         setStaffUser(null);
         sessionStorage.removeItem("staffUser");
+        sessionStorage.removeItem("staffToken");
         setView("home");
         loadAllData();
       }}
@@ -918,9 +927,10 @@ export default function App() {
       {staffLoginOpen && (
         <StaffLoginModal
           agency={agency}
-          onLogin={(user) => {
+          onLogin={(user, staffToken) => {
             setStaffUser(user);
             sessionStorage.setItem("staffUser", JSON.stringify(user));
+            if (staffToken) sessionStorage.setItem("staffToken", staffToken);
             setStaffLoginOpen(false);
             setView("staffPanel");
           }}
@@ -5938,7 +5948,7 @@ function StaffLoginModal({ agency, onLogin, onClose }) {
         body: JSON.stringify({ username: username.trim().toLowerCase(), password }),
       });
       const data = await res.json();
-      if (data.success) { onLogin(data.user); }
+      if (data.success) { onLogin(data.user, data.staffToken); }
       else { setError(data.error || "Invalid credentials"); }
     } catch { setError("Connection error. Try again."); }
     setLoading(false);
