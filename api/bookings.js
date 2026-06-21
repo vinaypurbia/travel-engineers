@@ -1,4 +1,4 @@
-const { connectDB, Booking, Agency, Customer, encryptObjectFields, decryptObjectFields, decryptObjectFieldsArray, decryptField, hashForSearch, hashPassword, verifyPassword, signCustomerToken, verifyCustomerToken } = require("./_db");
+const { connectDB, Booking, Agency, Customer, encryptObjectFields, decryptObjectFields, decryptObjectFieldsArray, decryptField, hashForSearch, hashPassword, verifyPassword, signCustomerToken, verifyCustomerToken, verifyStaffToken } = require("./_db");
 
 // Same rate-limit approach as auth.js / users.js — applied here to protect
 // the customer login endpoint from brute-force password guessing.
@@ -455,6 +455,20 @@ module.exports = async (req, res) => {
   // after a successful password login; it's never the raw password itself.
   const ADMIN_SECRET = process.env.ADMIN_SECRET || process.env.ADMIN_PASSWORD || "admin123";
   const isAdmin = (r) => (r.headers["x-admin-token"] || "") === ADMIN_SECRET;
+
+  // True if the request carries a valid, unexpired staff token whose
+  // permissions include the given module. Staff tokens are signed at login
+  // (see users.js ?action=login) and carry the user's permissions in the
+  // token itself, so this never needs a DB lookup. moduleName should match
+  // the MODULES ids used in the frontend (e.g. "bookings", "accounting").
+  const isStaffWithPermission = (r, moduleName) => {
+    const staff = verifyStaffToken(r.headers["x-staff-token"] || "");
+    return !!staff && staff.permissions.includes(moduleName);
+  };
+
+  // Most routes should accept EITHER a full admin OR a staff member with the
+  // matching module permission — this is the one to use in route guards.
+  const isAdminOrStaff = (r, moduleName) => isAdmin(r) || isStaffWithPermission(r, moduleName);
 
   // Resolves the logged-in customer's id from x-customer-token, or null if
   // absent/invalid/expired. Unlike isAdmin (all-or-nothing), this scopes a
@@ -934,7 +948,15 @@ module.exports = async (req, res) => {
     }
 
     if (id) {
-      if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+      if (req.method === "GET" || req.method === "PUT") {
+        if (!isAdminOrStaff(req, "bookings")) return res.status(403).json({ error: "Admin access required" });
+      } else {
+        // DELETE and anything else stays admin-only by default — deleting a
+        // booking also cascades to its accounting entry, which is a bigger
+        // action than "view/edit" and shouldn't be assumed safe for every
+        // staff member just because they have the bookings module.
+        if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+      }
       if (req.method === "GET") {
         const booking = await Booking.findById(id);
         if (!booking) return res.status(404).json({ error: "Not found" });
@@ -1223,7 +1245,7 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === "GET") {
-      if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+      if (!isAdminOrStaff(req, "bookings")) return res.status(403).json({ error: "Admin access required" });
       const bookings = await Booking.find().sort({ createdAt: -1 });
       return res.json(decryptObjectFieldsArray(bookings.map(b => b.toObject())));
     }
