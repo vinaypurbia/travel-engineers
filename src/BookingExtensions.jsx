@@ -5,17 +5,35 @@
 
 import { useState, useRef, useEffect } from "react";
 
+// Same auth headers as App.jsx's `api` object. This was previously its own
+// independent fetch helper with NO auth headers at all — harmless for the
+// public scan_id and public booking-create calls, but it meant
+// CustomerIdPanel's save() (PUT /bookings?id=...) was silently 403'ing for
+// every admin and staff member, since that route requires a valid token.
+// Keeping one shared header-building approach here avoids this drifting out
+// of sync with App.jsx's auth again in the future.
+const authHeaders = () => {
+  const adminToken = (typeof sessionStorage !== "undefined" && sessionStorage.getItem("adminToken"))
+    || (typeof localStorage !== "undefined" && localStorage.getItem("adminToken"))
+    || "";
+  const staffToken = (typeof sessionStorage !== "undefined" && sessionStorage.getItem("staffToken")) || "";
+  const headers = {};
+  if (adminToken) headers["x-admin-token"] = adminToken;
+  if (staffToken) headers["x-staff-token"] = staffToken;
+  return headers;
+};
+
 const apiCall = {
   post: (path, body) =>
     fetch(`/api${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify(body),
     }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
   put: (path, body) =>
     fetch(`/api${path}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify(body),
     }).then(r => r.text()).then(t => t ? JSON.parse(t) : {}),
 };
