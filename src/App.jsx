@@ -1,6 +1,6 @@
 // v4
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ManualBookingModal, CustomerIdPanel, ScanPanel } from "./BookingExtensions";
+import { ManualBookingModal, CustomerIdPanel, ScanPanel, TwoSidedScanPanel } from "./BookingExtensions";
 import TravelAssistant from "./TravelAssistant";
 import TourCalculator from "./TourCalculator";
 
@@ -599,6 +599,36 @@ export default function App() {
   const { agency, rentals, villa, testimonials } = data;
   const filtered = filterType === "all" ? rentals : rentals.filter(r => r.type === filterType);
 
+  // Group available rentals by master category (scooty/bike/car) — the customer
+  // books "a Scooty", not a specific registration number. Which exact unit
+  // they get is allotted by admin staff when the booking is confirmed.
+  const CATEGORY_META = {
+    scooty: { label: "Scooty", icon: "🛵", tagline: "Nimble and easy to ride around town" },
+    bike:   { label: "Bike",   icon: "🏍️", tagline: "More power for longer rides" },
+    car:    { label: "Car",    icon: "🚗", tagline: "Comfort and space for the whole group" },
+  };
+  const categoryCards = Object.keys(CATEGORY_META).map(type => {
+    const units = filtered.filter(r => r.available && r.type === type);
+    if (units.length === 0) return null;
+    // Show the lowest price in this category as "starting from"
+    const prices = units.map(u => Number(String(u.price||"0").replace(/[^0-9.]/g,""))||0).filter(p=>p>0);
+    const minPrice = prices.length ? Math.min(...prices) : 0;
+    // Prefer a unit with an image and description for the card art/copy
+    const representative = units.find(u => u.image) || units[0];
+    const allFeatures = [...new Set(units.flatMap(u => u.features||[]).filter(Boolean))];
+    return {
+      type,
+      ...CATEGORY_META[type],
+      minPrice,
+      period: representative.period || "/day",
+      image: representative.image,
+      description: representative.description || CATEGORY_META[type].tagline,
+      features: allFeatures.slice(0, 4),
+      availableCount: units.length,
+      units,
+    };
+  }).filter(Boolean);
+
   return (
     <div style={{fontFamily:"'Lora',Georgia,serif",background:"#faf8f3",color:"#1a1a2e",minHeight:"100vh",overflowX:"hidden",maxWidth:"100vw"}}>
       <style>{`
@@ -683,34 +713,47 @@ export default function App() {
             </button>
           ))}
         </div>
-        {filtered.length === 0 ? (
+        {categoryCards.length === 0 ? (
           <div style={{textAlign:"center",color:"#999",fontFamily:"'DM Sans'",padding:60}}>
             <div style={{fontSize:48,marginBottom:16}}>🛵</div>
             No vehicles listed yet. Add them from the Admin Panel!
           </div>
         ) : (
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:28}}>
-            {filtered.filter(r=>r.available).map(rental=>(
-              <div key={rental._id} className="card-hover" style={{background:"white",borderRadius:20,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.08)"}}>
-                <div style={{height:200,backgroundImage:`url(${rental.image||"https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=600&q=80"})`,backgroundSize:"cover",backgroundPosition:"center",position:"relative"}}>
+            {categoryCards.map(cat=>(
+              <div key={cat.type} className="card-hover" style={{background:"white",borderRadius:20,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.08)"}}>
+                <div style={{height:200,backgroundImage:`url(${cat.image||"https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=600&q=80"})`,backgroundSize:"cover",backgroundPosition:"center",position:"relative"}}>
                   <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,0.5),transparent)"}} />
-                  {rental.tag&&<div style={{position:"absolute",top:16,left:16}}><span className="tag">{rental.tag}</span></div>}
+                  <div style={{position:"absolute",top:16,left:16}}><span className="tag">{cat.icon} {cat.label}</span></div>
+                  <div style={{position:"absolute",top:16,right:16,background:"rgba(34,197,94,0.92)",color:"white",fontSize:11,fontWeight:700,padding:"4px 11px",borderRadius:20,fontFamily:"'DM Sans'"}}>
+                    {cat.availableCount} available
+                  </div>
                 </div>
                 <div style={{padding:"22px 24px 24px"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-                    <h3 style={{fontFamily:"'Playfair Display'",fontSize:22,fontWeight:700}}>{rental.name}</h3>
+                    <h3 style={{fontFamily:"'Playfair Display'",fontSize:22,fontWeight:700}}>{cat.label}</h3>
                     <div style={{textAlign:"right"}}>
-                      <span style={{fontFamily:"'Playfair Display'",fontSize:22,fontWeight:700,color:"#d4850a"}}>{rental.price}</span>
-                      <span style={{fontFamily:"'DM Sans'",fontSize:12,color:"#999"}}>{rental.period}</span>
+                      <span style={{fontFamily:"'DM Sans'",fontSize:11,color:"#999"}}>from</span>{" "}
+                      <span style={{fontFamily:"'Playfair Display'",fontSize:22,fontWeight:700,color:"#d4850a"}}>₹{cat.minPrice}</span>
+                      <span style={{fontFamily:"'DM Sans'",fontSize:12,color:"#999"}}>{cat.period}</span>
                     </div>
                   </div>
-                  {rental.description&&<p style={{fontFamily:"'Lora'",fontSize:14,color:"#666",marginBottom:16,lineHeight:1.6,fontStyle:"italic"}}>{rental.description}</p>}
-                  {(rental.features||[]).length>0&&(
+                  {cat.description&&<p style={{fontFamily:"'Lora'",fontSize:14,color:"#666",marginBottom:16,lineHeight:1.6,fontStyle:"italic"}}>{cat.description}</p>}
+                  {cat.features.length>0&&(
                     <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:20}}>
-                      {rental.features.filter(Boolean).map((f,i)=><span key={i} style={{fontSize:12,background:"#f5f0e8",color:"#8b6914",padding:"4px 10px",borderRadius:20,fontFamily:"'DM Sans'"}}>{f}</span>)}
+                      {cat.features.map((f,i)=><span key={i} style={{fontSize:12,background:"#f5f0e8",color:"#8b6914",padding:"4px 10px",borderRadius:20,fontFamily:"'DM Sans'"}}>{f}</span>)}
                     </div>
                   )}
-                  <button className="btn-primary" style={{width:"100%",padding:"12px",fontSize:14}} onClick={()=>setBookingVehicle(rental)}>
+                  <button className="btn-primary" style={{width:"100%",padding:"12px",fontSize:14}} onClick={()=>setBookingVehicle({
+                    // Synthetic "vehicle" representing the category — the exact unit
+                    // (registration number) is allotted by admin at confirmation time.
+                    _id: null,
+                    name: cat.label,
+                    type: cat.type,
+                    price: String(cat.minPrice),
+                    period: cat.period,
+                    isCategory: true,
+                  })}>
                     Book Now →
                   </button>
                 </div>
@@ -3274,7 +3317,7 @@ function QRPayStep({ total, setStep }) {
 // ─── Booking Modal (public site) ─────────────────────────────────────────────
 function BookingModal({ vehicle, whatsapp, api, onClose }) {
   const today = new Date().toISOString().slice(0,10);
-  const [form, setForm] = useState({ customerName:"", phone:"", email:"", checkIn:today, checkOut:"", stayAddress:"", notes:"", idType:"", idNumber:"", idImageUrl:"", dateOfBirth:"", gender:"", nationality:"", address:"" });
+  const [form, setForm] = useState({ customerName:"", phone:"", email:"", checkIn:today, checkOut:"", stayAddress:"", notes:"", idType:"", idNumber:"", idImageUrl:"", idImageUrlBack:"", dateOfBirth:"", gender:"", nationality:"", address:"" });
   const [step, setStep] = useState("form"); // form | qr | success
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -3334,6 +3377,7 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
         idType:       c.idType || f.idType,
         idNumber:     c.idNumber || f.idNumber,
         idImageUrl:   c.idImageUrl || f.idImageUrl,
+        idImageUrlBack: c.idImageUrlBack || f.idImageUrlBack,
         dateOfBirth:  c.dateOfBirth || f.dateOfBirth,
         gender:       c.gender || f.gender,
         nationality:  c.nationality || f.nationality,
@@ -3399,6 +3443,7 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
   const handleScanRemoved = () => {
     setScanDone(false);
     set("idImageUrl", "");
+    set("idImageUrlBack", "");
   };
 
   const days = form.checkIn && form.checkOut
@@ -3414,7 +3459,7 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
     const msg = [
       "🛵 *New Booking Request!*",
       "",
-      `*Vehicle:* ${vehicle.name}`,
+      `*Category requested:* ${vehicle.name}${vehicle.isCategory ? " (allot a specific vehicle in admin)" : ""}`,
       `*Customer:* ${form.customerName}`,
       `*Phone:* ${form.phone}`,
       `*Email:* ${form.email||"—"}`,
@@ -3447,7 +3492,11 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
       const result = await api.post("/bookings", {
         ...form,
         vehicleName: vehicle.name,
-        vehicleId: vehicle._id,
+        // For a category booking (vehicle.isCategory) no specific unit was
+        // picked — vehicleId stays null and vehicleType records what was
+        // requested (scooty/bike/car) so admin can allot a real unit later.
+        vehicleId: vehicle.isCategory ? null : vehicle._id,
+        vehicleType: vehicle.isCategory ? vehicle.type : (vehicle.type || ""),
         pricePerDay: vehicle.priceNum || 0,
         // Only send a password if they're a NEW customer who chose to set
         // one — never sent if they already logged in (accountStatus
@@ -3575,10 +3624,10 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
                       below, so the customer can skip typing all of that by hand. */}
                   <div style={{border:"1px solid rgba(240,192,96,0.18)",borderRadius:12,padding:"14px 14px 4px",background:"rgba(240,192,96,0.04)"}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                      <label style={{...lbl2,marginBottom:0}}>🪪 Scan your ID (optional — autofills details below)</label>
+                      <label style={{...lbl2,marginBottom:0}}>🪪 Scan your ID — front & back (optional — autofills details below)</label>
                       {scanDone && <span style={{fontSize:11,color:"#4ade80",fontWeight:600}}>✅ Scanned</span>}
                     </div>
-                    <ScanPanel customerName={form.customerName} onScanned={handleScanned} onImageUrl={(url)=>set("idImageUrl",url)} onRemoved={handleScanRemoved} />
+                    <TwoSidedScanPanel customerName={form.customerName} onScanned={handleScanned} onImageUrl={(url)=>set("idImageUrl",url)} onImageUrlBack={(url)=>set("idImageUrlBack",url)} onRemoved={handleScanRemoved} />
                     <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",margin:"-4px 0 10px"}}>
                       Don't want to scan? No problem — just fill in the fields below manually.
                     </div>
@@ -4986,19 +5035,26 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           suggestedAmount={paymentModal.suggestedAmount}
           total={paymentModal.total}
           days={paymentModal.days}
-          onSend={async (amount)=>{
-            // Save status + token amount to DB
-            await api.put(`/bookings?id=${paymentModal.booking._id}`, { status:"payment_requested", tokenAmount: Number(amount) });
+          rentals={data.rentals||rentals||[]}
+          inventory={data.inventory||[]}
+          onSend={async (amount, allottedVehicle)=>{
+            // Save status + token amount + allotted vehicle to DB
+            const patch = { status:"payment_requested", tokenAmount: Number(amount) };
+            if (allottedVehicle) { patch.vehicleId = allottedVehicle._id; patch.vehicleName = allottedVehicle.name; }
+            await api.put(`/bookings?id=${paymentModal.booking._id}`, patch);
             await reload();
-            openPaymentWhatsApp(paymentModal.booking, amount);
+            openPaymentWhatsApp({ ...paymentModal.booking, ...patch }, amount);
             setPaymentModal(null);
           }}
-          onApproveArrival={async ()=>{
+          onApproveArrival={async (allottedVehicle)=>{
             // Approve pay-on-arrival - confirm booking and send WhatsApp
-            await api.put(`/bookings?id=${paymentModal.booking._id}`, { status:"confirmed", payOnArrival: true, tokenAmount: 0, receivedAmount: 0 });
-            await syncInventory(paymentModal.booking, "confirmed");
+            const patch = { status:"confirmed", payOnArrival: true, tokenAmount: 0, receivedAmount: 0 };
+            if (allottedVehicle) { patch.vehicleId = allottedVehicle._id; patch.vehicleName = allottedVehicle.name; }
+            await api.put(`/bookings?id=${paymentModal.booking._id}`, patch);
+            const updatedBooking = { ...paymentModal.booking, ...patch };
+            await syncInventory(updatedBooking, "confirmed");
             await reload();
-            const b = paymentModal.booking;
+            const b = updatedBooking;
             const fmt2 = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
             const msg = [
               `✅ *Booking Confirmed — Travel Engineers*`,
@@ -5157,16 +5213,48 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
 }
 
 // ─── Payment Token Modal ──────────────────────────────────────────────────────
-function PaymentTokenModal({ booking, suggestedAmount, total, days, onSend, onApproveArrival, onClose }) {
+function PaymentTokenModal({ booking, suggestedAmount, total, days, rentals=[], inventory=[], onSend, onApproveArrival, onClose }) {
   const [amount, setAmount] = useState(suggestedAmount > 0 ? String(suggestedAmount) : "");
   const [error, setError] = useState("");
 
+  // ── Vehicle allotment ──────────────────────────────────────────────────
+  // Online bookings arrive with a requested category (vehicleType: scooty/bike/
+  // car) but no specific unit. Staff picks the actual vehicle here, before the
+  // booking can be confirmed or a payment request sent.
+  const needsAllotment = !booking.vehicleId && !!booking.vehicleType;
+  const candidateUnits = needsAllotment
+    ? rentals.filter(r => r.type === booking.vehicleType && r.available)
+    : [];
+  // Cross-reference with live inventory status so already-booked units for
+  // these overlapping dates don't show as selectable.
+  const invStatusById = {};
+  inventory.forEach(i => { if (i.isRental) invStatusById[String(i._id)] = i.status; });
+  const [allottedId, setAllottedId] = useState(() => {
+    const firstAvailable = candidateUnits.find(u => invStatusById[String(u._id)] !== "booked");
+    return firstAvailable ? firstAvailable._id : "";
+  });
+  const allottedVehicle = candidateUnits.find(u => u._id === allottedId) || null;
+  const [allotError, setAllotError] = useState("");
+
   const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—";
 
+  const validateAllotment = () => {
+    if (!needsAllotment) return true;
+    if (!allottedId) { setAllotError("Please allot a specific vehicle before confirming this booking."); return false; }
+    setAllotError("");
+    return true;
+  };
+
   const handleSend = () => {
+    if (!validateAllotment()) return;
     const num = Number(amount);
     if (!amount || isNaN(num) || num <= 0) { setError("Please enter a valid amount."); return; }
-    onSend(num);
+    onSend(num, allottedVehicle);
+  };
+
+  const handleApproveArrival = () => {
+    if (!validateAllotment()) return;
+    onApproveArrival(allottedVehicle);
   };
 
   const presets = total > 0
@@ -5213,6 +5301,39 @@ function PaymentTokenModal({ booking, suggestedAmount, total, days, onSend, onAp
               </div>
             )}
           </div>
+
+          {/* Vehicle allotment — only shown when this is a category-only online request */}
+          {needsAllotment && (
+            <div style={{background:"rgba(212,133,10,0.06)",border:`1px solid ${allotError?"#ff6b6b":"rgba(212,133,10,0.25)"}`,borderRadius:12,padding:"14px 16px",marginBottom:20}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                <span style={{fontSize:16}}>🔧</span>
+                <span style={{fontSize:13,fontWeight:700,color:"#f0c060"}}>Allot a vehicle</span>
+                <span style={{fontSize:11,color:"rgba(255,255,255,0.35)"}}>— requested: {booking.vehicleType}</span>
+              </div>
+              {candidateUnits.length === 0 ? (
+                <div style={{fontSize:12,color:"#ff6b6b"}}>No vehicles of this category exist in inventory yet. Add one in Inventory/Rentals first.</div>
+              ) : (
+                <select
+                  value={allottedId}
+                  onChange={e=>{ setAllottedId(e.target.value); setAllotError(""); }}
+                  style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1px solid ${allotError?"#ff6b6b":"rgba(255,255,255,0.15)"}`,background:"rgba(255,255,255,0.06)",color:"white",fontSize:14,fontFamily:"'DM Sans'"}}
+                >
+                  <option value="" style={{background:"#0d1b2e"}}>— Select a vehicle —</option>
+                  {candidateUnits.map(u=>{
+                    const status = invStatusById[String(u._id)];
+                    const busy = status === "booked";
+                    return (
+                      <option key={u._id} value={u._id} disabled={busy} style={{background:"#0d1b2e"}}>
+                        {u.name}{u.vehicleNo?` #${u.vehicleNo}`:""}{busy?" — currently booked":""}
+                      </option>
+                    );
+                  })}
+                </select>
+              )}
+              {allotError&&<div style={{fontSize:12,color:"#ff6b6b",marginTop:8}}>{allotError}</div>}
+              {allottedVehicle&&<div style={{fontSize:12,color:"#4ade80",marginTop:8}}>✓ Will allot {allottedVehicle.name}{allottedVehicle.vehicleNo?` #${allottedVehicle.vehicleNo}`:""} to this booking</div>}
+            </div>
+          )}
 
           {/* Amount input */}
           <div style={{marginBottom:16}}>
@@ -5274,7 +5395,7 @@ function PaymentTokenModal({ booking, suggestedAmount, total, days, onSend, onAp
           </div>
 
           {/* Pay on Arrival */}
-          <button onClick={onApproveArrival}
+          <button onClick={handleApproveArrival}
             style={{width:"100%",padding:"13px",background:"rgba(99,102,241,0.12)",border:"1px solid rgba(99,102,241,0.35)",color:"#a5b4fc",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
             🤝 Approve Pay on Arrival
           </button>
@@ -5661,13 +5782,24 @@ function CustomersEditor({ api, showSaved }) {
                         </div>
                       )}
                     </div>
-                    {/* ID image */}
-                    {selected.customer?.idImageUrl && (
+                    {/* ID image(s) */}
+                    {(selected.customer?.idImageUrl || selected.customer?.idImageUrlBack) && (
                       <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid rgba(255,255,255,0.06)"}}>
                         <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>ID Document</div>
-                        <a href={selected.customer.idImageUrl} target="_blank" rel="noreferrer">
-                          <img src={selected.customer.idImageUrl} alt="ID" style={{maxHeight:140,maxWidth:"100%",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",objectFit:"contain",display:"block"}}/>
-                        </a>
+                        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                          {selected.customer?.idImageUrl && (
+                            <a href={selected.customer.idImageUrl} target="_blank" rel="noreferrer" style={{flex:"1 1 120px",minWidth:120}}>
+                              <div style={{fontSize:10,color:"rgba(255,255,255,0.25)",marginBottom:4}}>Front</div>
+                              <img src={selected.customer.idImageUrl} alt="ID front" style={{maxHeight:140,width:"100%",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",objectFit:"contain",display:"block"}}/>
+                            </a>
+                          )}
+                          {selected.customer?.idImageUrlBack && (
+                            <a href={selected.customer.idImageUrlBack} target="_blank" rel="noreferrer" style={{flex:"1 1 120px",minWidth:120}}>
+                              <div style={{fontSize:10,color:"rgba(255,255,255,0.25)",marginBottom:4}}>Back</div>
+                              <img src={selected.customer.idImageUrlBack} alt="ID back" style={{maxHeight:140,width:"100%",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",objectFit:"contain",display:"block"}}/>
+                            </a>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
