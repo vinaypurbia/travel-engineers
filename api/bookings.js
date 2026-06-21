@@ -1204,9 +1204,9 @@ module.exports = async (req, res) => {
     // a new request. No login exists at this point in the flow.
     if (req.method === "POST") {
       const {
-        customerName, phone, vehicleName, vehicleId,
+        customerName, phone, vehicleName, vehicleId, vehicleType,
         checkIn, checkOut, stayAddress, notes, pricePerDay,
-        idType, idNumber, idImageUrl, email, nationality,
+        idType, idNumber, idImageUrl, idImageUrlBack, email, nationality,
         dateOfBirth, gender, address, source, createdAt,
         accountPassword, // optional — if set, creates a customer account alongside this booking
       } = req.body;
@@ -1227,6 +1227,7 @@ module.exports = async (req, res) => {
 
       const booking = await Booking.create(encryptObjectFields({
         customerName, phone, vehicleName,
+        vehicleType: vehicleType || "",   // category requested (scooty/bike/car) when no specific unit was picked — admin allots one later
         vehicleId: vehicleId || null,
         checkIn:  checkIn  ? new Date(checkIn)  : null,
         checkOut: checkOut ? new Date(checkOut) : null,
@@ -1237,7 +1238,8 @@ module.exports = async (req, res) => {
         // ID fields
         idType:      idType      || null,
         idNumber:    idNumber    || null,
-        idImageUrl:  idImageUrl  || null,   // Cloudinary URL of uploaded ID scan
+        idImageUrl:  idImageUrl  || null,       // front-of-ID Cloudinary URL
+        idImageUrlBack: idImageUrlBack || null, // back-of-ID Cloudinary URL
         email:       email       || null,
         nationality: nationality || null,
         dateOfBirth: dateOfBirth || null,
