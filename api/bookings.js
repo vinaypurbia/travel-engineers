@@ -1,4 +1,29 @@
-const { connectDB, Booking, Agency, Customer } = require("./_db");
+const { connectDB, Booking, Agency, Customer, encryptObjectFields, decryptObjectFields, decryptObjectFieldsArray, decryptField, hashForSearch, hashPassword, verifyPassword, signCustomerToken, verifyCustomerToken } = require("./_db");
+
+// Same rate-limit approach as auth.js / users.js — applied here to protect
+// the customer login endpoint from brute-force password guessing.
+const loginAttempts = new Map();
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 8;
+function getClientIp(req) {
+  const fwd = req.headers["x-forwarded-for"];
+  if (fwd) return String(fwd).split(",")[0].trim();
+  return req.socket?.remoteAddress || "unknown";
+}
+function isRateLimited(ip) {
+  const now = Date.now();
+  const record = loginAttempts.get(ip);
+  if (!record) return false;
+  if (now - record.firstAttempt > LOGIN_WINDOW_MS) { loginAttempts.delete(ip); return false; }
+  return record.count >= LOGIN_MAX_ATTEMPTS;
+}
+function recordFailedAttempt(ip) {
+  const now = Date.now();
+  const record = loginAttempts.get(ip);
+  if (!record || now - record.firstAttempt > LOGIN_WINDOW_MS) loginAttempts.set(ip, { count: 1, firstAttempt: now });
+  else record.count++;
+}
+function clearAttempts(ip) { loginAttempts.delete(ip); }
 
 async function sendBookingEmail({ booking, days, agencyEmail, agencyName }) {
   const gmailUser = process.env.GMAIL_USER;
@@ -397,7 +422,7 @@ async function upsertCustomerFromBooking(booking) {
     // booking) must NEVER overwrite an idImageUrl already saved on the customer
     // from an earlier booking. Each field only ever upgrades from empty -> value,
     // never downgrades from value -> empty/null.
-    const kyc = ["email","nationality","gender","dateOfBirth","idType","idNumber","idImageUrl","address"];
+    const kyc = ["email","nationality","gender","dateOfBirth","idType","idNumber","idNumberHash","idImageUrl","idImageUrlBack","address"];
     for (const f of kyc) {
       if (booking[f]) update[f] = booking[f];
     }
@@ -422,10 +447,138 @@ async function upsertCustomerFromBooking(booking) {
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,x-admin-token,x-customer-token");
   if (req.method === "OPTIONS") return res.status(200).end();
 
+  // Same check as users.js — one shared convention across the whole API.
+  // ADMIN_SECRET is the long-lived token issued at /api/users?action=admin-token
+  // after a successful password login; it's never the raw password itself.
+  const ADMIN_SECRET = process.env.ADMIN_SECRET || process.env.ADMIN_PASSWORD || "admin123";
+  const isAdmin = (r) => (r.headers["x-admin-token"] || "") === ADMIN_SECRET;
+
+  // Resolves the logged-in customer's id from x-customer-token, or null if
+  // absent/invalid/expired. Unlike isAdmin (all-or-nothing), this scopes a
+  // request to exactly one customer — every route using it must filter by
+  // this id, never trust a customerId/phone passed in the request body.
+  const getCustomerId = (r) => verifyCustomerToken(r.headers["x-customer-token"] || "");
+
+  // ── Customer account endpoints (?resource=account) ─────────────────────────
+  // Public-facing customer login/signup/profile — separate from the
+  // admin-only ?resource=customers block below. None of these check
+  // isAdmin; check-exists and login/set-password are intentionally public
+  // (a customer isn't logged in yet when they call them), while "me" and
+  // "update-profile" require a valid x-customer-token scoped to that one
+  // customer only.
+  if (req.query?.resource === "account") {
+
+    // POST ?resource=account&action=check-exists — body: { identifier }
+    // identifier is a phone or email. Returns only a boolean — never
+    // confirms *which* field matched, never returns any customer data.
+    if (req.method === "POST" && req.query?.action === "check-exists") {
+      const identifier = String(req.body?.identifier || "").trim();
+      if (!identifier) return res.status(400).json({ error: "identifier is required" });
+      const customer = await Customer.findOne({
+        $or: [{ phone: identifier }, { email: identifier }],
+        hasAccount: true,
+      }).select("_id").lean();
+      return res.json({ exists: !!customer });
+    }
+
+    // POST ?resource=account&action=login — body: { identifier, password }
+    if (req.method === "POST" && req.query?.action === "login") {
+      const ip = getClientIp(req);
+      if (isRateLimited(ip)) {
+        return res.status(429).json({ error: "Too many attempts. Please wait 15 minutes and try again." });
+      }
+      const identifier = String(req.body?.identifier || "").trim();
+      const password   = String(req.body?.password   || "");
+      if (!identifier || !password) return res.status(400).json({ error: "identifier and password are required" });
+
+      const customer = await Customer.findOne({
+        $or: [{ phone: identifier }, { email: identifier }],
+        hasAccount: true,
+      });
+      if (!customer || !verifyPassword(password, customer.passwordSalt, customer.passwordHash)) {
+        recordFailedAttempt(ip);
+        return res.status(401).json({ error: "Incorrect phone/email or password" });
+      }
+      clearAttempts(ip);
+      const token = signCustomerToken(String(customer._id));
+      const profile = decryptObjectFields(customer.toObject());
+      delete profile.passwordHash;
+      delete profile.passwordSalt;
+      return res.json({ success: true, token, customer: profile });
+    }
+
+    // NOTE: there is deliberately no standalone "set-password" endpoint here.
+    // Account creation only happens inline during booking creation (see
+    // accountPassword handling in the main POST /bookings handler below),
+    // where the phone number is proven by the booking itself rather than
+    // trusted blindly from a request body. A standalone endpoint taking a
+    // raw customerId with no ownership proof was removed before shipping.
+
+    // GET ?resource=account&action=me — requires x-customer-token
+    // Returns the logged-in customer's own profile + all their bookings.
+    if (req.method === "GET" && req.query?.action === "me") {
+      const customerId = getCustomerId(req);
+      if (!customerId) return res.status(401).json({ error: "Not logged in or session expired" });
+      const customer = await Customer.findById(customerId).lean();
+      if (!customer) return res.status(404).json({ error: "Account not found" });
+      const bookings = await Booking.find({ phone: customer.phone }).sort({ createdAt: -1 }).lean();
+      const profile = decryptObjectFields(customer);
+      delete profile.passwordHash;
+      delete profile.passwordSalt;
+      return res.json({
+        customer: profile,
+        bookings: decryptObjectFieldsArray(bookings),
+      });
+    }
+
+    // PUT ?resource=account&action=update-profile — requires x-customer-token
+    // Customer editing their own saved details (address, email, etc.) —
+    // password changes are NOT handled here, deliberately a separate flow.
+    if (req.method === "PUT" && req.query?.action === "update-profile") {
+      const customerId = getCustomerId(req);
+      if (!customerId) return res.status(401).json({ error: "Not logged in or session expired" });
+      // Never allow these to be changed through this route, regardless of
+      // what's in the request body.
+      const { password, passwordHash, passwordSalt, hasAccount, phone, _id, ...safeUpdates } = req.body || {};
+      const customer = await Customer.findByIdAndUpdate(
+        customerId,
+        encryptObjectFields({ ...safeUpdates, updatedAt: new Date() }),
+        { new: true }
+      );
+      if (!customer) return res.status(404).json({ error: "Account not found" });
+      const profile = decryptObjectFields(customer.toObject());
+      delete profile.passwordHash;
+      delete profile.passwordSalt;
+      return res.json({ success: true, customer: profile });
+    }
+
+    // POST ?resource=account&action=change-password — requires x-customer-token
+    if (req.method === "POST" && req.query?.action === "change-password") {
+      const customerId = getCustomerId(req);
+      if (!customerId) return res.status(401).json({ error: "Not logged in or session expired" });
+      const { currentPassword, newPassword } = req.body || {};
+      if (!currentPassword || !newPassword) return res.status(400).json({ error: "currentPassword and newPassword are required" });
+      if (String(newPassword).length < 6) return res.status(400).json({ error: "New password must be at least 6 characters" });
+      const customer = await Customer.findById(customerId);
+      if (!customer || !verifyPassword(currentPassword, customer.passwordSalt, customer.passwordHash)) {
+        return res.status(401).json({ error: "Current password is incorrect" });
+      }
+      const { salt, hash } = hashPassword(newPassword);
+      customer.passwordSalt = salt;
+      customer.passwordHash = hash;
+      await customer.save();
+      return res.json({ success: true });
+    }
+
+    return res.status(404).json({ error: "Unknown account action" });
+  }
+
   // ── POST /api/bookings?scan_id=true  — scan ID with Google Vision ──────────
+  // Stays public: this runs DURING the public booking form, before any
+  // booking (and therefore any login) exists.
   if (req.method === "POST" && req.query?.scan_id === "true") {
     const { imageBase64, mimeType, customerName, uploadImage } = req.body;
     if (!imageBase64) return res.status(400).json({ error: "imageBase64 is required" });
@@ -450,7 +603,11 @@ module.exports = async (req, res) => {
     const id = req.query?.id || null;
 
     // ── Customer endpoints (?resource=customers) ──────────────────────────────
+    // Every branch in here touches customer PII (ID numbers, photos, address,
+    // DOB) — gate the whole block, not branch by branch, so nothing new added
+    // here later can accidentally slip through unauthenticated.
     if (req.query?.resource === "customers") {
+      if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
 
       // GET ?resource=customers&debug_sync_phone=xxx — manually trigger sync for
       // ONE phone number and return exactly what happened. Use this to debug
@@ -480,12 +637,12 @@ module.exports = async (req, res) => {
           found: true,
           queriedPhone: phone,
           queriedPhoneType: typeof phone,
-          bookingUsed: { id: bookings[0]._id, idImageUrl: bookings[0].idImageUrl, createdAt: bookings[0].createdAt, phoneOnBooking: bookings[0].phone, phoneTypeOnBooking: typeof bookings[0].phone },
-          customerBefore: before ? { idImageUrl: before.idImageUrl, updatedAt: before.updatedAt, phoneOnCustomer: before.phone, phoneTypeOnCustomer: typeof before.phone, exactMatchFound: true } : { exactMatchFound: false },
+          bookingUsed: { id: bookings[0]._id, idImageUrl: decryptField(bookings[0].idImageUrl), createdAt: bookings[0].createdAt, phoneOnBooking: bookings[0].phone, phoneTypeOnBooking: typeof bookings[0].phone },
+          customerBefore: before ? { idImageUrl: decryptField(before.idImageUrl), updatedAt: before.updatedAt, phoneOnCustomer: before.phone, phoneTypeOnCustomer: typeof before.phone, exactMatchFound: true } : { exactMatchFound: false },
           flexMatchCount: flexMatch.length,
-          flexMatches: flexMatch.map(c => ({ id: c._id, name: c.name, phone: c.phone, phoneType: typeof c.phone, idImageUrl: c.idImageUrl })),
+          flexMatches: flexMatch.map(c => ({ id: c._id, name: c.name, phone: c.phone, phoneType: typeof c.phone, idImageUrl: decryptField(c.idImageUrl) })),
           upsertError,
-          customerAfter:  after ? { idImageUrl: after.idImageUrl,  updatedAt: after.updatedAt } : { found: false },
+          customerAfter:  after ? { idImageUrl: decryptField(after.idImageUrl),  updatedAt: after.updatedAt } : { found: false },
         });
       }
 
@@ -493,19 +650,26 @@ module.exports = async (req, res) => {
       if (req.method === "GET" && req.query?.phone) {
         const customer = await Customer.findOne({ phone: req.query.phone }).lean();
         const bookings = await Booking.find({ phone: req.query.phone }).sort({ createdAt: -1 }).lean();
-        if (!customer) return res.json({ customer: null, bookings });
-        return res.json({ customer, bookings });
+        const decryptedBookings = decryptObjectFieldsArray(bookings);
+        if (!customer) return res.json({ customer: null, bookings: decryptedBookings });
+        return res.json({ customer: decryptObjectFields(customer), bookings: decryptedBookings });
       }
 
       // GET ?resource=customers — list all customers, searchable, enriched with idImageUrl from bookings
       if (req.method === "GET") {
         const q = req.query?.q || "";
+        // idNumber is encrypted, so it can't be substring-matched directly —
+        // exact-match search works via idNumberHash instead (see _db.js).
+        // We always include it in the $or; if q doesn't match any real ID
+        // number it just won't contribute any results, same as any other
+        // non-matching $or clause.
+        const qHash = q ? hashForSearch(q) : null;
         const filter = q ? {
           $or: [
             { name:    { $regex: q, $options: "i" } },
             { phone:   { $regex: q, $options: "i" } },
             { email:   { $regex: q, $options: "i" } },
-            { idNumber:{ $regex: q, $options: "i" } },
+            ...(qHash ? [{ idNumberHash: qHash }] : []),
           ]
         } : {};
         const customers = await Customer.find(filter).sort({ lastBooking: -1 }).lean();
@@ -521,16 +685,16 @@ module.exports = async (req, res) => {
             idNumber:   c.idNumber || b?.idNumber || "",
           };
         }));
-        return res.json({ customers: enriched, total: enriched.length });
+        return res.json({ customers: decryptObjectFieldsArray(enriched), total: enriched.length });
       }
 
       // GET ?resource=customers&phone=xxx — REMOVED (handled above)
 
       // PUT ?resource=customers&id=xxx — update customer manually
       if (req.method === "PUT" && req.query?.id) {
-        const customer = await Customer.findByIdAndUpdate(req.query.id, { ...req.body, updatedAt: new Date() }, { new: true });
+        const customer = await Customer.findByIdAndUpdate(req.query.id, encryptObjectFields({ ...req.body, updatedAt: new Date() }), { new: true });
         if (!customer) return res.status(404).json({ error: "Not found" });
-        return res.json(customer);
+        return res.json(decryptObjectFields(customer.toObject()));
       }
 
       // DELETE ?resource=customers&id=xxx — delete customer record (not their bookings)
@@ -545,7 +709,7 @@ module.exports = async (req, res) => {
         if (!name || !phone) return res.status(400).json({ error: "name and phone are required" });
         const existing = await Customer.findOne({ phone: String(phone).trim() });
         if (existing) return res.status(409).json({ error: "A customer with this phone number already exists" });
-        const customer = await Customer.create({
+        const customer = await Customer.create(encryptObjectFields({
           name, phone: String(phone).trim(),
           email: email || null,
           nationality: nationality || null,
@@ -559,8 +723,8 @@ module.exports = async (req, res) => {
           totalSpent: 0,
           createdAt: new Date(),
           updatedAt: new Date(),
-        });
-        return res.json(customer);
+        }));
+        return res.json(decryptObjectFields(customer.toObject()));
       }
 
       // POST ?resource=customers&sync=true — build customer DB from ALL bookings
@@ -584,8 +748,13 @@ module.exports = async (req, res) => {
             return s + (b.pricePerDay * days);
           }, 0);
           // Pick best KYC data across all bookings for this phone
+          // NOTE: these fields are already ENCRYPTED ciphertext at this point
+          // (read straight from Booking.find().lean()) — we copy them through
+          // unchanged into Customer, we do NOT call encryptObjectFields here,
+          // since that would encrypt already-encrypted ciphertext a second
+          // time and make it permanently undecryptable.
           const kyc = {};
-          const kycFields = ["email","nationality","gender","dateOfBirth","idType","idNumber","idImageUrl","address"];
+          const kycFields = ["email","nationality","gender","dateOfBirth","idType","idNumber","idNumberHash","idImageUrl","idImageUrlBack","address"];
           for (const b of bookings) {
             for (const f of kycFields) {
               if (b[f] && !kyc[f]) kyc[f] = b[f];
@@ -628,7 +797,9 @@ module.exports = async (req, res) => {
       // re-run any time, e.g. after older customers were created before the ID
       // scan feature existed, or before a booking's ID image finished uploading.
       if (req.method === "POST" && req.query?.backfill_kyc === "true") {
-        const kycFields = ["email","nationality","gender","dateOfBirth","idType","idNumber","idImageUrl","address"];
+        // NOTE: ciphertext copy-through, same reasoning as sync=true above —
+        // do not re-encrypt these values, they're already encrypted.
+        const kycFields = ["email","nationality","gender","dateOfBirth","idType","idNumber","idNumberHash","idImageUrl","idImageUrlBack","address"];
         const customers = await Customer.find({}).lean();
         let updated = 0, skipped = 0, untouched = 0;
 
@@ -666,6 +837,7 @@ module.exports = async (req, res) => {
 
     // ── Storage stats (?resource=stats) ──────────────────────────────────────
     if (req.query?.resource === "stats" && req.method === "GET") {
+      if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
       const result = { mongodb: null, cloudinary: null };
 
       // ── MongoDB Atlas stats via Mongoose db.stats() ──
@@ -734,19 +906,20 @@ module.exports = async (req, res) => {
     }
 
     if (id) {
+      if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
       if (req.method === "GET") {
         const booking = await Booking.findById(id);
         if (!booking) return res.status(404).json({ error: "Not found" });
-        return res.json(booking);
+        return res.json(decryptObjectFields(booking.toObject()));
       }
       if (req.method === "PUT") {
-        const booking = await Booking.findByIdAndUpdate(id, req.body, { new: true });
+        const booking = await Booking.findByIdAndUpdate(id, encryptObjectFields(req.body), { new: true });
         if (!booking) return res.status(404).json({ error: "Not found" });
         // Must await: Vercel can terminate the function as soon as res.json()
         // is sent, so a fire-and-forget call here can get killed mid-write,
         // leaving the booking saved but the customer record never updated.
         try { await upsertCustomerFromBooking(booking); } catch (e) { console.error(e); }
-        return res.json(booking);
+        return res.json(decryptObjectFields(booking.toObject()));
       }
       if (req.method === "DELETE") {
         await Booking.findByIdAndDelete(id);
@@ -760,7 +933,11 @@ module.exports = async (req, res) => {
       }
     }
 
+    // ── Admin maintenance/cleanup tools below this line ────────────────────────
+    // (accounting cleanup, bulk delete, source/date fixes, accounting regen)
+    // All destructive or bulk-data operations — never safe to leave public.
     if (req.method === "DELETE" && req.query.cleanup === "accounting") {
+      if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
       try {
         const { Transaction } = require("./_db");
         const allBookingIds = (await Booking.find({}, "_id").lean()).map(b => String(b._id));
@@ -804,6 +981,7 @@ module.exports = async (req, res) => {
     // Body: { password }. Requires the admin password and removes every
     // Transaction entry linked to any of the deleted bookings.
     if (req.method === "DELETE" && req.query?.ids) {
+      if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
       const password = req.body?.password || "";
       const ok = await verifyAdminPassword(req, password);
       if (!ok) return res.status(401).json({ error: "Incorrect admin password" });
@@ -827,6 +1005,7 @@ module.exports = async (req, res) => {
     // Body: { password }. Requires the admin password and removes every
     // Transaction entry linked to any booking (all booking-related accounting).
     if (req.method === "DELETE" && req.query?.deleteAll === "true") {
+      if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
       const password = req.body?.password || "";
       const ok = await verifyAdminPassword(req, password);
       if (!ok) return res.status(401).json({ error: "Incorrect admin password" });
@@ -845,6 +1024,7 @@ module.exports = async (req, res) => {
 
     // ── POST ?fix_sources=true — one-time migration: stamp source on all bookings ──
     if (req.method === "POST" && req.query?.fix_sources === "true") {
+      if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
       const all = await Booking.find({}).lean();
       let fixed = 0, skipped = 0;
       for (const b of all) {
@@ -895,6 +1075,7 @@ module.exports = async (req, res) => {
     // Usage: POST /api/bookings?fix_dates=true&cutoff=2026-06-08
     // (cutoff = the date your bad import/regenerate ran; defaults to today)
     if (req.method === "POST" && req.query?.fix_dates === "true") {
+      if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
       const cutoff = req.query.cutoff ? new Date(req.query.cutoff) : new Date();
       cutoff.setHours(0, 0, 0, 0);
 
@@ -932,6 +1113,7 @@ module.exports = async (req, res) => {
     // skipping for missing price. Missing price just records as ₹0 so every
     // booking is represented and visible in accounting.
     if (req.method === "POST" && req.query?.regen_accounting === "true") {
+      if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
       const { connectDB: _, Transaction } = require("./_db");
 
       // Step 1 — delete ALL existing accounting entries linked to a booking
@@ -1013,16 +1195,20 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === "GET") {
+      if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
       const bookings = await Booking.find().sort({ createdAt: -1 });
-      return res.json(bookings);
+      return res.json(decryptObjectFieldsArray(bookings.map(b => b.toObject())));
     }
 
+    // POST stays public — this is the public-facing booking form submitting
+    // a new request. No login exists at this point in the flow.
     if (req.method === "POST") {
       const {
         customerName, phone, vehicleName, vehicleId,
         checkIn, checkOut, stayAddress, notes, pricePerDay,
         idType, idNumber, idImageUrl, email, nationality,
         dateOfBirth, gender, address, source, createdAt,
+        accountPassword, // optional — if set, creates a customer account alongside this booking
       } = req.body;
 
       const days_ = (checkIn && checkOut)
@@ -1039,7 +1225,7 @@ module.exports = async (req, res) => {
       const createdAtOverride = createdAt ? new Date(createdAt) : undefined;
       const isValidOverride = createdAtOverride && !isNaN(createdAtOverride.getTime());
 
-      const booking = await Booking.create({
+      const booking = await Booking.create(encryptObjectFields({
         customerName, phone, vehicleName,
         vehicleId: vehicleId || null,
         checkIn:  checkIn  ? new Date(checkIn)  : null,
@@ -1059,7 +1245,13 @@ module.exports = async (req, res) => {
         address:     address     || null,
         source:      source      || "online",
         ...(isValidOverride ? { createdAt: createdAtOverride } : {}),
-      });
+      }));
+
+      // booking.idNumber / idImageUrl / address / dateOfBirth are now
+      // CIPHERTEXT (just encrypted on write above) — decrypt our own copy
+      // before using these fields below for the WhatsApp message or
+      // anything else that needs the real value in this same request.
+      const bookingPlain = decryptObjectFields(booking.toObject());
 
       const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" }) : "—";
       const days = days_;
@@ -1086,7 +1278,7 @@ module.exports = async (req, res) => {
 
       if (source !== "walkin") {
         sendBookingEmail({
-          booking, days,
+          booking: bookingPlain, days,
           agencyEmail: agency?.email || process.env.GMAIL_USER,
           agencyName:  agency?.name  || "Travel Engineers",
         }).catch(console.error);
@@ -1100,7 +1292,32 @@ module.exports = async (req, res) => {
       // on the booking but never syncing to the customer record.
       try { await upsertCustomerFromBooking(booking); } catch (e) { console.error(e); }
 
-      return res.json({ success: true, booking, whatsappUrl });
+      // If the customer chose a password during checkout, create their
+      // account now — the Customer record is guaranteed to exist at this
+      // point because of the upsert just above. Only sets a password if
+      // this phone doesn't already have an account (an existing customer
+      // accidentally submitting a password here as a guest should not
+      // silently overwrite their real password — they need to log in or
+      // use the dedicated change-password flow for that).
+      let accountToken = null;
+      if (accountPassword && String(accountPassword).length >= 6) {
+        try {
+          const custForAccount = await Customer.findOne({ phone: String(phone).trim() });
+          if (custForAccount && !custForAccount.hasAccount) {
+            const { salt, hash } = hashPassword(String(accountPassword));
+            custForAccount.passwordSalt = salt;
+            custForAccount.passwordHash = hash;
+            custForAccount.hasAccount = true;
+            await custForAccount.save();
+            accountToken = signCustomerToken(String(custForAccount._id));
+          }
+        } catch (e) {
+          console.error("Account creation during booking failed:", e.message);
+          // Non-fatal — the booking itself already succeeded above either way.
+        }
+      }
+
+      return res.json({ success: true, booking: bookingPlain, whatsappUrl, accountToken });
     }
 
     res.status(405).json({ error: "Method not allowed" });
