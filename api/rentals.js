@@ -1,13 +1,22 @@
-const { connectDB, Rental } = require("./_db");
+const { connectDB, Rental, verifyStaffToken } = require("./_db");
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type,x-admin-token");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,x-admin-token,x-staff-token");
   if (req.method === "OPTIONS") return res.status(200).end();
 
   const ADMIN_SECRET = process.env.ADMIN_SECRET || process.env.ADMIN_PASSWORD || "admin123";
   const isAdmin = (r) => (r.headers["x-admin-token"] || "") === ADMIN_SECRET;
+  // Staff with the "rentals" permission (assigned in the Users tab) can
+  // manage rentals same as admin — their token is signed at login (see
+  // users.js ?action=login) and carries their permissions, verified here
+  // without a DB lookup.
+  const isAdminOrStaff = (r) => {
+    if (isAdmin(r)) return true;
+    const staff = verifyStaffToken(r.headers["x-staff-token"] || "");
+    return !!staff && staff.permissions.includes("rentals");
+  };
 
   try {
     await connectDB();
@@ -22,13 +31,13 @@ module.exports = async (req, res) => {
         return res.json(rental);
       }
       if (req.method === "PUT" || req.method === "PATCH") {
-        if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+        if (!isAdminOrStaff(req)) return res.status(403).json({ error: "Admin access required" });
         const rental = await Rental.findByIdAndUpdate(id, req.body, { new: true });
         if (!rental) return res.status(404).json({ error: "Not found" });
         return res.json(rental);
       }
       if (req.method === "DELETE") {
-        if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+        if (!isAdminOrStaff(req)) return res.status(403).json({ error: "Admin access required" });
         await Rental.findByIdAndDelete(id);
         return res.json({ success: true });
       }
@@ -40,7 +49,7 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === "POST") {
-      if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+      if (!isAdminOrStaff(req)) return res.status(403).json({ error: "Admin access required" });
       const rental = await Rental.create(req.body);
       return res.json(rental);
     }
