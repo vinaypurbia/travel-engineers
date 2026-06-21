@@ -1,14 +1,22 @@
-const { connectDB, Rental, Inventory, Villa, Booking } = require("./_db");
+const { connectDB, Rental, Inventory, Villa, Booking, verifyStaffToken } = require("./_db");
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type,x-admin-token");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,x-admin-token,x-staff-token");
   if (req.method === "OPTIONS") return res.status(200).end();
 
   // Same convention as users.js / bookings.js.
   const ADMIN_SECRET = process.env.ADMIN_SECRET || process.env.ADMIN_PASSWORD || "admin123";
   const isAdmin = (r) => (r.headers["x-admin-token"] || "") === ADMIN_SECRET;
+  // Staff with the "inventory" permission can manage inventory same as
+  // admin — token signed at login (users.js ?action=login), verified here
+  // without a DB lookup.
+  const isAdminOrStaff = (r) => {
+    if (isAdmin(r)) return true;
+    const staff = verifyStaffToken(r.headers["x-staff-token"] || "");
+    return !!staff && staff.permissions.includes("inventory");
+  };
 
   try {
     await connectDB();
@@ -17,13 +25,13 @@ module.exports = async (req, res) => {
 
     if (id) {
       if (req.method === "GET") {
-        if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+        if (!isAdminOrStaff(req)) return res.status(403).json({ error: "Admin access required" });
         const item = await Inventory.findById(id);
         if (!item) return res.status(404).json({ error: "Not found" });
         return res.json(item);
       }
       if (req.method === "PUT" || req.method === "PATCH") {
-        if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+        if (!isAdminOrStaff(req)) return res.status(403).json({ error: "Admin access required" });
         const item = await Inventory.findByIdAndUpdate(
           id, { ...req.body, updatedAt: new Date() }, { new: true }
         );
@@ -31,7 +39,7 @@ module.exports = async (req, res) => {
         return res.json(item);
       }
       if (req.method === "DELETE") {
-        if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+        if (!isAdminOrStaff(req)) return res.status(403).json({ error: "Admin access required" });
         await Inventory.findByIdAndDelete(id);
         return res.json({ success: true });
       }
@@ -61,10 +69,11 @@ module.exports = async (req, res) => {
           bookedVehicleMap[vid].push({
             from: b.checkIn,
             to: b.checkOut,
-            // customerName only included for logged-in admin requests — this
-            // endpoint also serves the public site, and a customer's name has
-            // no business being visible to anonymous visitors browsing rentals.
-            ...(isAdmin(req) ? { customerName: b.customerName } : {}),
+            // customerName only included for logged-in admin/staff requests —
+            // this endpoint also serves the public site, and a customer's
+            // name has no business being visible to anonymous visitors
+            // browsing rentals.
+            ...(isAdminOrStaff(req) ? { customerName: b.customerName } : {}),
             bookingId: String(b._id),
             status: b.status,
           });
@@ -134,7 +143,7 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === "POST") {
-      if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
+      if (!isAdminOrStaff(req)) return res.status(403).json({ error: "Admin access required" });
       const item = await Inventory.create({ ...req.body, updatedAt: new Date() });
       return res.json(item);
     }
