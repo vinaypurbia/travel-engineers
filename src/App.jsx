@@ -4,6 +4,8 @@ import { ManualBookingModal, CustomerIdPanel, ScanPanel, TwoSidedScanPanel } fro
 import TravelAssistant from "./TravelAssistant";
 import TourCalculator from "./TourCalculator";
 import { getPushPermissionState, subscribeToPush, unsubscribeFromPush } from "./push";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
 const API = "/api";
 
@@ -2135,11 +2137,129 @@ function AgencyEditor({ data, api, reload, showSaved }) {
 }
 
 // ─── Rentals Editor (unchanged) ──────────────────────────────────────────────
+// ─── Live GPS Fleet Map (Traccar-backed) ───────────────────────────────────────
+// Pass a single rentalId to focus on one vehicle, or omit it to show every
+// vehicle that has a tracker fitted (gpsDeviceId set).
+const VEHICLE_DOT_ICON = (online) => L.divIcon({
+  className: "",
+  html: `<div style="width:18px;height:18px;border-radius:50%;background:${online?"#4ade80":"#9ca3af"};border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>`,
+  iconSize: [18,18], iconAnchor: [9,9],
+});
+
+function FleetMapModal({ rentalId=null, onClose, api }) {
+  const mapRef = useRef(null);
+  const leafletMapRef = useRef(null);
+  const markersRef = useRef({});
+  const [vehicles, setVehicles] = useState(null);
+  const [error, setError] = useState("");
+  const [lastFetched, setLastFetched] = useState(null);
+
+  const fetchPositions = async () => {
+    try {
+      const qs = rentalId ? `&id=${rentalId}` : "";
+      const res = await api.get(`/rentals?action=location${qs}`);
+      setVehicles(res.vehicles || []);
+      setError("");
+      setLastFetched(new Date());
+    } catch (err) {
+      setError(err.message || "Couldn't load GPS data");
+    }
+  };
+
+  useEffect(() => {
+    fetchPositions();
+    const interval = setInterval(fetchPositions, 30000); // poll every 30s
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rentalId]);
+
+  // Init map once
+  useEffect(() => {
+    if (!mapRef.current || leafletMapRef.current) return;
+    leafletMapRef.current = L.map(mapRef.current, { zoomControl: true }).setView([20.5937, 78.9629], 5);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors",
+      maxZoom: 19,
+    }).addTo(leafletMapRef.current);
+    return () => { leafletMapRef.current?.remove(); leafletMapRef.current = null; };
+  }, []);
+
+  // Update markers whenever fresh positions arrive
+  useEffect(() => {
+    const map = leafletMapRef.current;
+    if (!map || !vehicles) return;
+    const located = vehicles.filter(v => v.lat != null && v.lng != null);
+
+    // Remove markers for vehicles no longer present
+    Object.keys(markersRef.current).forEach(id => {
+      if (!located.find(v => v.rentalId === id)) {
+        markersRef.current[id].remove();
+        delete markersRef.current[id];
+      }
+    });
+
+    located.forEach(v => {
+      const popupHtml = `<div style="font-family:'DM Sans',sans-serif;min-width:160px">
+        <div style="font-weight:700;margin-bottom:4px">${v.name}${v.vehicleNo?` (#${v.vehicleNo})`:""}</div>
+        <div style="font-size:12px;color:#666">${v.online?"🟢 Online":"⚪ Offline"}${v.speedKmh!=null?` · ${v.speedKmh} km/h`:""}</div>
+        <div style="font-size:11px;color:#999;margin-top:4px">${v.lastUpdate?new Date(v.lastUpdate).toLocaleString():"No fix yet"}</div>
+      </div>`;
+      if (markersRef.current[v.rentalId]) {
+        markersRef.current[v.rentalId].setLatLng([v.lat, v.lng]);
+        markersRef.current[v.rentalId].setIcon(VEHICLE_DOT_ICON(v.online));
+        markersRef.current[v.rentalId].setPopupContent(popupHtml);
+      } else {
+        markersRef.current[v.rentalId] = L.marker([v.lat, v.lng], { icon: VEHICLE_DOT_ICON(v.online) })
+          .addTo(map).bindPopup(popupHtml);
+      }
+    });
+
+    if (located.length === 1) {
+      map.setView([located[0].lat, located[0].lng], 15);
+      markersRef.current[located[0].rentalId]?.openPopup();
+    } else if (located.length > 1) {
+      map.fitBounds(L.latLngBounds(located.map(v => [v.lat, v.lng])), { padding: [40,40] });
+    }
+  }, [vehicles]);
+
+  const locatedCount = (vehicles||[]).filter(v=>v.lat!=null).length;
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif"}}>
+      <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(6,14,26,0.7)",backdropFilter:"blur(4px)"}} />
+      <div style={{position:"relative",width:"100%",maxWidth:860,margin:"0 16px",background:"#0d1b2e",borderRadius:20,border:"1px solid rgba(255,255,255,0.1)",overflow:"hidden",boxShadow:"0 32px 80px rgba(0,0,0,0.5)"}}>
+        <div style={{padding:"18px 24px",borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontFamily:"'Playfair Display'",fontSize:18,color:"white"}}>📍 {rentalId ? "Live Vehicle Location" : "Live Fleet Map"}</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginTop:2}}>
+              {error ? "—" : `${locatedCount} vehicle${locatedCount!==1?"s":""} reporting`} · updates every 30s
+            </div>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.06)",border:"none",color:"rgba(255,255,255,0.5)",width:32,height:32,borderRadius:8,cursor:"pointer",fontSize:16}}>✕</button>
+        </div>
+        {error ? (
+          <div style={{padding:"40px 28px",textAlign:"center"}}>
+            <div style={{fontSize:28,marginBottom:10}}>⚠️</div>
+            <div style={{color:"#f87171",fontSize:14,marginBottom:6}}>{error}</div>
+            <div style={{color:"rgba(255,255,255,0.35)",fontSize:12}}>Check that TRACCAR_URL, TRACCAR_USER and TRACCAR_PASSWORD are set, and that the vehicle has a GPS Device ID assigned.</div>
+          </div>
+        ) : vehicles && locatedCount === 0 ? (
+          <div style={{padding:"40px 28px",textAlign:"center",color:"rgba(255,255,255,0.4)",fontSize:13}}>
+            No GPS fix yet for {rentalId ? "this vehicle" : "any tracked vehicle"}. Make sure the tracker is powered on and has a clear sky view.
+          </div>
+        ) : null}
+        <div ref={mapRef} style={{height: error ? 0 : 460, width:"100%"}} />
+      </div>
+    </div>
+  );
+}
+
 function RentalsEditor({ data, api, reload, showSaved }) {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(null);
   const [adding, setAdding] = useState(false);
-  const blank = {type:"scooty",name:"",vehicleNo:"",category:"Scooty",price:"",period:"/day",pricePerKm:"",seats:"",tag:"",description:"",features:[""],image:"",available:true};
+  const blank = {type:"scooty",name:"",vehicleNo:"",category:"Scooty",price:"",period:"/day",pricePerKm:"",seats:"",tag:"",description:"",features:[""],image:"",available:true,gpsDeviceId:""};
+  const [mapModal, setMapModal] = useState(null); // null | "all" | rentalId
   const startEdit = (r) => { setForm({...r,features:[...(r.features||[])]}); setEditId(r._id); setAdding(false); };
   const startAdd = () => { setForm({...blank}); setEditId(null); setAdding(true); };
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -2155,14 +2275,19 @@ function RentalsEditor({ data, api, reload, showSaved }) {
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:28}}>
         <h2 style={{fontFamily:"'Playfair Display'",fontSize:28}}>Rental Vehicles</h2>
-        <button onClick={startAdd} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 22px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Add Vehicle</button>
+        <div style={{display:"flex",gap:10}}>
+          {(data.rentals||[]).some(r=>r.gpsDeviceId) && (
+            <button onClick={()=>setMapModal("all")} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",color:"rgba(255,255,255,0.75)",padding:"10px 18px",borderRadius:10,fontWeight:600,fontSize:14,cursor:"pointer"}}>📍 Fleet Map</button>
+          )}
+          <button onClick={startAdd} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 22px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Add Vehicle</button>
+        </div>
       </div>
       {(editId||adding)&&form&&(
         <div className="adm-card" style={{marginBottom:28,border:"1px solid rgba(212,133,10,0.3)"}}>
           <h3 style={{marginBottom:20,color:"#f0c060"}}>{adding?"Add New Vehicle":"Edit Vehicle"}</h3>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
-            {[["Vehicle Name","name"],["Vehicle No.","vehicleNo"],["Price/day (₹)","price"],["Period","period"],["Rate per KM (₹)","pricePerKm"],["Seats / Capacity","seats"],["Tag (optional)","tag"]].map(([l,k])=>(
-              <div key={k}><label className="adm-label">{l}</label><input className="adm-input" type={["pricePerKm","seats"].includes(k)?"number":"text"} value={form[k]||""} onChange={e=>set(k,e.target.value)} placeholder={k==="vehicleNo"?"e.g. 9654":k==="pricePerKm"?"e.g. 14":k==="seats"?"e.g. 4":""}/></div>
+            {[["Vehicle Name","name"],["Vehicle No.","vehicleNo"],["Price/day (₹)","price"],["Period","period"],["Rate per KM (₹)","pricePerKm"],["Seats / Capacity","seats"],["Tag (optional)","tag"],["GPS Device ID (IMEI)","gpsDeviceId"]].map(([l,k])=>(
+              <div key={k}><label className="adm-label">{l}</label><input className="adm-input" type={["pricePerKm","seats"].includes(k)?"number":"text"} value={form[k]||""} onChange={e=>set(k,e.target.value)} placeholder={k==="vehicleNo"?"e.g. 9654":k==="pricePerKm"?"e.g. 14":k==="seats"?"e.g. 4":k==="gpsDeviceId"?"Leave blank if no tracker fitted":""}/></div>
             ))}
             <div><label className="adm-label">Type</label>
               <select className="adm-input" value={form.type} onChange={e=>set("type",e.target.value)}>
@@ -2211,6 +2336,7 @@ function RentalsEditor({ data, api, reload, showSaved }) {
               </div>
             </div>
             <div style={{display:"flex",gap:8,flexShrink:0}}>
+              {r.gpsDeviceId && <button onClick={()=>setMapModal(r._id)} style={btnStyle("96,165,250")}>📍 Live</button>}
               <button onClick={()=>toggleAvail(r)} style={btnStyle(r.available?"255,80,80":"74,222,128")}>{r.available?"Hide":"Show"}</button>
               <button onClick={()=>startEdit(r)} style={btnStyle("212,133,10")}>Edit</button>
               <button onClick={()=>deleteRental(r._id)} style={btnStyle("255,80,80")}><Icon name="trash" size={13}/></button>
@@ -2218,6 +2344,13 @@ function RentalsEditor({ data, api, reload, showSaved }) {
           </div>
         ))}
       </div>
+      {mapModal && (
+        <FleetMapModal
+          rentalId={mapModal==="all" ? null : mapModal}
+          api={api}
+          onClose={()=>setMapModal(null)}
+        />
+      )}
     </div>
   );
 }
