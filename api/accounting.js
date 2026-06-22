@@ -1,13 +1,27 @@
-const { connectDB, Transaction } = require("./_db");
+const { connectDB, Transaction, verifyStaffToken } = require("./_db");
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,x-admin-token,x-staff-token");
   if (req.method === "OPTIONS") return res.status(200).end();
+
+  // This file previously had NO auth check at all — every transaction
+  // (income, expenses, client names, payment details) was fully readable
+  // and writable by anyone who knew the URL, with no token required.
+  // Accounting has no legitimate public-facing use (unlike rentals/villa,
+  // which the public website needs to read) — gate the entire file.
+  const ADMIN_SECRET = process.env.ADMIN_SECRET || process.env.ADMIN_PASSWORD || "admin123";
+  const isAdmin = (r) => (r.headers["x-admin-token"] || "") === ADMIN_SECRET;
+  const isAdminOrStaff = (r) => {
+    if (isAdmin(r)) return true;
+    const staff = verifyStaffToken(r.headers["x-staff-token"] || "");
+    return !!staff && staff.permissions.includes("accounting");
+  };
 
   try {
     await connectDB();
+    if (!isAdminOrStaff(req)) return res.status(403).json({ error: "Admin access required" });
 
     // vercel.json rewrites /api/accounting/:id → /api/accounting.js?id=:id
     const id = req.query?.id || null;
