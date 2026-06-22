@@ -493,10 +493,6 @@ export default function App() {
 
   const loadAllData = async () => {
     const startTime = Date.now();
-    // Check if admin token exists BEFORE making any API calls.
-    // Public visitors have no token, so calling /accounting, /bookings,
-    // /users etc. would always return 403 — those endpoints are intentionally
-    // protected. Only fetch them when there's an actual admin session.
     const hasAdminToken = !!(
       (typeof sessionStorage !== "undefined" && sessionStorage.getItem("adminToken")) ||
       (typeof localStorage !== "undefined" && localStorage.getItem("adminToken"))
@@ -508,7 +504,6 @@ export default function App() {
         safeGet("/villa", {name:"",tagline:"",description:"",price:"",period:"/night",checkIn:"",checkOut:"",minStay:"",maxGuests:"",image:"",amenities:[],rooms:[]}),
         safeGet("/testimonials", []),
         safeGet("/inventory", []),
-        // Admin-only endpoints — only fetch when logged in, otherwise use empty fallbacks
         hasAdminToken ? safeGet("/accounting", {transactions:[],summary:{}}) : Promise.resolve({transactions:[],summary:{}}),
         hasAdminToken ? safeGet("/bookings", []) : Promise.resolve([]),
         safeGet("/tours", []),
@@ -6215,6 +6210,8 @@ function NewsletterEditor({ api, showSaved }) {
   const [showCompose, setShowCompose] = useState(false);
   const [subject, setSubject]       = useState("");
   const [body, setBody]             = useState("");
+  const [imageUrl, setImageUrl]     = useState("");   // optional header image
+  const [imageUploading, setImageUploading] = useState(false);
   const [creating, setCreating]     = useState(false);
   const [activeSend, setActiveSend] = useState(null); // { campaignId, sent, failed, skipped, total, remaining }
   const sendingRef = useRef(false);
@@ -6241,10 +6238,16 @@ function NewsletterEditor({ api, showSaved }) {
     if (!subject.trim() || !body.trim()) { alert("Subject and message body are required."); return; }
     setCreating(true);
     try {
-      const res = await api.post("/bookings?resource=newsletter&action=create", { subject, bodyHtml: body.replace(/\n/g, "<br/>") });
+      // Build the HTML — if an image was uploaded, embed it as a full-width
+      // header image above the text body. Works in all major email clients.
+      const imgHtml = imageUrl
+        ? `<div style="text-align:center;margin-bottom:20px;"><img src="${imageUrl}" alt="" style="max-width:100%;height:auto;border-radius:8px;" /></div>`
+        : "";
+      const fullHtml = imgHtml + body.replace(/\n/g, "<br/>");
+      const res = await api.post("/bookings?resource=newsletter&action=create", { subject, bodyHtml: fullHtml });
       if (!res.success) { alert(res.error || "Failed to create campaign"); setCreating(false); return; }
       setShowCompose(false);
-      setSubject(""); setBody("");
+      setSubject(""); setBody(""); setImageUrl("");
       await loadCampaigns();
       // Immediately start sending the freshly-created draft
       runSendLoop(res.campaignId);
@@ -6347,6 +6350,38 @@ function NewsletterEditor({ api, showSaved }) {
             <label style={lbl}>Subject *</label>
             <input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="e.g. Monsoon discounts on scooty rentals!" style={{...fi,marginBottom:16}}/>
 
+            {/* Optional header image */}
+            <label style={lbl}>Header Image <span style={{fontWeight:400,textTransform:"none",letterSpacing:0,color:"rgba(255,255,255,0.25)"}}>— optional, appears above your message</span></label>
+            <div style={{marginBottom:16}}>
+              {imageUrl ? (
+                <div style={{position:"relative",marginBottom:8}}>
+                  <img src={imageUrl} alt="Newsletter header" style={{width:"100%",maxHeight:180,objectFit:"cover",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)"}}/>
+                  <button
+                    onClick={()=>setImageUrl("")}
+                    style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.7)",border:"none",color:"white",borderRadius:6,padding:"4px 10px",fontSize:12,cursor:"pointer"}}>
+                    ✕ Remove
+                  </button>
+                </div>
+              ) : (
+                <label style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"rgba(255,255,255,0.04)",border:"1.5px dashed rgba(255,255,255,0.15)",borderRadius:9,cursor:imageUploading?"not-allowed":"pointer",color:"rgba(255,255,255,0.5)",fontSize:13}}>
+                  <span style={{fontSize:18}}>🖼️</span>
+                  {imageUploading ? "Uploading…" : "Click to upload an image"}
+                  <input type="file" accept="image/*" style={{display:"none"}} disabled={imageUploading} onChange={async e=>{
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setImageUploading(true);
+                    try {
+                      const result = await api.upload(file);
+                      if (result?.url) setImageUrl(result.url);
+                      else alert("Upload failed.");
+                    } catch { alert("Upload error."); }
+                    setImageUploading(false);
+                    e.target.value = "";
+                  }}/>
+                </label>
+              )}
+            </div>
+
             <label style={lbl}>Message *</label>
             <textarea value={body} onChange={e=>setBody(e.target.value)} placeholder="Write your newsletter message here…" rows={10} style={{...fi,resize:"vertical",lineHeight:1.6,marginBottom:8}}/>
             <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginBottom:16}}>
@@ -6358,7 +6393,7 @@ function NewsletterEditor({ api, showSaved }) {
             </div>
 
             <div style={{display:"flex",gap:10}}>
-              <button onClick={()=>setShowCompose(false)} disabled={creating}
+              <button onClick={()=>{ setShowCompose(false); setSubject(""); setBody(""); setImageUrl(""); }} disabled={creating}
                 style={{flex:1,padding:"12px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:10,color:"rgba(255,255,255,0.7)",fontWeight:600,cursor:creating?"default":"pointer"}}>
                 Cancel
               </button>
