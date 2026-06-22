@@ -28,7 +28,7 @@ function recordFailedAttempt(ip) {
 }
 function clearAttempts(ip) { attempts.delete(ip); }
 
-const MODULES = ["dashboard","agency","rentals","villa","testimonials","inventory","tours","accounting","bookings"];
+const MODULES = ["dashboard","agency","rentals","villa","testimonials","inventory","tours","accounting","bookings","newsletter"];
 
 const UserSchema = new mongoose.Schema({
   username:    { type: String, required: true, unique: true, lowercase: true, trim: true },
