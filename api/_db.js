@@ -308,6 +308,7 @@ const rentalSchema = new mongoose.Schema({
   seats:      { type: String, default: "" },
   tag:       String,
   vehicleNo: { type: String, default: "" },  // registration / fleet number
+  gpsDeviceId: { type: String, default: "" }, // Traccar device "uniqueId" (tracker IMEI) — leave blank if no tracker fitted
   description: String,
   features:  [String],
   image:     String,
