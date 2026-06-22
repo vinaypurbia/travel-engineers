@@ -1,12 +1,24 @@
 const cloudinary = require("cloudinary").v2;
 const multer = require("multer");
-const { connectDB } = require("./_db");
+const { connectDB, verifyStaffToken } = require("./_db");
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
+
+// Same convention as bookings.js etc. Used to gate the generic file-upload
+// endpoint and the storage-stats endpoint — both are admin/staff actions,
+// never public. (?action=chat stays public — that's the customer-facing
+// chatbot widget, which by definition has no logged-in user.)
+const ADMIN_SECRET = process.env.ADMIN_SECRET || process.env.ADMIN_PASSWORD || "admin123";
+const isAdmin = (r) => (r.headers["x-admin-token"] || "") === ADMIN_SECRET;
+const isAdminOrStaff = (r) => {
+  if (isAdmin(r)) return true;
+  const staff = verifyStaffToken(r.headers["x-staff-token"] || "");
+  return !!staff && staff.permissions.length > 0; // any staff module is enough to upload images for their own work
+};
 
 // Optional: set MONGODB_STORAGE_LIMIT_MB in env vars if you're not on the
 // 512MB Atlas M0 free tier. Defaults to 512MB.
@@ -173,17 +185,21 @@ async function handleStorage(req, res) {
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST,GET,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,x-admin-token,x-staff-token");
   if (req.method === "OPTIONS") return res.status(200).end();
 
   if (req.query.action === "storage") {
     if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
+    // Previously ungated — anyone could read your Cloudinary/MongoDB usage
+    // stats even though the frontend always sent an admin token.
+    if (!isAdminOrStaff(req)) return res.status(403).json({ error: "Admin access required" });
     return handleStorage(req, res);
   }
 
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  // Route to chat handler if ?action=chat
+  // Route to chat handler if ?action=chat — stays public, this is the
+  // customer-facing chatbot widget with no logged-in user.
   if (req.query.action === "chat") {
     // Chat needs JSON body — parse it manually since bodyParser is false
     const chunks = [];
@@ -192,6 +208,12 @@ module.exports = async (req, res) => {
     return handleChat(req, res);
   }
 
-  // Default → file upload
+  // Default → generic file upload. This was previously fully public (no
+  // caller of it was found going through the admin-authenticated `api`
+  // helper), meaning anyone could upload arbitrary files to your Cloudinary
+  // account on your bill. Gate it — if a legitimate public flow needs file
+  // upload, it should go through bookings.js's scan_id route (which already
+  // handles ID images) rather than this generic endpoint.
+  if (!isAdminOrStaff(req)) return res.status(403).json({ error: "Admin access required" });
   return handleUpload(req, res);
 };
