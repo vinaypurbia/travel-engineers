@@ -1,4 +1,4 @@
-const { connectDB, Booking, Agency, Customer, encryptObjectFields, decryptObjectFields, decryptObjectFieldsArray, decryptField, hashForSearch, hashPassword, verifyPassword, signCustomerToken, verifyCustomerToken, verifyStaffToken } = require("./_db");
+const { connectDB, Booking, Agency, Customer, NewsletterCampaign, PushSubscription, sendPushToSubscriptions, encryptObjectFields, decryptObjectFields, decryptObjectFieldsArray, decryptField, hashForSearch, hashPassword, verifyPassword, signCustomerToken, verifyCustomerToken, verifyStaffToken, signUnsubscribeToken, verifyUnsubscribeToken } = require("./_db");
 
 // Same rate-limit approach as auth.js / users.js — applied here to protect
 // the customer login endpoint from brute-force password guessing.
@@ -447,7 +447,7 @@ async function upsertCustomerFromBooking(booking) {
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type,x-admin-token,x-customer-token");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,x-admin-token,x-customer-token,x-staff-token");
   if (req.method === "OPTIONS") return res.status(200).end();
 
   // Same check as users.js — one shared convention across the whole API.
@@ -872,6 +872,319 @@ module.exports = async (req, res) => {
           message: `Done. ${updated} customers backfilled, ${skipped} had no KYC data in their bookings, ${untouched} already complete.`,
           updated, skipped, untouched, total: customers.length,
         });
+      }
+
+      return res.status(405).json({ error: "Method not allowed" });
+    }
+
+    // ── Newsletter endpoints (?resource=newsletter) ───────────────────────────
+    // Folded into bookings.js rather than a separate file — Vercel's plan
+    // here is already at its serverless function cap, and this reuses the
+    // Customer model + isAdminOrStaff pattern already defined above anyway.
+    //
+    // Gmail's free-tier sending limit is roughly 500/day. We send in small
+    // batches with a short delay between each message (rather than one big
+    // Promise.all) to stay gentle on that limit and avoid Gmail flagging the
+    // account for sending too fast. BATCH_SIZE is how many recipients get
+    // processed in a single API call — kept low so even BATCH_SIZE
+    // sequential sends finish well within Vercel's default 10s timeout.
+    if (req.query?.resource === "newsletter") {
+      const NEWSLETTER_BATCH_SIZE = 12;
+      const NEWSLETTER_SEND_DELAY_MS = 300;
+
+      // Public unsubscribe link (no auth — this is clicked from an email)
+      if (req.method === "GET" && req.query?.action === "unsubscribe") {
+        const customerId = verifyUnsubscribeToken(req.query?.token || "");
+        if (!customerId) {
+          return res.status(400).send("<p style='font-family:sans-serif'>This unsubscribe link is invalid or has been tampered with.</p>");
+        }
+        await Customer.findByIdAndUpdate(customerId, { unsubscribed: true, unsubscribedAt: new Date() });
+        res.setHeader("Content-Type", "text/html");
+        return res.status(200).send(`<div style="font-family:sans-serif;max-width:480px;margin:80px auto;text-align:center;color:#333">
+          <h2>You've been unsubscribed</h2>
+          <p>You won't receive any more newsletter emails from us. If this was a mistake, just book with us again or contact us directly to be re-added.</p>
+        </div>`);
+      }
+
+      // Everything else requires admin or staff with "newsletter" permission
+      if (!isAdminOrStaff(req, "newsletter")) return res.status(403).json({ error: "Admin access required" });
+
+      if (req.method === "GET" && req.query?.action === "eligible-count") {
+        const count = await Customer.countDocuments({
+          email: { $exists: true, $ne: null, $ne: "" },
+          unsubscribed: { $ne: true },
+        });
+        return res.json({ eligibleCount: count });
+      }
+
+      if (req.method === "GET") {
+        if (req.query?.id) {
+          const campaign = await NewsletterCampaign.findById(req.query.id).lean();
+          if (!campaign) return res.status(404).json({ error: "Not found" });
+          return res.json(campaign);
+        }
+        const campaigns = await NewsletterCampaign.find({}, "-recipients.unsubscribeToken").sort({ createdAt: -1 }).lean();
+        const withCounts = campaigns.map(c => ({
+          ...c,
+          recipientCount: c.recipients?.length || 0,
+          sentCount: c.recipients?.filter(r => r.sendStatus === "sent").length || 0,
+          failedCount: c.recipients?.filter(r => r.sendStatus === "failed").length || 0,
+          recipients: undefined,
+        }));
+        return res.json(withCounts);
+      }
+
+      if (req.method === "POST" && req.query?.action === "create") {
+        const { subject, bodyHtml, createdBy } = req.body || {};
+        if (!subject?.trim() || !bodyHtml?.trim()) {
+          return res.status(400).json({ error: "Subject and body are required" });
+        }
+        // Snapshot eligible customers NOW. Unsubscribe status is re-checked
+        // live at send time below, so this is just "who to attempt", not a
+        // guarantee — someone unsubscribing mid-campaign is still respected.
+        const eligible = await Customer.find({
+          email: { $exists: true, $ne: null, $ne: "" },
+          unsubscribed: { $ne: true },
+        }, "_id name email").lean();
+        if (!eligible.length) {
+          return res.status(400).json({ error: "No customers with an email on file to send to" });
+        }
+        const recipients = eligible.map(c => ({
+          customerId: c._id,
+          email: c.email,
+          name: c.name || "",
+          unsubscribeToken: signUnsubscribeToken(String(c._id)),
+          sendStatus: "pending",
+        }));
+        const campaign = await NewsletterCampaign.create({
+          subject: subject.trim(), bodyHtml, recipients,
+          createdBy: createdBy || "", status: "draft",
+        });
+        return res.json({ success: true, campaignId: campaign._id, recipientCount: recipients.length });
+      }
+
+      // POST ?action=send&id=... — process ONE batch of pending recipients.
+      // The frontend calls this repeatedly until done:true, so each request
+      // stays small regardless of total list size, and a campaign can safely
+      // resume if interrupted — sendStatus per recipient is the source of truth.
+      if (req.method === "POST" && req.query?.action === "send" && req.query?.id) {
+        const gmailUser = process.env.GMAIL_USER;
+        const gmailPass = process.env.GMAIL_PASS;
+        if (!gmailUser || !gmailPass) {
+          return res.status(500).json({ error: "GMAIL_USER / GMAIL_PASS not configured — cannot send email" });
+        }
+        const campaign = await NewsletterCampaign.findById(req.query.id);
+        if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+        if (campaign.status === "cancelled") return res.status(400).json({ error: "This campaign was cancelled" });
+
+        if (campaign.status === "draft") {
+          campaign.status = "sending";
+          campaign.startedAt = new Date();
+        }
+
+        const pendingBatch = campaign.recipients.filter(r => r.sendStatus === "pending").slice(0, NEWSLETTER_BATCH_SIZE);
+
+        if (!pendingBatch.length) {
+          campaign.status = "completed";
+          campaign.completedAt = new Date();
+          await campaign.save();
+          const sent = campaign.recipients.filter(r => r.sendStatus === "sent").length;
+          const failed = campaign.recipients.filter(r => r.sendStatus === "failed").length;
+          const skipped = campaign.recipients.filter(r => r.sendStatus === "skipped_unsubscribed").length;
+          return res.json({ done: true, sent, failed, skipped, total: campaign.recipients.length });
+        }
+
+        const nodemailer = require("nodemailer");
+        const transporter = nodemailer.createTransport({
+          host: "smtp.gmail.com", port: 465, secure: true,
+          auth: { user: gmailUser, pass: gmailPass },
+        });
+        let agency = null;
+        try { agency = await Agency.findOne().lean(); } catch (e) {}
+        const agencyName = agency?.name || "Travel Engineers";
+        const base = process.env.PUBLIC_SITE_URL || "https://travelengineers.online";
+
+        for (const recipient of pendingBatch) {
+          // Re-check live, not just the snapshot — respects an unsubscribe
+          // that happened between campaign creation and now.
+          const current = await Customer.findById(recipient.customerId).select("unsubscribed").lean();
+          if (current?.unsubscribed) {
+            recipient.sendStatus = "skipped_unsubscribed";
+            continue;
+          }
+          try {
+            const unsubscribeUrl = `${base}/api/bookings?resource=newsletter&action=unsubscribe&token=${encodeURIComponent(recipient.unsubscribeToken)}`;
+            const html = `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
+              <div style="background:#d4850a;padding:20px 28px;border-radius:12px 12px 0 0">
+                <h2 style="color:white;margin:0;font-size:18px">${agencyName}</h2>
+              </div>
+              <div style="padding:24px 28px;background:white;border-radius:0 0 12px 12px;border:1px solid #eee;color:#333;font-size:14px;line-height:1.6">
+                ${campaign.bodyHtml}
+              </div>
+              <div style="text-align:center;padding:16px 0;font-size:11px;color:#999">
+                You're receiving this because you've booked with ${agencyName} before.
+                <a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline">Unsubscribe</a>
+              </div>
+            </div>`;
+            await transporter.sendMail({
+              from: `"${agencyName}" <${gmailUser}>`,
+              to: recipient.email,
+              subject: campaign.subject,
+              html,
+            });
+            recipient.sendStatus = "sent";
+            recipient.sentAt = new Date();
+          } catch (err) {
+            recipient.sendStatus = "failed";
+            recipient.error = err.message || "Unknown send error";
+          }
+          await new Promise(r => setTimeout(r, NEWSLETTER_SEND_DELAY_MS));
+        }
+
+        await campaign.save();
+        const remaining = campaign.recipients.filter(r => r.sendStatus === "pending").length;
+        const sent = campaign.recipients.filter(r => r.sendStatus === "sent").length;
+        const failed = campaign.recipients.filter(r => r.sendStatus === "failed").length;
+        const skipped = campaign.recipients.filter(r => r.sendStatus === "skipped_unsubscribed").length;
+        return res.json({ done: remaining === 0, sent, failed, skipped, remaining, total: campaign.recipients.length });
+      }
+
+      if (req.method === "POST" && req.query?.action === "cancel" && req.query?.id) {
+        const campaign = await NewsletterCampaign.findByIdAndUpdate(req.query.id, { status: "cancelled" }, { new: true });
+        if (!campaign) return res.status(404).json({ error: "Not found" });
+        return res.json({ success: true });
+      }
+
+      if (req.method === "DELETE" && req.query?.id) {
+        const campaign = await NewsletterCampaign.findById(req.query.id);
+        if (!campaign) return res.status(404).json({ error: "Not found" });
+        if (campaign.status === "sending") {
+          return res.status(400).json({ error: "Can't delete a campaign that's currently sending — cancel it first" });
+        }
+        await NewsletterCampaign.findByIdAndDelete(req.query.id);
+        return res.json({ success: true });
+      }
+
+      return res.status(405).json({ error: "Method not allowed" });
+    }
+
+    // ── Push notification endpoints (?resource=push) ──────────────────────────
+    // Folded into bookings.js for the same reason newsletter is — Vercel's
+    // function-file cap is already maxed out on this project.
+    //
+    // Subscriptions are keyed by PHONE NUMBER, not a logged-in customer
+    // account (x-customer-token) — most customers here book as guests via
+    // WhatsApp and never create a password account, so gating push behind a
+    // real login would exclude almost everyone. Phone is already the de
+    // facto identity key everywhere else in this app (Customer.phone is
+    // unique), so this is consistent with the existing trust model rather
+    // than a new weaker one. Same is true for the rest of this codebase: no
+    // OTP verification on phone number anywhere today.
+    if (req.query?.resource === "push") {
+
+      // GET ?resource=push&action=vapid-public-key — public, the frontend
+      // needs this to create a push subscription in the browser.
+      if (req.method === "GET" && req.query?.action === "vapid-public-key") {
+        if (!process.env.VAPID_PUBLIC_KEY) return res.status(500).json({ error: "VAPID_PUBLIC_KEY not configured" });
+        return res.json({ publicKey: process.env.VAPID_PUBLIC_KEY });
+      }
+
+      // POST ?resource=push&action=subscribe — public.
+      // Body: { subscription, ownerType, customerPhone? } for customers, or
+      // { subscription, ownerType: "staff" } with x-admin-token/x-staff-token
+      // for admin/staff (so a random visitor can't register as staff).
+      if (req.method === "POST" && req.query?.action === "subscribe") {
+        const { subscription, ownerType, customerPhone } = req.body || {};
+        if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+          return res.status(400).json({ error: "Invalid subscription object" });
+        }
+
+        let doc;
+        if (ownerType === "staff") {
+          // Staff/admin subscribing for "new booking" alerts — require a
+          // real admin/staff token so this can't be spoofed by a visitor.
+          const staff = verifyStaffToken(req.headers["x-staff-token"] || "");
+          if (!isAdmin(req) && !staff) return res.status(403).json({ error: "Admin access required" });
+          const staffUsername = isAdmin(req) ? "admin" : staff.userId;
+          doc = { ownerType: "staff", staffUsername, customerPhone: null };
+        } else {
+          // Customer subscribing for trip reminders / new tour alerts.
+          if (!customerPhone || String(customerPhone).trim().length < 7) {
+            return res.status(400).json({ error: "A valid phone number is required" });
+          }
+          doc = { ownerType: "customer", customerPhone: String(customerPhone).trim(), staffUsername: null };
+        }
+
+        await PushSubscription.findOneAndUpdate(
+          { endpoint: subscription.endpoint },
+          {
+            ...doc,
+            endpoint: subscription.endpoint,
+            keys: subscription.keys,
+            userAgent: (req.headers["user-agent"] || "").slice(0, 200),
+            lastUsedAt: new Date(),
+          },
+          { upsert: true, new: true }
+        );
+        return res.json({ success: true });
+      }
+
+      // POST ?resource=push&action=unsubscribe — public. Body: { endpoint }
+      if (req.method === "POST" && req.query?.action === "unsubscribe") {
+        const { endpoint } = req.body || {};
+        if (!endpoint) return res.status(400).json({ error: "endpoint is required" });
+        await PushSubscription.deleteOne({ endpoint });
+        return res.json({ success: true });
+      }
+
+      // POST ?resource=push&action=notify-staff — admin/staff only. Used by
+      // the booking-creation flow to alert admin/staff of a new booking.
+      if (req.method === "POST" && req.query?.action === "notify-staff") {
+        if (!isAdminOrStaff(req, "bookings")) return res.status(403).json({ error: "Admin access required" });
+        const { title, body, url } = req.body || {};
+        const subs = await PushSubscription.find({ ownerType: "staff" }).lean();
+        const result = await sendPushToSubscriptions(subs, { title: title || "New booking", body: body || "", url: url || "/admin" });
+        return res.json({ success: true, ...result });
+      }
+
+      // GET ?resource=push&action=check-reminders&secret=... — called by a
+      // Vercel Cron job once a day (see vercel.json), NOT by the admin UI.
+      // Gated by CRON_SECRET (a separate env var) rather than admin/staff
+      // tokens, since a cron job has no browser session to carry one.
+      if (req.method === "GET" && req.query?.action === "check-reminders") {
+        const cronSecret = process.env.CRON_SECRET;
+        if (!cronSecret || req.query?.secret !== cronSecret) {
+          return res.status(403).json({ error: "Invalid or missing cron secret" });
+        }
+
+        // Remind customers whose booking checkIn (vehicle/villa) is exactly
+        // REMINDER_DAYS_AHEAD days away. Querying a tight same-day window
+        // rather than "<= N days" means this only ever fires once per
+        // booking, even if the cron runs daily indefinitely.
+        const REMINDER_DAYS_AHEAD = 2;
+        const now = new Date();
+        const targetStart = new Date(now); targetStart.setDate(targetStart.getDate() + REMINDER_DAYS_AHEAD); targetStart.setHours(0,0,0,0);
+        const targetEnd   = new Date(targetStart); targetEnd.setHours(23,59,59,999);
+
+        const upcomingBookings = await Booking.find({
+          checkIn: { $gte: targetStart, $lte: targetEnd },
+          status: { $in: ["confirmed", "payment_requested"] },
+        }).lean();
+
+        let notified = 0, skippedNoSub = 0;
+        for (const b of upcomingBookings) {
+          const subs = await PushSubscription.find({ ownerType: "customer", customerPhone: b.phone }).lean();
+          if (!subs.length) { skippedNoSub++; continue; }
+          const dateLabel = new Date(b.checkIn).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+          await sendPushToSubscriptions(subs, {
+            title: "Your trip is coming up!",
+            body: `${b.vehicleName || "Your booking"} on ${dateLabel} — see you soon!`,
+            url: "/",
+          });
+          notified++;
+        }
+
+        return res.json({ success: true, checkedBookings: upcomingBookings.length, notified, skippedNoSub });
       }
 
       return res.status(405).json({ error: "Method not allowed" });
@@ -1367,6 +1680,24 @@ module.exports = async (req, res) => {
           console.error("Account creation during booking failed:", e.message);
           // Non-fatal — the booking itself already succeeded above either way.
         }
+      }
+
+      // Notify admin/staff of this new booking via push — skipped for
+      // walk-ins, since those are entered BY staff themselves; notifying
+      // them about their own entry is noise, not signal. Best-effort and
+      // awaited (not fire-and-forget) for the same reason as the customer
+      // upsert above — Vercel can kill the function right after res.json().
+      if (source !== "walkin") {
+        try {
+          const staffSubs = await PushSubscription.find({ ownerType: "staff" }).lean();
+          if (staffSubs.length) {
+            await sendPushToSubscriptions(staffSubs, {
+              title: "New booking request 🛵",
+              body: `${customerName} — ${vehicleName || "vehicle"} (${fmt(checkIn)})`,
+              url: "/admin",
+            });
+          }
+        } catch (e) { console.error("New-booking staff push notify error:", e.message); }
       }
 
       return res.json({ success: true, booking: bookingPlain, whatsappUrl, accountToken });
