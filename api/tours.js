@@ -1,4 +1,4 @@
-const { connectDB, Agency } = require("./_db");
+const { connectDB, Agency, verifyStaffToken } = require("./_db");
 const mongoose = require("mongoose");
 
 // ─── Tour Schema ──────────────────────────────────────────────────────────────
@@ -93,8 +93,22 @@ async function sendTourEmail({ booking, agencyEmail, agencyName }) {
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,x-admin-token,x-staff-token");
   if (req.method === "OPTIONS") return res.status(200).end();
+
+  // This file previously had NO auth at all. Tour LISTINGS (Tour model) are
+  // fine to stay public — that's what the public site shows. TourBooking
+  // records (customer name, phone, email, travel plans) are not: reading or
+  // editing those is an admin/staff action, never anonymous. Only POSTing a
+  // new tour booking stays public, same convention as bookings.js's public
+  // booking-creation route.
+  const ADMIN_SECRET = process.env.ADMIN_SECRET || process.env.ADMIN_PASSWORD || "admin123";
+  const isAdmin = (r) => (r.headers["x-admin-token"] || "") === ADMIN_SECRET;
+  const isAdminOrStaff = (r) => {
+    if (isAdmin(r)) return true;
+    const staff = verifyStaffToken(r.headers["x-staff-token"] || "");
+    return !!staff && staff.permissions.includes("tours");
+  };
 
   try {
     await connectDB();
@@ -104,6 +118,9 @@ module.exports = async (req, res) => {
     // ── TOUR BOOKINGS (called as /api/tours?bookings=1) ───────────────────────
     if (isBookings) {
       if (id) {
+        if (req.method === "GET" || req.method === "PUT" || req.method === "DELETE") {
+          if (!isAdminOrStaff(req)) return res.status(403).json({ error: "Admin access required" });
+        }
         if (req.method === "GET") {
           const b = await TourBooking.findById(id);
           if (!b) return res.status(404).json({ error: "Not found" });
@@ -120,6 +137,7 @@ module.exports = async (req, res) => {
         }
       }
       if (req.method === "GET") {
+        if (!isAdminOrStaff(req)) return res.status(403).json({ error: "Admin access required" });
         const bookings = await TourBooking.find().sort({ createdAt: -1 });
         return res.json(bookings);
       }
@@ -163,11 +181,13 @@ module.exports = async (req, res) => {
         return res.json(tour);
       }
       if (req.method === "PUT") {
+        if (!isAdminOrStaff(req)) return res.status(403).json({ error: "Admin access required" });
         const tour = await Tour.findByIdAndUpdate(id, req.body, { new: true });
         if (!tour) return res.status(404).json({ error: "Not found" });
         return res.json(tour);
       }
       if (req.method === "DELETE") {
+        if (!isAdminOrStaff(req)) return res.status(403).json({ error: "Admin access required" });
         await Tour.findByIdAndDelete(id);
         return res.json({ success: true });
       }
@@ -180,8 +200,29 @@ module.exports = async (req, res) => {
       return res.json(tours);
     }
     if (req.method === "POST") {
+      if (!isAdminOrStaff(req)) return res.status(403).json({ error: "Admin access required" });
       const tour = await Tour.create(req.body);
-      return res.json({ success: true, tour });
+
+      // Notify customers who've opted into push, about the new tour. Must
+      // be awaited, not fire-and-forget — Vercel can freeze/kill a
+      // serverless function immediately after the response is sent, which
+      // would silently drop an un-awaited async call before it finishes.
+      // A failure here must never block the tour from being created though,
+      // so it's wrapped in try/catch rather than left to throw.
+      let pushResult = null;
+      try {
+        const { PushSubscription, sendPushToSubscriptions } = require("./_db");
+        const subs = await PushSubscription.find({ ownerType: "customer" }).lean();
+        if (subs.length) {
+          pushResult = await sendPushToSubscriptions(subs, {
+            title: "New trip just added! ✈️",
+            body: tour.title || "Check out our latest tour package",
+            url: "/",
+          });
+        }
+      } catch (e) { console.error("New-tour push notify error:", e.message); }
+
+      return res.json({ success: true, tour, pushNotified: pushResult });
     }
     res.status(405).json({ error: "Method not allowed" });
   } catch (err) {
