@@ -2170,7 +2170,6 @@ function FleetMapModal({ rentalId=null, onClose, api }) {
     fetchPositions();
     const interval = setInterval(fetchPositions, 30000); // poll every 30s
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rentalId]);
 
   // Init map once
