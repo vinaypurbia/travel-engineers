@@ -860,6 +860,7 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated, checkConf
     checkIn: today, checkOut: "",
     stayAddress: "", notes: "",
     pricePerDay: "",
+    paymentMethod: "cash", // "cash" = paid in full now · "pending" = collect at return
     idType: "", idNumber: "", idImageUrl: "",
     nationality: "", dateOfBirth: "", gender: "", address: "",
   });
@@ -929,8 +930,10 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated, checkConf
           pricePerDay: priceNum,
           source: "walkin",
           ...returnedBooking,
-          // Always enforce source so isWalkin() works even if the API strips it
+          // Always enforce source/paymentMethod so isWalkin() and the
+          // payment logic work even if the API echo strips these fields
           source: "walkin",
+          paymentMethod: returnedBooking.paymentMethod || form.paymentMethod,
         };
         if (onCreated) onCreated(resolvedBooking);
         onClose();
@@ -1084,6 +1087,26 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated, checkConf
                   <label style={lbl}>Price per Day (₹)</label>
                   <input type="number" style={inp} value={form.pricePerDay} onChange={e => set("pricePerDay", e.target.value)} placeholder="0" />
                 </div>
+                <div>
+                  <label style={lbl}>Payment</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button type="button" onClick={() => set("paymentMethod", "cash")} style={{
+                      flex: 1, padding: "10px 8px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                      border: form.paymentMethod === "cash" ? "1px solid rgba(74,222,128,0.5)" : "1px solid rgba(255,255,255,0.12)",
+                      background: form.paymentMethod === "cash" ? "rgba(74,222,128,0.12)" : "rgba(255,255,255,0.03)",
+                      color: form.paymentMethod === "cash" ? "#4ade80" : "rgba(255,255,255,0.6)",
+                    }}>💵 Paid (Cash)</button>
+                    <button type="button" onClick={() => set("paymentMethod", "pending")} style={{
+                      flex: 1, padding: "10px 8px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                      border: form.paymentMethod === "pending" ? "1px solid rgba(240,192,96,0.5)" : "1px solid rgba(255,255,255,0.12)",
+                      background: form.paymentMethod === "pending" ? "rgba(240,192,96,0.12)" : "rgba(255,255,255,0.03)",
+                      color: form.paymentMethod === "pending" ? "#f0c060" : "rgba(255,255,255,0.6)",
+                    }}>⏳ Pay on Return</button>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14, marginBottom: 14 }}>
                 <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
                   {days > 0 && priceNum > 0 && (
                     <div style={{ background: "rgba(212,133,10,0.08)", border: "1px solid rgba(212,133,10,0.2)", borderRadius: 8, padding: "10px 14px" }}>
@@ -1261,6 +1284,7 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated, checkConf
                       ? `${new Date(form.checkIn).toLocaleDateString("en-IN",{day:"numeric",month:"short"})} → ${new Date(form.checkOut).toLocaleDateString("en-IN",{day:"numeric",month:"short"})} (${days}d)` : "—"],
                     ["Stay At",   form.stayAddress || "—"],
                     total > 0    ? ["Total",    `₹${total.toLocaleString("en-IN")}`] : null,
+                    total > 0    ? ["Payment",  form.paymentMethod === "cash" ? "💵 Paid (Cash)" : "⏳ Pay on Return"] : null,
                     form.idType  ? ["ID",       `${form.idType} — ${form.idNumber || "—"}`] : null,
                     form.idImageUrl ? ["ID Image", "✅ Uploaded"] : null,
                   ].filter(Boolean).map(([l, v]) => (
@@ -1275,6 +1299,19 @@ export function ManualBookingModal({ rentals = [], onClose, onCreated, checkConf
               <div style={{ background: "rgba(74,222,128,0.07)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#4ade80" }}>
                 🏪 Booking will be saved as <strong>Confirmed</strong> and appear with all online bookings instantly.
               </div>
+
+              {total > 0 && (
+                <div style={{
+                  background: form.paymentMethod === "cash" ? "rgba(74,222,128,0.07)" : "rgba(240,192,96,0.07)",
+                  border: form.paymentMethod === "cash" ? "1px solid rgba(74,222,128,0.2)" : "1px solid rgba(240,192,96,0.25)",
+                  borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13,
+                  color: form.paymentMethod === "cash" ? "#4ade80" : "#f0c060",
+                }}>
+                  {form.paymentMethod === "cash"
+                    ? <>💵 ₹{total.toLocaleString("en-IN")} will be recorded as <strong>received in cash</strong>.</>
+                    : <>⏳ Marked as <strong>payment pending</strong> — ₹{total.toLocaleString("en-IN")} to be collected when the vehicle is returned.</>}
+                </div>
+              )}
 
               {error && (
                 <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(255,100,100,0.08)", border: "1px solid rgba(255,100,100,0.2)", color: "#ff6b6b", fontSize: 13, marginBottom: 14 }}>❌ {error}</div>
