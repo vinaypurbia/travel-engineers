@@ -741,9 +741,6 @@ export default function App() {
                 <div style={{height:200,backgroundImage:`url(${cat.image||"https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=600&q=80"})`,backgroundSize:"cover",backgroundPosition:"center",position:"relative"}}>
                   <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,0.5),transparent)"}} />
                   <div style={{position:"absolute",top:16,left:16}}><span className="tag">{cat.icon} {cat.label}</span></div>
-                  <div style={{position:"absolute",top:16,right:16,background:"rgba(34,197,94,0.92)",color:"white",fontSize:11,fontWeight:700,padding:"4px 11px",borderRadius:20,fontFamily:"'DM Sans'"}}>
-                    {cat.availableCount} available
-                  </div>
                 </div>
                 <div style={{padding:"22px 24px 24px"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
@@ -5375,7 +5372,13 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                 ? Math.max(1, Math.round((new Date(booking.checkOut)-new Date(booking.checkIn))/864e5))
                 : 1;
               const amt = ppd * bDays;
-              if (amt > 0) {
+              // Admin chooses at booking time whether cash was collected at the
+              // desk now, or whether it's pay-on-return (collected when the
+              // vehicle comes back). Only the "cash" path is recorded as paid —
+              // "pending" bookings are created unpaid so they correctly show up
+              // as outstanding until someone collects payment at return.
+              const paidNow = (booking?.paymentMethod || "cash") === "cash";
+              if (amt > 0 && paidNow) {
                 // The accounting entry below assumes the full amount was
                 // collected at the desk (paymentStatus: "paid"). Mirror that
                 // onto the booking's own receivedAmount so the two stay in
@@ -5391,10 +5394,16 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
                   clientName: booking?.customerName || "Walk-in Customer",
                   linkedBookingId: String(booking?._id||""),
                   paymentStatus: "paid",
-                  paymentMethod: booking?.paymentMethod || "cash",
+                  paymentMethod: "cash",
                   date: booking?.checkIn || new Date().toISOString(),
                   notes: `Walk-in booking. Vehicle: ${booking?.vehicleName} | ₹${ppd}/day × ${bDays}d = ₹${amt}`
                 });
+              } else if (amt > 0 && !paidNow) {
+                // Pay-on-return: leave receivedAmount at 0 (booking stays
+                // "Unpaid" / outstanding) and don't create an accounting
+                // income entry yet — that happens later when staff actually
+                // collects the cash at vehicle return via Record Payment.
+                try { await api.put(`/bookings?id=${booking?._id}`, { receivedAmount: 0, paymentMethod: "pending" }); } catch(e) { console.warn("pending payment sync failed:", e); }
               }
             } catch(e) { console.warn("Walk-in accounting failed:", e); }
             await reload();
