@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ManualBookingModal, CustomerIdPanel, ScanPanel, TwoSidedScanPanel } from "./BookingExtensions";
 import TravelAssistant from "./TravelAssistant";
+import TourCalculator from "./TourCalculator";
 import { getPushPermissionState, subscribeToPush, unsubscribeFromPush } from "./push";
 
 const API = "/api";
@@ -492,6 +493,14 @@ export default function App() {
 
   const loadAllData = async () => {
     const startTime = Date.now();
+    // Check if admin token exists BEFORE making any API calls.
+    // Public visitors have no token, so calling /accounting, /bookings,
+    // /users etc. would always return 403 — those endpoints are intentionally
+    // protected. Only fetch them when there's an actual admin session.
+    const hasAdminToken = !!(
+      (typeof sessionStorage !== "undefined" && sessionStorage.getItem("adminToken")) ||
+      (typeof localStorage !== "undefined" && localStorage.getItem("adminToken"))
+    );
     try {
       const [agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings, users] = await Promise.all([
         safeGet("/agency", {name:"",tagline:"",heroSubtitle:"",phone:"",email:"",address:"",whatsapp:"",heroImage:""}),
@@ -499,11 +508,12 @@ export default function App() {
         safeGet("/villa", {name:"",tagline:"",description:"",price:"",period:"/night",checkIn:"",checkOut:"",minStay:"",maxGuests:"",image:"",amenities:[],rooms:[]}),
         safeGet("/testimonials", []),
         safeGet("/inventory", []),
-        safeGet("/accounting", {transactions:[],summary:{}}),
-        safeGet("/bookings", []),
+        // Admin-only endpoints — only fetch when logged in, otherwise use empty fallbacks
+        hasAdminToken ? safeGet("/accounting", {transactions:[],summary:{}}) : Promise.resolve({transactions:[],summary:{}}),
+        hasAdminToken ? safeGet("/bookings", []) : Promise.resolve([]),
         safeGet("/tours", []),
-        safeGet("/tours?bookings=1", []),
-        safeGet("/users", []),
+        hasAdminToken ? safeGet("/tours?bookings=1", []) : Promise.resolve([]),
+        hasAdminToken ? safeGet("/users", []) : Promise.resolve([]),
       ]);
       setData({ agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings, users });
     } catch (err) {
