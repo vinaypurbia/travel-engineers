@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ManualBookingModal, CustomerIdPanel, ScanPanel, TwoSidedScanPanel } from "./BookingExtensions";
 import TravelAssistant from "./TravelAssistant";
-import TourCalculator from "./TourCalculator";
+import { getPushPermissionState, subscribeToPush, unsubscribeFromPush } from "./push";
 
 const API = "/api";
 
@@ -1658,6 +1658,37 @@ function LoginScreen({ loginInput, setLoginInput, loginError, onLogin, onBack, a
   );
 }
 
+// ─── StaffPushToggle ──────────────────────────────────────────────────────────
+// Lets admin/staff opt this browser/device into "new booking" push alerts.
+// Reuses adminHeaders() so whichever of x-admin-token/x-staff-token is
+// actually present gets sent — the backend figures out which one is valid.
+function StaffPushToggle({ sidebarOpen, navBtnClass = "tags-nav-btn" }) {
+  const [enabled, setEnabled] = useState(getPushPermissionState() === "granted");
+  const [working, setWorking] = useState(false);
+
+  if (getPushPermissionState() === "unsupported") return null;
+
+  const toggle = async () => {
+    setWorking(true);
+    if (enabled) {
+      await unsubscribeFromPush();
+      setEnabled(false);
+    } else {
+      const res = await subscribeToPush({ ownerType: "staff", authHeaders: adminHeaders() });
+      if (res.success) setEnabled(true);
+      else alert(res.error || "Couldn't enable notifications.");
+    }
+    setWorking(false);
+  };
+
+  return (
+    <button onClick={toggle} disabled={working} className={navBtnClass} style={{color: enabled ? "#4ade80" : "rgba(255,255,255,0.4)"}}>
+      <span style={{fontSize:16,flexShrink:0,width:20,textAlign:"center"}}>{enabled ? "🔔" : "🔕"}</span>
+      {sidebarOpen && <span>{working ? "…" : enabled ? "Alerts On" : "Enable Alerts"}</span>}
+    </button>
+  );
+}
+
 // ─── Admin Panel Shell ───────────────────────────────────────────────────────
 function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, setAdminTab }) {
   const [toast, setToast] = useState(null);
@@ -1675,6 +1706,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
     {id:"tours",       label:"Tours & Taxi", icon:"🗺", badge: (data.tourBookings||[]).filter(b=>b.status==="pending").length},
     {id:"accounting",  label:"Accounting",   icon:"💰"},
     {id:"bookings",    label:"Bookings",     icon:"📋", badge: (data.bookings||[]).filter(b=>b.status==="pending").length},
+    {id:"newsletter",  label:"Newsletter",   icon:"📧"},
     {id:"customers",   label:"Customers",    icon:"👥"},
     {id:"users",       label:"Users",        icon:"👤"},
   ];
@@ -1731,6 +1763,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
           ))}
         </nav>
         <div style={{padding:"12px 8px",borderTop:"1px solid rgba(240,192,96,0.1)"}}>
+          <StaffPushToggle sidebarOpen={sidebarOpen} />
           <button onClick={onExit} className="tags-nav-btn" style={{color:"rgba(255,255,255,0.4)"}}>
             <span style={{fontSize:16,flexShrink:0,width:20,textAlign:"center"}}>↗</span>
             {sidebarOpen&&<span>View Site</span>}
@@ -1759,6 +1792,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
               {adminTab==="bookings"     &&<BookingsEditor     data={data} api={api} reload={reload} showSaved={showSavedLocal} rentals={data.rentals||[]}/>}
               {adminTab==="customers"    &&<CustomersEditor    api={api} showSaved={showSavedLocal}/>}
               {adminTab==="tours"        &&<ToursEditor        data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
+              {adminTab==="newsletter"   &&<NewsletterEditor   api={api} showSaved={showSavedLocal}/>}
               {adminTab==="users"        &&<UsersEditor        data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
             </div>
           )}
@@ -3324,6 +3358,42 @@ function QRPayStep({ total, setStep }) {
   );
 }
 
+// ─── PushOptInButton ──────────────────────────────────────────────────────────
+// Small, self-contained "get notified" button shown right after a customer
+// submits a booking — their phone number is already known at this point, so
+// subscribing is a single tap rather than asking them to type it again.
+function PushOptInButton({ phone }) {
+  const [state, setState] = useState("idle"); // idle | working | done | error
+  const [error, setError] = useState("");
+
+  const handleClick = async () => {
+    if (!phone || phone.trim().length < 7) {
+      setState("error"); setError("We need your phone number first — please check the field above.");
+      return;
+    }
+    setState("working");
+    const res = await subscribeToPush({ ownerType: "customer", customerPhone: phone.trim() });
+    if (res.success) setState("done");
+    else { setState("error"); setError(res.error || "Couldn't enable notifications."); }
+  };
+
+  if (getPushPermissionState() === "unsupported") return null; // don't show a dead-end button on unsupported browsers
+
+  return (
+    <div style={{marginBottom:16}}>
+      {state === "done" ? (
+        <div style={{fontSize:13,color:"#4ade80"}}>🔔 You'll get a reminder as your trip date approaches!</div>
+      ) : (
+        <button onClick={handleClick} disabled={state==="working"}
+          style={{background:"rgba(96,165,250,0.1)",border:"1px solid rgba(96,165,250,0.3)",color:"#60a5fa",borderRadius:10,padding:"10px 18px",fontSize:13,fontWeight:600,cursor:state==="working"?"default":"pointer"}}>
+          {state==="working" ? "Enabling…" : "🔔 Notify me before my trip"}
+        </button>
+      )}
+      {state === "error" && <div style={{fontSize:12,color:"#ff6b6b",marginTop:6}}>{error}</div>}
+    </div>
+  );
+}
+
 // ─── Booking Modal (public site) ─────────────────────────────────────────────
 function BookingModal({ vehicle, whatsapp, api, onClose }) {
   const today = new Date().toISOString().slice(0,10);
@@ -3562,6 +3632,7 @@ function BookingModal({ vehicle, whatsapp, api, onClose }) {
             {wantsAccount && newAccountPassword.length >= 6 && accountStatus !== "loggedIn" && (
               <div style={{fontSize:13,color:"#4ade80",marginBottom:12}}>✅ Your account has been created — log in any time with your phone/email and password to see your bookings.</div>
             )}
+            <PushOptInButton phone={form.phone} />
             <div style={{background:"rgba(240,192,96,0.08)",border:"1px solid rgba(240,192,96,0.2)",borderRadius:12,padding:"16px 20px",marginBottom:20,textAlign:"left"}}>
               <div style={{fontSize:13,color:"rgba(255,255,255,0.7)",lineHeight:1.9}}>
                 📋 <strong style={{color:"#f0c060"}}>What happens next?</strong><br/>
@@ -5927,6 +5998,7 @@ const MODULES = [
   { id:"tours",        label:"Tours & Taxi", icon:"🗺" },
   { id:"accounting",   label:"Accounting",   icon:"💰" },
   { id:"bookings",     label:"Bookings",     icon:"📋" },
+  { id:"newsletter",   label:"Newsletter",   icon:"📧" },
 ];
 
 // ─── StaffLoginModal ──────────────────────────────────────────────────────────
@@ -6074,6 +6146,7 @@ function StaffPanel({ staffUser, data, api, reload, onExit }) {
                 <div style={{fontSize:11,color:"rgba(255,255,255,0.35)"}}>{staffUser.designation || "Staff"}</div>
               </div>
             )}
+            <StaffPushToggle sidebarOpen={sidebarOpen} navBtnClass="staff-nav-btn" />
             <button className="staff-nav-btn" onClick={onExit}
               style={{color:"rgba(255,100,100,0.7)",justifyContent:sidebarOpen?"flex-start":"center"}}>
               <span style={{fontSize:16}}>🚪</span>
@@ -6115,6 +6188,7 @@ function StaffPanel({ staffUser, data, api, reload, onExit }) {
             {activeTab==="villa"       && <VillaEditor        data={data} api={api} reload={reload} showSaved={showSaved}/>}
             {activeTab==="tours"       && <ToursEditor        data={data} api={api} reload={reload} showSaved={showSaved}/>}
             {activeTab==="agency"      && <AgencyEditor       data={data} api={api} reload={reload} showSaved={showSaved}/>}
+            {activeTab==="newsletter"  && <NewsletterEditor   api={api} showSaved={showSaved}/>}
           </div>
         </div>
       </div>
@@ -6123,7 +6197,208 @@ function StaffPanel({ staffUser, data, api, reload, onExit }) {
 }
 
 
-// ─── UsersEditor (Admin only) ─────────────────────────────────────────────────
+// ─── NewsletterEditor ────────────────────────────────────────────────────────
+function NewsletterEditor({ api, showSaved }) {
+  const [campaigns, setCampaigns]   = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [eligibleCount, setEligibleCount] = useState(null);
+  const [showCompose, setShowCompose] = useState(false);
+  const [subject, setSubject]       = useState("");
+  const [body, setBody]             = useState("");
+  const [creating, setCreating]     = useState(false);
+  const [activeSend, setActiveSend] = useState(null); // { campaignId, sent, failed, skipped, total, remaining }
+  const sendingRef = useRef(false);
+
+  const loadCampaigns = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get("/bookings?resource=newsletter");
+      setCampaigns(Array.isArray(res) ? res : []);
+    } catch { setCampaigns([]); }
+    setLoading(false);
+  };
+
+  const loadEligibleCount = async () => {
+    try {
+      const res = await api.get("/bookings?resource=newsletter&action=eligible-count");
+      setEligibleCount(res?.eligibleCount ?? 0);
+    } catch { setEligibleCount(null); }
+  };
+
+  useEffect(() => { loadCampaigns(); loadEligibleCount(); }, []);
+
+  const startCampaign = async () => {
+    if (!subject.trim() || !body.trim()) { alert("Subject and message body are required."); return; }
+    setCreating(true);
+    try {
+      const res = await api.post("/bookings?resource=newsletter&action=create", { subject, bodyHtml: body.replace(/\n/g, "<br/>") });
+      if (!res.success) { alert(res.error || "Failed to create campaign"); setCreating(false); return; }
+      setShowCompose(false);
+      setSubject(""); setBody("");
+      await loadCampaigns();
+      // Immediately start sending the freshly-created draft
+      runSendLoop(res.campaignId);
+    } catch (e) {
+      alert("Failed: " + (e.message || "Unknown error"));
+    }
+    setCreating(false);
+  };
+
+  // Repeatedly calls ?action=send until the campaign reports done:true.
+  // Each call processes one small batch server-side — this loop just keeps
+  // asking "is there more to do?" so the UI can show live progress.
+  const runSendLoop = async (campaignId) => {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    setActiveSend({ campaignId, sent: 0, failed: 0, skipped: 0, total: 0, remaining: null });
+    try {
+      let done = false;
+      while (!done) {
+        const res = await api.post(`/bookings?resource=newsletter&action=send&id=${campaignId}`, {});
+        if (res.error) { alert(res.error); break; }
+        setActiveSend({ campaignId, ...res });
+        done = !!res.done;
+        if (!done) await new Promise(r => setTimeout(r, 600)); // brief pause between batches
+      }
+      await loadCampaigns();
+      showSaved("📧 Newsletter send complete", "save");
+    } catch (e) {
+      alert("Send failed: " + (e.message || "Unknown error"));
+    }
+    sendingRef.current = false;
+    setActiveSend(null);
+  };
+
+  const cancelSend = async (campaignId) => {
+    if (!window.confirm("Stop this campaign partway through? Anyone not yet emailed will be skipped.")) return;
+    await api.post(`/bookings?resource=newsletter&action=cancel&id=${campaignId}`, {});
+    sendingRef.current = false;
+    setActiveSend(null);
+    await loadCampaigns();
+  };
+
+  const deleteCampaign = async (id) => {
+    if (!window.confirm("Delete this draft campaign?")) return;
+    const res = await api.delete(`/bookings?resource=newsletter&id=${id}`);
+    if (res.error) { alert(res.error); return; }
+    await loadCampaigns();
+    showSaved("🗑️ Campaign deleted", "delete");
+  };
+
+  const lbl = { fontSize:11, fontWeight:600, color:"rgba(255,255,255,0.35)", textTransform:"uppercase", letterSpacing:"1.5px", display:"block", marginBottom:8 };
+  const fi = { width:"100%", boxSizing:"border-box", padding:"11px 14px", background:"rgba(255,255,255,0.06)", border:"1.5px solid rgba(255,255,255,0.12)", borderRadius:9, color:"white", fontFamily:"'DM Sans'", fontSize:14, outline:"none" };
+
+  const STATUS_COLORS = {
+    draft:     { bg:"rgba(255,255,255,0.06)", color:"rgba(255,255,255,0.5)" },
+    sending:   { bg:"rgba(96,165,250,0.1)",   color:"#60a5fa" },
+    completed: { bg:"rgba(74,222,128,0.1)",   color:"#4ade80" },
+    cancelled: { bg:"rgba(255,107,107,0.1)",  color:"#ff6b6b" },
+  };
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
+        <div>
+          <h2 style={{fontFamily:"'Playfair Display'",fontSize:24,color:"white",margin:0}}>Newsletter</h2>
+          <p style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginTop:4}}>
+            {eligibleCount === null ? "Loading…" : `${eligibleCount} customer${eligibleCount!==1?"s":""} with an email on file, not unsubscribed`}
+          </p>
+        </div>
+        <button onClick={()=>setShowCompose(true)} disabled={!!activeSend}
+          style={{padding:"11px 20px",background:"linear-gradient(135deg,#d4850a,#f0c060)",border:"none",borderRadius:10,color:"#1a1a2e",fontWeight:700,fontSize:14,cursor:activeSend?"not-allowed":"pointer",opacity:activeSend?0.5:1}}>
+          ✏️ New Campaign
+        </button>
+      </div>
+
+      {/* Active send progress banner */}
+      {activeSend && (
+        <div style={{background:"rgba(96,165,250,0.08)",border:"1px solid rgba(96,165,250,0.25)",borderRadius:12,padding:"16px 20px",marginBottom:20}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{fontSize:13,color:"#60a5fa",fontWeight:700}}>📤 Sending newsletter…</div>
+            <button onClick={()=>cancelSend(activeSend.campaignId)} style={{background:"transparent",border:"1px solid rgba(255,107,107,0.3)",color:"#ff6b6b",borderRadius:7,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>Stop</button>
+          </div>
+          <div style={{height:8,background:"rgba(255,255,255,0.08)",borderRadius:6,overflow:"hidden",marginBottom:8}}>
+            <div style={{height:"100%",background:"linear-gradient(135deg,#60a5fa,#4ade80)",width:`${activeSend.total ? Math.round(((activeSend.sent+activeSend.failed+activeSend.skipped)/activeSend.total)*100) : 0}%`,transition:"width 0.3s"}}/>
+          </div>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>
+            ✅ {activeSend.sent} sent · ❌ {activeSend.failed} failed · 🚫 {activeSend.skipped} unsubscribed
+            {activeSend.total ? ` · ${activeSend.total} total` : ""}
+          </div>
+        </div>
+      )}
+
+      {/* Compose modal */}
+      {showCompose && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}
+          onClick={e=>{ if (e.target===e.currentTarget && !creating) setShowCompose(false); }}>
+          <div style={{background:"#10182b",border:"1px solid rgba(255,255,255,0.1)",borderRadius:16,padding:"26px",width:"100%",maxWidth:560,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+            <h3 style={{fontFamily:"'Playfair Display'",fontSize:20,color:"white",marginBottom:18}}>✏️ New Campaign</h3>
+
+            <label style={lbl}>Subject *</label>
+            <input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="e.g. Monsoon discounts on scooty rentals!" style={{...fi,marginBottom:16}}/>
+
+            <label style={lbl}>Message *</label>
+            <textarea value={body} onChange={e=>setBody(e.target.value)} placeholder="Write your newsletter message here…" rows={10} style={{...fi,resize:"vertical",lineHeight:1.6,marginBottom:8}}/>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginBottom:16}}>
+              Plain text is fine — line breaks are kept. An unsubscribe link is automatically added to every email.
+            </div>
+
+            <div style={{background:"rgba(240,192,96,0.06)",border:"1px solid rgba(240,192,96,0.18)",borderRadius:10,padding:"12px 14px",fontSize:12,color:"rgba(255,255,255,0.55)",marginBottom:20}}>
+              This will be sent to <strong style={{color:"#f0c060"}}>{eligibleCount ?? "…"}</strong> customer{eligibleCount!==1?"s":""} with an email on file. Sending happens in small batches and may take a few minutes for larger lists.
+            </div>
+
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setShowCompose(false)} disabled={creating}
+                style={{flex:1,padding:"12px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:10,color:"rgba(255,255,255,0.7)",fontWeight:600,cursor:creating?"default":"pointer"}}>
+                Cancel
+              </button>
+              <button onClick={startCampaign} disabled={creating || !eligibleCount}
+                style={{flex:1,padding:"12px",background:creating?"rgba(212,133,10,0.4)":"linear-gradient(135deg,#d4850a,#f0c060)",border:"none",borderRadius:10,color:"#1a1a2e",fontWeight:700,cursor:(creating||!eligibleCount)?"default":"pointer"}}>
+                {creating ? "Starting…" : "Send Now"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Campaign history */}
+      {loading ? (
+        <div style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:48}}>Loading…</div>
+      ) : campaigns.length === 0 ? (
+        <div style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:48}}>No newsletters sent yet.</div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {campaigns.map(c => {
+            const sc = STATUS_COLORS[c.status] || STATUS_COLORS.draft;
+            return (
+              <div key={c._id} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"16px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+                <div style={{flex:1,minWidth:200}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+                    <span style={{fontWeight:700,color:"white",fontSize:14}}>{c.subject}</span>
+                    <span style={{fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:6,background:sc.bg,color:sc.color,textTransform:"uppercase"}}>{c.status}</span>
+                  </div>
+                  <div style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>
+                    {c.sentCount}/{c.recipientCount} sent{c.failedCount ? ` · ${c.failedCount} failed` : ""} · {new Date(c.createdAt).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  {c.status === "draft" && !activeSend && (
+                    <button onClick={()=>runSendLoop(c._id)} style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.25)",color:"#4ade80",borderRadius:7,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer"}}>Resume Send</button>
+                  )}
+                  {(c.status === "draft" || c.status === "cancelled") && !activeSend && (
+                    <button onClick={()=>deleteCampaign(c._id)} style={{background:"rgba(255,80,80,0.08)",border:"1px solid rgba(255,80,80,0.15)",color:"#ff6b6b",borderRadius:7,padding:"7px 12px",fontSize:12,cursor:"pointer"}}>🗑</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function UsersEditor({ data, api, reload, showSaved }) {
   const [users, setUsers] = useState(data.users || []);
   const [showForm, setShowForm] = useState(false);
