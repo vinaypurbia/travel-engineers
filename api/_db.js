@@ -254,6 +254,35 @@ function verifyStaffToken(token) {
   return { userId, permissions: permsCsv ? permsCsv.split(",") : [] };
 }
 
+// ── Newsletter unsubscribe tokens ───────────────────────────────────────────
+// Unlike staff/customer session tokens, this one is intentionally
+// NON-expiring — it lives inside an email that might sit unread for months,
+// and "sorry, your unsubscribe link expired, please contact us to stop
+// receiving emails" is exactly the kind of dark-pattern friction we don't
+// want. It's scoped to one customer id only, so it can only ever unsubscribe
+// that one person — not a general-purpose auth token.
+function signUnsubscribeToken(customerId) {
+  const secret = STAFF_TOKEN_SECRET || CUSTOMER_TOKEN_SECRET || "insecure-fallback";
+  const sig = crypto.createHmac("sha256", secret).update(`unsub.${customerId}`).digest("hex");
+  return `${customerId}.${sig}`;
+}
+
+function verifyUnsubscribeToken(token) {
+  if (!token || typeof token !== "string") return null;
+  const idx = token.lastIndexOf(".");
+  if (idx === -1) return null;
+  const customerId = token.slice(0, idx);
+  const sig = token.slice(idx + 1);
+  if (!customerId || !sig) return null;
+  const secret = STAFF_TOKEN_SECRET || CUSTOMER_TOKEN_SECRET || "insecure-fallback";
+  const expectedSig = crypto.createHmac("sha256", secret).update(`unsub.${customerId}`).digest("hex");
+  const a = Buffer.from(sig, "hex");
+  const b = Buffer.from(expectedSig, "hex");
+  if (a.length !== b.length) return null;
+  if (!crypto.timingSafeEqual(a, b)) return null;
+  return customerId;
+}
+
 // ── Agency Model ─────────────────────────────────────────────────────────────
 // strict: false so extra fields (like stats) are never silently dropped
 const agencySchema = new mongoose.Schema({
@@ -452,9 +481,113 @@ const customerSchema = new mongoose.Schema({
   firstBooking: { type: Date,   default: null },
   lastBooking:  { type: Date,   default: null },
   lastVehicle:  { type: String, default: null },
+  // ── Newsletter ──────────────────────────────────────────────────────────
+  unsubscribed:    { type: Boolean, default: false },
+  unsubscribedAt:  { type: Date, default: null },
   createdAt:    { type: Date,   default: Date.now },
   updatedAt:    { type: Date,   default: Date.now },
 });
+
+// ── Newsletter Campaign Model ────────────────────────────────────────────────
+// A campaign is created once with subject/body and a snapshot of recipients
+// at send time, then processed in small batches across multiple requests
+// (see newsletter.js) to stay within Vercel's per-request time limit and
+// Gmail's sending rate — recipients are tracked individually so a campaign
+// can safely resume without re-sending to anyone already done.
+const newsletterCampaignSchema = new mongoose.Schema({
+  subject:    { type: String, required: true },
+  bodyHtml:   { type: String, required: true },
+  status: {
+    type: String,
+    enum: ["draft", "sending", "completed", "cancelled"],
+    default: "draft",
+  },
+  recipients: [{
+    customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer" },
+    email:      String,
+    name:       String,
+    // unsubscribeToken is generated per-recipient at campaign creation time
+    // so the unsubscribe link is always valid even if the customer's main
+    // session token has expired — it's a long-lived, single-purpose token.
+    unsubscribeToken: String,
+    sendStatus: { type: String, enum: ["pending", "sent", "failed", "skipped_unsubscribed"], default: "pending" },
+    sentAt:     { type: Date, default: null },
+    error:      { type: String, default: null },
+  }],
+  createdBy:   { type: String, default: "" }, // admin or staff name, for the activity trail
+  createdAt:   { type: Date, default: Date.now },
+  startedAt:   { type: Date, default: null },
+  completedAt: { type: Date, default: null },
+});
+
+// ── Push Subscription Model ─────────────────────────────────────────────────
+// One document per browser/device that's granted notification permission.
+// ownerType distinguishes a customer's subscription (tied to their phone,
+// since that's the stable identity we already have for them) from an
+// admin/staff one (tied to username) — a customer gets trip reminders and
+// new-tour alerts, staff/admin get new-booking alerts, and the two should
+// never cross-fire into each other's inboxes.
+const pushSubscriptionSchema = new mongoose.Schema({
+  ownerType: { type: String, enum: ["customer", "staff"], required: true },
+  // customerPhone set when ownerType is "customer"; staffUsername set when
+  // ownerType is "staff". Only one of the two is ever populated.
+  customerPhone:  { type: String, default: null },
+  staffUsername:  { type: String, default: null },
+  endpoint:  { type: String, required: true, unique: true }, // push service URL — unique per browser subscription
+  keys: {
+    p256dh: { type: String, required: true },
+    auth:   { type: String, required: true },
+  },
+  userAgent:  { type: String, default: "" },
+  createdAt:  { type: Date, default: Date.now },
+  lastUsedAt: { type: Date, default: Date.now },
+});
+
+// ── Send a push notification to one or more subscriptions ──────────────────
+// Centralized here (rather than duplicated in bookings.js/tours.js) since
+// it's needed by both the "new tour" trigger and the cron-based trip
+// reminder. Automatically removes subscriptions that the push service
+// reports as gone (410/404 — browser uninstalled, permission revoked, etc.)
+// so the PushSubscription collection doesn't accumulate dead entries forever.
+async function sendPushToSubscriptions(subscriptions, payload) {
+  const webpush = require("web-push");
+  const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY;
+  const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
+  if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
+    console.error("VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY not set — cannot send push notifications");
+    return { sent: 0, failed: 0, removed: 0 };
+  }
+  webpush.setVapidDetails(
+    `mailto:${process.env.GMAIL_USER || "admin@example.com"}`,
+    VAPID_PUBLIC,
+    VAPID_PRIVATE
+  );
+
+  let sent = 0, failed = 0, removed = 0;
+  const body = JSON.stringify(payload);
+
+  for (const sub of subscriptions) {
+    try {
+      await webpush.sendNotification(
+        { endpoint: sub.endpoint, keys: sub.keys },
+        body
+      );
+      sent++;
+    } catch (err) {
+      failed++;
+      // 404/410 = the push service confirms this subscription is dead —
+      // any other error (network blip, payload too large) is left alone so
+      // we don't delete a still-valid subscription over a transient failure.
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        try {
+          await mongoose.models.PushSubscription.findByIdAndDelete(sub._id);
+          removed++;
+        } catch (e) {}
+      }
+    }
+  }
+  return { sent, failed, removed };
+}
 
 module.exports = {
   connectDB,
@@ -470,6 +603,9 @@ module.exports = {
   verifyCustomerToken,
   signStaffToken,
   verifyStaffToken,
+  signUnsubscribeToken,
+  verifyUnsubscribeToken,
+  sendPushToSubscriptions,
   Agency:      mongoose.models.Agency      || mongoose.model("Agency",      agencySchema),
   Rental:      mongoose.models.Rental      || mongoose.model("Rental",      rentalSchema),
   Villa:       mongoose.models.Villa       || mongoose.model("Villa",       villaSchema),
@@ -478,4 +614,6 @@ module.exports = {
   Transaction: mongoose.models.Transaction || mongoose.model("Transaction", transactionSchema),
   Booking:     mongoose.models.Booking     || mongoose.model("Booking",     bookingSchema),
   Customer:    mongoose.models.Customer    || mongoose.model("Customer",    customerSchema),
+  NewsletterCampaign: mongoose.models.NewsletterCampaign || mongoose.model("NewsletterCampaign", newsletterCampaignSchema),
+  PushSubscription:   mongoose.models.PushSubscription   || mongoose.model("PushSubscription",   pushSubscriptionSchema),
 };
