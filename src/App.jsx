@@ -4848,14 +4848,8 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   const totalRevenue    = activeBookings.reduce((sum, b) => sum + calcBookingTotal(b), 0);
   const totalReceived   = activeBookings.reduce((sum, b) => sum + (b.receivedAmount || 0), 0);
   const totalPending    = Math.max(0, totalRevenue - totalReceived);
-  // When vehicle/price/repeat filters are active, show totals for the filtered set
-  const isFiltered = activeAdvFilters > 0 || search.trim() || filter !== "all" || sourceTab !== "all";
-  const summaryBookings   = isFiltered ? filtered.filter(b => b.status !== "cancelled") : activeBookings;
-  const summaryRevenue    = summaryBookings.reduce((sum, b) => sum + calcBookingTotal(b), 0);
-  const summaryReceived   = summaryBookings.reduce((sum, b) => sum + (b.receivedAmount || 0), 0);
-  const summaryPending    = Math.max(0, summaryRevenue - summaryReceived);
 
-  // Filter + search + sort
+  // Filter + search + sort — must be computed BEFORE summary totals
   let filtered = bookings;
   if (sourceTab === "online") filtered = filtered.filter(b => !isWalkin(b));
   if (sourceTab === "walkin") filtered = filtered.filter(b => isWalkin(b));
@@ -4881,6 +4875,13 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
     return sortDir==="desc"?new Date(db)-new Date(da):new Date(da)-new Date(db);
   });
   const activeAdvFilters = (filterVehicleNos.size > 0 ? 1:0) + (filterPriceMin||filterPriceMax ? 1:0) + (filterRepeat ? 1:0);
+
+  // When any filter is active, show totals for the filtered set only
+  const isFiltered = activeAdvFilters > 0 || search.trim() || filter !== "all" || sourceTab !== "all";
+  const summaryBookings = isFiltered ? filtered.filter(b => b.status !== "cancelled") : activeBookings;
+  const summaryRevenue  = summaryBookings.reduce((sum, b) => sum + calcBookingTotal(b), 0);
+  const summaryReceived = summaryBookings.reduce((sum, b) => sum + (b.receivedAmount || 0), 0);
+  const summaryPending  = Math.max(0, summaryRevenue - summaryReceived);
 
   // Sync inventory status when booking status changes
   const syncInventory = async (booking, newStatus) => {
