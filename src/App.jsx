@@ -4760,18 +4760,18 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   const [showAdvFilters, setShowAdvFilters]   = useState(false);
 
   // Build unique vehicle number list from all bookings (for dropdown)
-  const allVehicleNos = useMemo ? useMemo(() => {
+  const allVehicleNos = (() => {
     const nos = new Set();
     bookings.forEach(b => { const n = getVehicleNo(b); if (n) nos.add(n); });
     return [...nos].sort();
-  }, [bookings]) : (() => { const nos = new Set(); bookings.forEach(b => { const n = getVehicleNo(b); if (n) nos.add(n); }); return [...nos].sort(); })();
+  })();
 
   // Build phone→count map for repeat-customer detection
-  const phoneCountMap = useMemo ? useMemo(() => {
+  const phoneCountMap = (() => {
     const m = {};
     bookings.forEach(b => { const p = (b.phone||"").replace(/\D/g,""); if (p && p !== "0000000000") m[p] = (m[p]||0) + 1; });
     return m;
-  }, [bookings]) : (() => { const m = {}; bookings.forEach(b => { const p = (b.phone||"").replace(/\D/g,""); if (p && p !== "0000000000") m[p] = (m[p]||0) + 1; }); return m; })();
+  })();
 
   // Detect walk-in by source field OR legacy name/phone pattern
   const isWalkin = (b) =>
