@@ -1470,23 +1470,49 @@ module.exports = async (req, res) => {
       });
     }
 
-    // ── POST ?regen_accounting=true — TRUE regenerate, ALL bookings ────────────
-    // Deletes ALL accounting entries linked to any booking, then rebuilds an
-    // entry for EVERY booking in the system — no filtering by source, no
-    // skipping for missing price. Missing price just records as ₹0 so every
-    // booking is represented and visible in accounting.
+    // ── POST ?regen_accounting=true — TRUE regenerate, ALL or DATE-FILTERED ───
+    // Deletes accounting entries linked to bookings (optionally filtered by
+    // checkIn date range via ?from=YYYY-MM-DD&to=YYYY-MM-DD), then rebuilds
+    // one entry per matching booking from current data.
+    // Missing price records as ₹0 so every booking is represented.
     if (req.method === "POST" && req.query?.regen_accounting === "true") {
       if (!isAdmin(req)) return res.status(403).json({ error: "Admin access required" });
       const { connectDB: _, Transaction } = require("./_db");
 
-      // Step 1 — delete ALL existing accounting entries linked to a booking
-      // (they'll be rebuilt fresh from current booking data below)
-      const deleteResult = await Transaction.deleteMany({
-        linkedBookingId: { $exists: true, $ne: "" }
-      });
+      // Optional date range filter — applied to booking checkIn date
+      const fromParam = req.query?.from || null;
+      const toParam   = req.query?.to   || null;
+      const isFiltered = !!(fromParam || toParam);
 
-      // Step 2 — rebuild an entry for every booking, regardless of source
-      const allBookings = await Booking.find({}).lean();
+      // Step 2 — find bookings (filtered or all) FIRST so we know which
+      // linkedBookingIds to delete, preventing accidental deletion of entries
+      // outside the requested date range.
+      const bookingQuery = {};
+      if (isFiltered) {
+        bookingQuery.checkIn = {};
+        if (fromParam) bookingQuery.checkIn.$gte = new Date(fromParam);
+        if (toParam) {
+          // inclusive: treat "to" as end-of-day
+          const toDate = new Date(toParam);
+          toDate.setHours(23, 59, 59, 999);
+          bookingQuery.checkIn.$lte = toDate;
+        }
+      }
+      const allBookings = await Booking.find(bookingQuery).lean();
+
+      // Step 1 — delete ONLY entries linked to the matching bookings
+      // (when filtered) or ALL booking-linked entries (when no filter).
+      let deleteResult;
+      if (isFiltered) {
+        const bookingIds = allBookings.map(b => String(b._id));
+        deleteResult = await Transaction.deleteMany({
+          linkedBookingId: { $in: bookingIds }
+        });
+      } else {
+        deleteResult = await Transaction.deleteMany({
+          linkedBookingId: { $exists: true, $ne: "" }
+        });
+      }
 
       let created = 0, zeroAmount = 0;
 
@@ -1550,9 +1576,12 @@ module.exports = async (req, res) => {
         created++;
       }
 
+      const rangeLabel = isFiltered
+        ? ` for ${fromParam || "start"}→${toParam || "end"}`
+        : " (all time)";
       return res.json({
         success: true,
-        message: `Regenerated. ${deleteResult.deletedCount} old entries removed, ${created} entries created (${zeroAmount} with ₹0 — truly no price data found).`,
+        message: `Regenerated${rangeLabel}. ${deleteResult.deletedCount} old entries removed, ${created} entries created (${zeroAmount} with ₹0 — truly no price data found).`,
         deleted: deleteResult.deletedCount, created, zeroAmount, total: allBookings.length,
       });
     }
