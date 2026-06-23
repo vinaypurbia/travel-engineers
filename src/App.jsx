@@ -2993,19 +2993,6 @@ function AccountingEditor({ data, api, reload, showSaved }) {
   const [editId, setEditId]       = useState(null);
   const [sortDir, setSortDir]     = useState("desc");
   const [regenerating, setRegenerating] = useState(false);
-  const [showRegenPicker, setShowRegenPicker] = useState(false);
-  const [regenPreset, setRegenPreset] = useState("month");
-  const today2 = new Date();
-  const [regenFrom, setRegenFrom] = useState(new Date(today2.getFullYear(), today2.getMonth(), 1).toISOString().slice(0,10));
-  const [regenTo,   setRegenTo]   = useState(today2.toISOString().slice(0,10));
-  const applyRegenPreset = (preset) => {
-    setRegenPreset(preset);
-    const n = new Date();
-    if (preset === "today")  { const d = n.toISOString().slice(0,10); setRegenFrom(d); setRegenTo(d); }
-    if (preset === "week")   { setRegenFrom(new Date(n-6*864e5).toISOString().slice(0,10)); setRegenTo(n.toISOString().slice(0,10)); }
-    if (preset === "month")  { setRegenFrom(new Date(n.getFullYear(),n.getMonth(),1).toISOString().slice(0,10)); setRegenTo(n.toISOString().slice(0,10)); }
-    if (preset === "all")    { setRegenFrom(""); setRegenTo(""); }
-  };
 
   const blankForm = { type:"income", category:"vehicle_rental", amount:"", date:today, description:"", clientName:"", agencyName:"", paymentStatus:"paid", paymentMethod:"cash", notes:"", vendorName:"", assetTag:"", assetName:"", receiptUrl:"" };
   const [form, setForm] = useState({...blankForm});
@@ -3129,86 +3116,29 @@ function AccountingEditor({ data, api, reload, showSaved }) {
               alert("Failed: " + (e.message||"Unknown error"));
             }
           }} style={{background:"rgba(240,192,96,0.1)",color:"#f0c060",border:"1px solid rgba(240,192,96,0.3)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>📅 Fix Booking Dates</button>
-          <button disabled={regenerating} onClick={()=>setShowRegenPicker(true)} style={{background:regenerating?"rgba(96,165,250,0.06)":"rgba(96,165,250,0.12)",color:regenerating?"rgba(96,165,250,0.5)":"#60a5fa",border:"1px solid rgba(96,165,250,0.3)",padding:"9px 14px",borderRadius:8,cursor:regenerating?"not-allowed":"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:7}}>
+          <button disabled={regenerating} onClick={async()=>{
+            if(!window.confirm("This will DELETE all booking-linked accounting entries and rebuild ONE entry for EVERY booking (online + walk-in) from current data. Continue?")) return;
+            setRegenerating(true);
+            try {
+              const r = await api.post("/bookings?regen_accounting=true",{});
+              alert(r.message||"Done");
+              await reload();
+            } catch(e) {
+              alert("Failed: " + (e.message||"Unknown error"));
+            }
+            setRegenerating(false);
+          }} style={{background:regenerating?"rgba(96,165,250,0.06)":"rgba(96,165,250,0.12)",color:regenerating?"rgba(96,165,250,0.5)":"#60a5fa",border:"1px solid rgba(96,165,250,0.3)",padding:"9px 14px",borderRadius:8,cursor:regenerating?"not-allowed":"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:7}}>
             {regenerating
               ? <><span style={{width:12,height:12,borderRadius:"50%",border:"2px solid rgba(96,165,250,0.3)",borderTopColor:"#60a5fa",animation:"spin 0.8s linear infinite",display:"inline-block"}}/>Regenerating…</>
               : <>↻ Regenerate Accounting</>
             }
           </button>
-
-          {/* ── Regenerate date-range picker modal ── */}
-          {showRegenPicker && !regenerating && (
-            <div style={{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(3px)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setShowRegenPicker(false)}>
-              <div style={{background:"#0d1b2e",border:"1px solid rgba(96,165,250,0.25)",borderRadius:16,padding:"28px 28px 24px",minWidth:340,boxShadow:"0 24px 60px rgba(0,0,0,0.55)"}} onClick={e=>e.stopPropagation()}>
-                <div style={{fontSize:15,fontWeight:700,color:"#60a5fa",marginBottom:4,fontFamily:"'DM Sans'"}}>↻ Regenerate Accounting</div>
-                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:18}}>Choose which bookings to regenerate entries for.</div>
-
-                {/* Preset chips */}
-                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
-                  {[["today","Today"],["week","Last 7 days"],["month","This Month"],["all","All Time"]].map(([p,l])=>(
-                    <button key={p} onClick={()=>applyRegenPreset(p)} style={{padding:"5px 13px",borderRadius:20,border:`1px solid ${regenPreset===p?"#60a5fa":"rgba(255,255,255,0.1)"}`,background:regenPreset===p?"rgba(96,165,250,0.18)":"transparent",color:regenPreset===p?"#60a5fa":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:12,fontWeight:regenPreset===p?600:400,transition:"all 0.15s"}}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Custom date range — hidden for "all" */}
-                {regenPreset !== "all" && (
-                  <div style={{display:"flex",gap:10,marginBottom:20,alignItems:"center"}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>From</div>
-                      <input type="date" value={regenFrom} onChange={e=>{setRegenFrom(e.target.value);setRegenPreset("custom");}}
-                        style={{width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:8,color:"#fff",padding:"7px 10px",fontSize:13,boxSizing:"border-box"}}/>
-                    </div>
-                    <div style={{color:"rgba(255,255,255,0.3)",marginTop:18}}>→</div>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>To</div>
-                      <input type="date" value={regenTo} onChange={e=>{setRegenTo(e.target.value);setRegenPreset("custom");}}
-                        style={{width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:8,color:"#fff",padding:"7px 10px",fontSize:13,boxSizing:"border-box"}}/>
-                    </div>
-                  </div>
-                )}
-
-                {/* Summary line */}
-                <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginBottom:20,background:"rgba(96,165,250,0.06)",borderRadius:8,padding:"9px 12px",border:"1px solid rgba(96,165,250,0.12)"}}>
-                  {regenPreset==="all"
-                    ? "⚠️ Will delete & rebuild entries for ALL bookings."
-                    : `Will delete & rebuild entries for bookings with check-in${regenFrom?` from ${regenFrom}`:""}${regenTo?` to ${regenTo}`:""}.`}
-                </div>
-
-                <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-                  <button onClick={()=>setShowRegenPicker(false)} style={{padding:"8px 18px",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:13}}>Cancel</button>
-                  <button onClick={async()=>{
-                    setShowRegenPicker(false);
-                    const rangeLabel = regenPreset==="all" ? "ALL bookings" : `bookings from ${regenFrom||"start"} to ${regenTo||"end"}`;
-                    if(!window.confirm(`This will DELETE existing accounting entries for ${rangeLabel} and rebuild them from current booking data. Continue?`)) return;
-                    setRegenerating(true);
-                    try {
-                      const params = new URLSearchParams({ regen_accounting:"true" });
-                      if (regenPreset !== "all" && regenFrom) params.set("from", regenFrom);
-                      if (regenPreset !== "all" && regenTo)   params.set("to",   regenTo);
-                      const r = await api.post(`/bookings?${params.toString()}`,{});
-                      alert(r.message||"Done");
-                      await reload();
-                    } catch(e) {
-                      alert("Failed: " + (e.message||"Unknown error"));
-                    }
-                    setRegenerating(false);
-                  }} style={{padding:"8px 20px",borderRadius:8,border:"1px solid rgba(96,165,250,0.4)",background:"rgba(96,165,250,0.18)",color:"#60a5fa",cursor:"pointer",fontSize:13,fontWeight:600}}>
-                    ↻ Regenerate
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Regenerating progress overlay ── */}
           {regenerating && (
             <div style={{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(2px)",display:"flex",alignItems:"center",justifyContent:"center"}}>
               <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes progressSlide{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}`}</style>
               <div style={{background:"#0d1b2e",border:"1px solid rgba(96,165,250,0.3)",borderRadius:16,padding:"28px 32px",minWidth:320,boxShadow:"0 24px 60px rgba(0,0,0,0.5)",textAlign:"center"}}>
                 <div style={{fontSize:15,fontWeight:700,color:"#60a5fa",marginBottom:6,fontFamily:"'DM Sans'"}}>Regenerating Accounting…</div>
-                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:18}}>Deleting old entries and rebuilding from selected bookings.</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:18}}>Deleting old entries and rebuilding from all bookings. This may take a moment for large datasets.</div>
                 <div style={{width:"100%",height:6,background:"rgba(255,255,255,0.08)",borderRadius:10,overflow:"hidden",position:"relative"}}>
                   <div style={{position:"absolute",inset:0,width:"40%",background:"linear-gradient(90deg,#60a5fa,#a78bfa)",borderRadius:10,animation:"progressSlide 1.1s ease-in-out infinite"}}/>
                 </div>
@@ -4823,6 +4753,25 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   const [sourceTab, setSourceTab] = useState("all"); // all | online | walkin
   const [search, setSearch]   = useState("");
   const [sortDir, setSortDir] = useState("desc");
+  const [filterVehicleNo, setFilterVehicleNo] = useState(""); // vehicle number filter
+  const [filterPriceMin, setFilterPriceMin]   = useState(""); // min total price
+  const [filterPriceMax, setFilterPriceMax]   = useState(""); // max total price
+  const [filterRepeat, setFilterRepeat]       = useState(false); // repeat customers only
+  const [showAdvFilters, setShowAdvFilters]   = useState(false);
+
+  // Build unique vehicle number list from all bookings (for dropdown)
+  const allVehicleNos = useMemo ? useMemo(() => {
+    const nos = new Set();
+    bookings.forEach(b => { const n = getVehicleNo(b); if (n) nos.add(n); });
+    return [...nos].sort();
+  }, [bookings]) : (() => { const nos = new Set(); bookings.forEach(b => { const n = getVehicleNo(b); if (n) nos.add(n); }); return [...nos].sort(); })();
+
+  // Build phone→count map for repeat-customer detection
+  const phoneCountMap = useMemo ? useMemo(() => {
+    const m = {};
+    bookings.forEach(b => { const p = (b.phone||"").replace(/\D/g,""); if (p && p !== "0000000000") m[p] = (m[p]||0) + 1; });
+    return m;
+  }, [bookings]) : (() => { const m = {}; bookings.forEach(b => { const p = (b.phone||"").replace(/\D/g,""); if (p && p !== "0000000000") m[p] = (m[p]||0) + 1; }); return m; })();
 
   // Detect walk-in by source field OR legacy name/phone pattern
   const isWalkin = (b) =>
@@ -4911,10 +4860,19 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
     const q = search.toLowerCase();
     filtered = filtered.filter(b=>(b.customerName||"").toLowerCase().includes(q)||(b.phone||"").toLowerCase().includes(q)||(b.vehicleName||"").toLowerCase().includes(q)||(b.stayAddress||"").toLowerCase().includes(q));
   }
+  // Advanced filters
+  if (filterVehicleNo) filtered = filtered.filter(b => getVehicleNo(b) === filterVehicleNo);
+  if (filterPriceMin !== "") filtered = filtered.filter(b => calcBookingTotal(b) >= Number(filterPriceMin));
+  if (filterPriceMax !== "") filtered = filtered.filter(b => calcBookingTotal(b) <= Number(filterPriceMax));
+  if (filterRepeat) filtered = filtered.filter(b => {
+    const p = (b.phone||"").replace(/\D/g,"");
+    return p && p !== "0000000000" && (phoneCountMap[p]||0) > 1;
+  });
   filtered = [...filtered].sort((a,b)=>{
     const da=a.createdAt||"", db=b.createdAt||"";
     return sortDir==="desc"?new Date(db)-new Date(da):new Date(da)-new Date(db);
   });
+  const activeAdvFilters = (filterVehicleNo ? 1:0) + (filterPriceMin||filterPriceMax ? 1:0) + (filterRepeat ? 1:0);
 
   // Sync inventory status when booking status changes
   const syncInventory = async (booking, newStatus) => {
@@ -5155,8 +5113,52 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.5)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,whiteSpace:"nowrap",fontFamily:"'DM Sans'"}}>
           Date {sortDir==="desc"?"↓":"↑"}
         </button>
+        <button onClick={()=>setShowAdvFilters(v=>!v)}
+          style={{background:activeAdvFilters>0?"rgba(212,133,10,0.15)":"rgba(255,255,255,0.04)",border:`1px solid ${activeAdvFilters>0?"rgba(212,133,10,0.4)":"rgba(255,255,255,0.1)"}`,color:activeAdvFilters>0?"#f0c060":"rgba(255,255,255,0.5)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,whiteSpace:"nowrap",fontFamily:"'DM Sans'",display:"flex",alignItems:"center",gap:5}}>
+          ⚙ Filters{activeAdvFilters>0?<span style={{background:"#d4850a",color:"white",borderRadius:"50%",width:16,height:16,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700}}>{activeAdvFilters}</span>:null}
+        </button>
       </div>
 
+      {/* Advanced Filters Panel */}
+      {showAdvFilters && (
+        <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.09)",borderRadius:12,padding:"14px 16px",marginBottom:14,display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-end"}}>
+          {/* Vehicle No filter */}
+          <div style={{minWidth:160,flex:1}}>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Vehicle Number</div>
+            <select value={filterVehicleNo} onChange={e=>setFilterVehicleNo(e.target.value)}
+              style={{width:"100%",padding:"7px 10px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,color:filterVehicleNo?"#f0c060":"rgba(255,255,255,0.5)",fontSize:13,outline:"none",cursor:"pointer"}}>
+              <option value="">All vehicles</option>
+              {allVehicleNos.map(n=><option key={n} value={n}>#{n}</option>)}
+            </select>
+          </div>
+          {/* Price range filter */}
+          <div style={{minWidth:200,flex:1}}>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Total Price Range (₹)</div>
+            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+              <input type="number" value={filterPriceMin} onChange={e=>setFilterPriceMin(e.target.value)} placeholder="Min"
+                style={{flex:1,padding:"7px 10px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontSize:13,outline:"none",minWidth:0}}/>
+              <span style={{color:"rgba(255,255,255,0.3)",fontSize:12}}>–</span>
+              <input type="number" value={filterPriceMax} onChange={e=>setFilterPriceMax(e.target.value)} placeholder="Max"
+                style={{flex:1,padding:"7px 10px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,color:"white",fontSize:13,outline:"none",minWidth:0}}/>
+            </div>
+          </div>
+          {/* Repeat customer toggle */}
+          <div style={{flexShrink:0}}>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Customer Type</div>
+            <button onClick={()=>setFilterRepeat(v=>!v)}
+              style={{padding:"7px 14px",borderRadius:8,border:`1px solid ${filterRepeat?"rgba(96,165,250,0.4)":"rgba(255,255,255,0.1)"}`,background:filterRepeat?"rgba(96,165,250,0.15)":"rgba(255,255,255,0.04)",color:filterRepeat?"#60a5fa":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:12,fontWeight:filterRepeat?600:400,whiteSpace:"nowrap"}}>
+              🔁 Repeat Customers Only
+            </button>
+          </div>
+          {/* Clear all */}
+          {activeAdvFilters > 0 && (
+            <button onClick={()=>{ setFilterVehicleNo(""); setFilterPriceMin(""); setFilterPriceMax(""); setFilterRepeat(false); }}
+              style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(255,80,80,0.2)",background:"rgba(255,80,80,0.07)",color:"#ff6b6b",cursor:"pointer",fontSize:12,flexShrink:0}}>
+              ✕ Clear Filters
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Bookings List */}
       <div style={{display:"grid",gap:10}}>
@@ -5845,6 +5847,8 @@ function CustomersEditor({ api, showSaved }) {
   const [editCustomer, setEditCustomer] = useState(null);
   const [syncing, setSyncing]       = useState(false);
   const [deleting, setDeleting]     = useState(null);
+  const [sortCustomers, setSortCustomers] = useState("bookings"); // bookings | spent | name | recent
+  const [hideWalkinDummy, setHideWalkinDummy] = useState(true); // hide the 0000000000 walk-in bucket
 
   const blankForm = { name:"", phone:"", email:"", nationality:"", gender:"", dateOfBirth:"", idType:"", idNumber:"", address:"", source:"walkin" };
   const [form, setForm] = useState({...blankForm});
@@ -5871,6 +5875,17 @@ function CustomersEditor({ api, showSaved }) {
     const t = setTimeout(() => fetchCustomers(search), 350);
     return () => clearTimeout(t);
   }, [search]);
+
+  // Client-side sort + optional hide of dummy walk-in bucket
+  const displayedCustomers = (() => {
+    let list = [...customers];
+    if (hideWalkinDummy) list = list.filter(c => (c.phone||"").replace(/\D/g,"") !== "0000000000" && (c.name||"").toLowerCase() !== "walk-in customer");
+    if (sortCustomers === "bookings") list.sort((a,b) => (b.totalBookings||0) - (a.totalBookings||0));
+    else if (sortCustomers === "spent") list.sort((a,b) => (b.totalSpent||0) - (a.totalSpent||0));
+    else if (sortCustomers === "name") list.sort((a,b) => (a.name||"").localeCompare(b.name||""));
+    else if (sortCustomers === "recent") list.sort((a,b) => new Date(b.lastBooking||0) - new Date(a.lastBooking||0));
+    return list;
+  })();
 
   const openAdd = () => { setForm({...blankForm}); setEditCustomer(null); setShowForm(true); };
   const openEdit = (c) => {
@@ -5952,16 +5967,31 @@ function CustomersEditor({ api, showSaved }) {
         </div>
       </div>
 
-      {/* ── Search ── */}
-      <div style={{marginBottom:20}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍  Search name, phone, email, ID number…"
-          style={{...fi,fontSize:14,padding:"11px 16px",borderColor:"rgba(255,255,255,0.1)"}}/>
+      {/* ── Search + Sort + Filters ── */}
+      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+        <div style={{flex:1,minWidth:200,position:"relative"}}>
+          <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",opacity:0.4,pointerEvents:"none"}}>🔍</span>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name, phone, email, ID number…"
+            style={{...fi,fontSize:13,padding:"10px 14px 10px 34px",borderColor:"rgba(255,255,255,0.1)"}}/>
+        </div>
+        <select value={sortCustomers} onChange={e=>setSortCustomers(e.target.value)}
+          style={{padding:"9px 12px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,color:"rgba(255,255,255,0.7)",fontSize:12,cursor:"pointer",outline:"none"}}>
+          <option value="bookings">Sort: Most Bookings</option>
+          <option value="spent">Sort: Highest Spend</option>
+          <option value="recent">Sort: Most Recent</option>
+          <option value="name">Sort: Name A–Z</option>
+        </select>
+        <button onClick={()=>setHideWalkinDummy(v=>!v)}
+          title={hideWalkinDummy ? "Walk-in Customer (0000000000 placeholder) is hidden" : "Showing Walk-in Customer placeholder"}
+          style={{padding:"9px 13px",borderRadius:8,border:`1px solid ${hideWalkinDummy?"rgba(240,192,96,0.35)":"rgba(255,255,255,0.1)"}`,background:hideWalkinDummy?"rgba(240,192,96,0.1)":"rgba(255,255,255,0.04)",color:hideWalkinDummy?"#f0c060":"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:12,fontWeight:hideWalkinDummy?600:400,whiteSpace:"nowrap"}}>
+          {hideWalkinDummy ? "🚫 Walk-in bucket hidden" : "👁 Show Walk-in bucket"}
+        </button>
       </div>
 
       {/* ── Customer List ── */}
       {loading ? (
         <div style={{textAlign:"center",padding:60,color:"rgba(255,255,255,0.3)"}}>Loading customers…</div>
-      ) : customers.length === 0 ? (
+      ) : displayedCustomers.length === 0 ? (
         <div style={{textAlign:"center",padding:60,color:"rgba(255,255,255,0.3)"}}>
           <div style={{fontSize:40,marginBottom:12}}>👥</div>
           <div style={{fontSize:15,marginBottom:6}}>{search ? "No customers match your search" : "No customers yet"}</div>
@@ -5969,7 +5999,7 @@ function CustomersEditor({ api, showSaved }) {
         </div>
       ) : (
         <div style={{display:"flex",flexDirection:"column",gap:1}}>
-          {customers.map(c => (
+          {displayedCustomers.map(c => (
             <div key={c._id} onClick={()=>openDrawer(c)}
               style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 18px",cursor:"pointer",display:"flex",alignItems:"center",gap:16,transition:"background 0.15s"}}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(212,133,10,0.07)"}
