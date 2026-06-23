@@ -2993,6 +2993,19 @@ function AccountingEditor({ data, api, reload, showSaved }) {
   const [editId, setEditId]       = useState(null);
   const [sortDir, setSortDir]     = useState("desc");
   const [regenerating, setRegenerating] = useState(false);
+  const [showRegenPicker, setShowRegenPicker] = useState(false);
+  const [regenPreset, setRegenPreset] = useState("month");
+  const today2 = new Date();
+  const [regenFrom, setRegenFrom] = useState(new Date(today2.getFullYear(), today2.getMonth(), 1).toISOString().slice(0,10));
+  const [regenTo,   setRegenTo]   = useState(today2.toISOString().slice(0,10));
+  const applyRegenPreset = (preset) => {
+    setRegenPreset(preset);
+    const n = new Date();
+    if (preset === "today")  { const d = n.toISOString().slice(0,10); setRegenFrom(d); setRegenTo(d); }
+    if (preset === "week")   { setRegenFrom(new Date(n-6*864e5).toISOString().slice(0,10)); setRegenTo(n.toISOString().slice(0,10)); }
+    if (preset === "month")  { setRegenFrom(new Date(n.getFullYear(),n.getMonth(),1).toISOString().slice(0,10)); setRegenTo(n.toISOString().slice(0,10)); }
+    if (preset === "all")    { setRegenFrom(""); setRegenTo(""); }
+  };
 
   const blankForm = { type:"income", category:"vehicle_rental", amount:"", date:today, description:"", clientName:"", agencyName:"", paymentStatus:"paid", paymentMethod:"cash", notes:"", vendorName:"", assetTag:"", assetName:"", receiptUrl:"" };
   const [form, setForm] = useState({...blankForm});
@@ -3116,29 +3129,86 @@ function AccountingEditor({ data, api, reload, showSaved }) {
               alert("Failed: " + (e.message||"Unknown error"));
             }
           }} style={{background:"rgba(240,192,96,0.1)",color:"#f0c060",border:"1px solid rgba(240,192,96,0.3)",padding:"9px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>📅 Fix Booking Dates</button>
-          <button disabled={regenerating} onClick={async()=>{
-            if(!window.confirm("This will DELETE all booking-linked accounting entries and rebuild ONE entry for EVERY booking (online + walk-in) from current data. Continue?")) return;
-            setRegenerating(true);
-            try {
-              const r = await api.post("/bookings?regen_accounting=true",{});
-              alert(r.message||"Done");
-              await reload();
-            } catch(e) {
-              alert("Failed: " + (e.message||"Unknown error"));
-            }
-            setRegenerating(false);
-          }} style={{background:regenerating?"rgba(96,165,250,0.06)":"rgba(96,165,250,0.12)",color:regenerating?"rgba(96,165,250,0.5)":"#60a5fa",border:"1px solid rgba(96,165,250,0.3)",padding:"9px 14px",borderRadius:8,cursor:regenerating?"not-allowed":"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:7}}>
+          <button disabled={regenerating} onClick={()=>setShowRegenPicker(true)} style={{background:regenerating?"rgba(96,165,250,0.06)":"rgba(96,165,250,0.12)",color:regenerating?"rgba(96,165,250,0.5)":"#60a5fa",border:"1px solid rgba(96,165,250,0.3)",padding:"9px 14px",borderRadius:8,cursor:regenerating?"not-allowed":"pointer",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",gap:7}}>
             {regenerating
               ? <><span style={{width:12,height:12,borderRadius:"50%",border:"2px solid rgba(96,165,250,0.3)",borderTopColor:"#60a5fa",animation:"spin 0.8s linear infinite",display:"inline-block"}}/>Regenerating…</>
               : <>↻ Regenerate Accounting</>
             }
           </button>
+
+          {/* ── Regenerate date-range picker modal ── */}
+          {showRegenPicker && !regenerating && (
+            <div style={{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(3px)",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setShowRegenPicker(false)}>
+              <div style={{background:"#0d1b2e",border:"1px solid rgba(96,165,250,0.25)",borderRadius:16,padding:"28px 28px 24px",minWidth:340,boxShadow:"0 24px 60px rgba(0,0,0,0.55)"}} onClick={e=>e.stopPropagation()}>
+                <div style={{fontSize:15,fontWeight:700,color:"#60a5fa",marginBottom:4,fontFamily:"'DM Sans'"}}>↻ Regenerate Accounting</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:18}}>Choose which bookings to regenerate entries for.</div>
+
+                {/* Preset chips */}
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
+                  {[["today","Today"],["week","Last 7 days"],["month","This Month"],["all","All Time"]].map(([p,l])=>(
+                    <button key={p} onClick={()=>applyRegenPreset(p)} style={{padding:"5px 13px",borderRadius:20,border:`1px solid ${regenPreset===p?"#60a5fa":"rgba(255,255,255,0.1)"}`,background:regenPreset===p?"rgba(96,165,250,0.18)":"transparent",color:regenPreset===p?"#60a5fa":"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:12,fontWeight:regenPreset===p?600:400,transition:"all 0.15s"}}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom date range — hidden for "all" */}
+                {regenPreset !== "all" && (
+                  <div style={{display:"flex",gap:10,marginBottom:20,alignItems:"center"}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>From</div>
+                      <input type="date" value={regenFrom} onChange={e=>{setRegenFrom(e.target.value);setRegenPreset("custom");}}
+                        style={{width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:8,color:"#fff",padding:"7px 10px",fontSize:13,boxSizing:"border-box"}}/>
+                    </div>
+                    <div style={{color:"rgba(255,255,255,0.3)",marginTop:18}}>→</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>To</div>
+                      <input type="date" value={regenTo} onChange={e=>{setRegenTo(e.target.value);setRegenPreset("custom");}}
+                        style={{width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:8,color:"#fff",padding:"7px 10px",fontSize:13,boxSizing:"border-box"}}/>
+                    </div>
+                  </div>
+                )}
+
+                {/* Summary line */}
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginBottom:20,background:"rgba(96,165,250,0.06)",borderRadius:8,padding:"9px 12px",border:"1px solid rgba(96,165,250,0.12)"}}>
+                  {regenPreset==="all"
+                    ? "⚠️ Will delete & rebuild entries for ALL bookings."
+                    : `Will delete & rebuild entries for bookings with check-in${regenFrom?` from ${regenFrom}`:""}${regenTo?` to ${regenTo}`:""}.`}
+                </div>
+
+                <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+                  <button onClick={()=>setShowRegenPicker(false)} style={{padding:"8px 18px",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:13}}>Cancel</button>
+                  <button onClick={async()=>{
+                    setShowRegenPicker(false);
+                    const rangeLabel = regenPreset==="all" ? "ALL bookings" : `bookings from ${regenFrom||"start"} to ${regenTo||"end"}`;
+                    if(!window.confirm(`This will DELETE existing accounting entries for ${rangeLabel} and rebuild them from current booking data. Continue?`)) return;
+                    setRegenerating(true);
+                    try {
+                      const params = new URLSearchParams({ regen_accounting:"true" });
+                      if (regenPreset !== "all" && regenFrom) params.set("from", regenFrom);
+                      if (regenPreset !== "all" && regenTo)   params.set("to",   regenTo);
+                      const r = await api.post(`/bookings?${params.toString()}`,{});
+                      alert(r.message||"Done");
+                      await reload();
+                    } catch(e) {
+                      alert("Failed: " + (e.message||"Unknown error"));
+                    }
+                    setRegenerating(false);
+                  }} style={{padding:"8px 20px",borderRadius:8,border:"1px solid rgba(96,165,250,0.4)",background:"rgba(96,165,250,0.18)",color:"#60a5fa",cursor:"pointer",fontSize:13,fontWeight:600}}>
+                    ↻ Regenerate
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Regenerating progress overlay ── */}
           {regenerating && (
             <div style={{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(2px)",display:"flex",alignItems:"center",justifyContent:"center"}}>
               <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes progressSlide{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}`}</style>
               <div style={{background:"#0d1b2e",border:"1px solid rgba(96,165,250,0.3)",borderRadius:16,padding:"28px 32px",minWidth:320,boxShadow:"0 24px 60px rgba(0,0,0,0.5)",textAlign:"center"}}>
                 <div style={{fontSize:15,fontWeight:700,color:"#60a5fa",marginBottom:6,fontFamily:"'DM Sans'"}}>Regenerating Accounting…</div>
-                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:18}}>Deleting old entries and rebuilding from all bookings. This may take a moment for large datasets.</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:18}}>Deleting old entries and rebuilding from selected bookings.</div>
                 <div style={{width:"100%",height:6,background:"rgba(255,255,255,0.08)",borderRadius:10,overflow:"hidden",position:"relative"}}>
                   <div style={{position:"absolute",inset:0,width:"40%",background:"linear-gradient(90deg,#60a5fa,#a78bfa)",borderRadius:10,animation:"progressSlide 1.1s ease-in-out infinite"}}/>
                 </div>
