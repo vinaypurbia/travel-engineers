@@ -4753,18 +4753,17 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   const [sourceTab, setSourceTab] = useState("all"); // all | online | walkin
   const [search, setSearch]   = useState("");
   const [sortDir, setSortDir] = useState("desc");
-  const [filterVehicleNo, setFilterVehicleNo] = useState(""); // vehicle number filter
+  const [filterVehicleNos, setFilterVehicleNos] = useState(new Set()); // vehicle number filter (multi)
   const [filterPriceMin, setFilterPriceMin]   = useState(""); // min total price
   const [filterPriceMax, setFilterPriceMax]   = useState(""); // max total price
   const [filterRepeat, setFilterRepeat]       = useState(false); // repeat customers only
   const [showAdvFilters, setShowAdvFilters]   = useState(false);
 
-  // Build unique vehicle number list from all bookings (for dropdown)
-  const allVehicleNos = (() => {
-    const nos = new Set();
-    bookings.forEach(b => { const n = getVehicleNo(b); if (n) nos.add(n); });
-    return [...nos].sort();
-  })();
+  // Build vehicle list for dropdown directly from rentals (source of truth)
+  const allVehicleNos = rentals
+    .filter(r => r.vehicleNo)
+    .sort((a, b) => (a.vehicleNo||"").localeCompare(b.vehicleNo||""))
+    .map(r => ({ no: r.vehicleNo, label: `${r.name} #${r.vehicleNo}`, _id: String(r._id) }));
 
   // Build phone→count map for repeat-customer detection
   const phoneCountMap = (() => {
@@ -4849,6 +4848,12 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
   const totalRevenue    = activeBookings.reduce((sum, b) => sum + calcBookingTotal(b), 0);
   const totalReceived   = activeBookings.reduce((sum, b) => sum + (b.receivedAmount || 0), 0);
   const totalPending    = Math.max(0, totalRevenue - totalReceived);
+  // When vehicle/price/repeat filters are active, show totals for the filtered set
+  const isFiltered = activeAdvFilters > 0 || search.trim() || filter !== "all" || sourceTab !== "all";
+  const summaryBookings   = isFiltered ? filtered.filter(b => b.status !== "cancelled") : activeBookings;
+  const summaryRevenue    = summaryBookings.reduce((sum, b) => sum + calcBookingTotal(b), 0);
+  const summaryReceived   = summaryBookings.reduce((sum, b) => sum + (b.receivedAmount || 0), 0);
+  const summaryPending    = Math.max(0, summaryRevenue - summaryReceived);
 
   // Filter + search + sort
   let filtered = bookings;
@@ -4861,7 +4866,10 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
     filtered = filtered.filter(b=>(b.customerName||"").toLowerCase().includes(q)||(b.phone||"").toLowerCase().includes(q)||(b.vehicleName||"").toLowerCase().includes(q)||(b.stayAddress||"").toLowerCase().includes(q));
   }
   // Advanced filters
-  if (filterVehicleNo) filtered = filtered.filter(b => getVehicleNo(b) === filterVehicleNo);
+  if (filterVehicleNos.size > 0) filtered = filtered.filter(b => {
+    const rental = rentals.find(r => String(r._id) === String(b.vehicleId));
+    return rental && filterVehicleNos.has(rental.vehicleNo);
+  });
   if (filterPriceMin !== "") filtered = filtered.filter(b => calcBookingTotal(b) >= Number(filterPriceMin));
   if (filterPriceMax !== "") filtered = filtered.filter(b => calcBookingTotal(b) <= Number(filterPriceMax));
   if (filterRepeat) filtered = filtered.filter(b => {
@@ -4872,7 +4880,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
     const da=a.createdAt||"", db=b.createdAt||"";
     return sortDir==="desc"?new Date(db)-new Date(da):new Date(da)-new Date(db);
   });
-  const activeAdvFilters = (filterVehicleNo ? 1:0) + (filterPriceMin||filterPriceMax ? 1:0) + (filterRepeat ? 1:0);
+  const activeAdvFilters = (filterVehicleNos.size > 0 ? 1:0) + (filterPriceMin||filterPriceMax ? 1:0) + (filterRepeat ? 1:0);
 
   // Sync inventory status when booking status changes
   const syncInventory = async (booking, newStatus) => {
@@ -5044,13 +5052,17 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
         </div>
       </div>
 
-      {/* Revenue Summary — pulled from booking data only */}
+      {/* Revenue Summary — reflects active filters when set */}
       {totalRevenue > 0 && (
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:20}}>
+          {isFiltered && <div style={{gridColumn:"1/-1",fontSize:11,color:"#f0c060",background:"rgba(240,192,96,0.08)",border:"1px solid rgba(240,192,96,0.2)",borderRadius:8,padding:"5px 12px",marginBottom:2}}>
+            ⚡ Showing totals for filtered results ({summaryBookings.length} booking{summaryBookings.length!==1?"s":""})
+            {!isFiltered && null}
+          </div>}
           {[
-            { label:"Total Booking Value", value:`₹${totalRevenue.toLocaleString("en-IN")}`, color:"#f0c060", icon:"💰", sub:`${activeBookings.length} active booking${activeBookings.length!==1?"s":""}` },
-            { label:"Amount Received",     value:`₹${totalReceived.toLocaleString("en-IN")}`, color:"#4ade80", icon:"✅", sub: totalRevenue>0?`${Math.round((totalReceived/totalRevenue)*100)}% collected`:"" },
-            { label:"Balance Pending",     value:`₹${totalPending.toLocaleString("en-IN")}`,  color: totalPending>0?"#fb923c":"#4ade80", icon: totalPending>0?"🔶":"✅", sub:"yet to be collected" },
+            { label:"Total Booking Value", value:`₹${summaryRevenue.toLocaleString("en-IN")}`, color:"#f0c060", icon:"💰", sub:`${summaryBookings.length} active booking${summaryBookings.length!==1?"s":""}` },
+            { label:"Amount Received",     value:`₹${summaryReceived.toLocaleString("en-IN")}`, color:"#4ade80", icon:"✅", sub: summaryRevenue>0?`${Math.round((summaryReceived/summaryRevenue)*100)}% collected`:"" },
+            { label:"Balance Pending",     value:`₹${summaryPending.toLocaleString("en-IN")}`,  color: summaryPending>0?"#fb923c":"#4ade80", icon: summaryPending>0?"🔶":"✅", sub:"yet to be collected" },
           ].map(card=>(
             <div key={card.label} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 16px",position:"relative",overflow:"hidden"}}>
               <div style={{position:"absolute",top:10,right:12,fontSize:18,opacity:0.18}}>{card.icon}</div>
@@ -5122,14 +5134,26 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
       {/* Advanced Filters Panel */}
       {showAdvFilters && (
         <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.09)",borderRadius:12,padding:"14px 16px",marginBottom:14,display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-end"}}>
-          {/* Vehicle No filter */}
+          {/* Vehicle filter — multi-select pills */}
           <div style={{minWidth:160,flex:1}}>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Vehicle Number</div>
-            <select value={filterVehicleNo} onChange={e=>setFilterVehicleNo(e.target.value)}
-              style={{width:"100%",padding:"7px 10px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,color:filterVehicleNo?"#f0c060":"rgba(255,255,255,0.5)",fontSize:13,outline:"none",cursor:"pointer"}}>
-              <option value="">All vehicles</option>
-              {allVehicleNos.map(n=><option key={n} value={n}>#{n}</option>)}
-            </select>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Vehicle Number</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {allVehicleNos.map(v => {
+                const active = filterVehicleNos.has(v.no);
+                return (
+                  <button key={v._id} onClick={()=>{
+                    const next = new Set(filterVehicleNos);
+                    active ? next.delete(v.no) : next.add(v.no);
+                    setFilterVehicleNos(next);
+                  }} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${active?"#f0c060":"rgba(255,255,255,0.12)"}`,background:active?"rgba(240,192,96,0.15)":"rgba(255,255,255,0.04)",color:active?"#f0c060":"rgba(255,255,255,0.45)",cursor:"pointer",fontSize:12,fontWeight:active?700:400,transition:"all 0.15s",whiteSpace:"nowrap"}}>
+                    {active ? "✓ " : ""}#{v.no}
+                  </button>
+                );
+              })}
+              {filterVehicleNos.size > 0 && (
+                <button onClick={()=>setFilterVehicleNos(new Set())} style={{padding:"5px 10px",borderRadius:20,border:"1px solid rgba(255,100,100,0.2)",background:"rgba(255,80,80,0.06)",color:"rgba(255,120,120,0.7)",cursor:"pointer",fontSize:11}}>✕ All</button>
+              )}
+            </div>
           </div>
           {/* Price range filter */}
           <div style={{minWidth:200,flex:1}}>
@@ -5152,7 +5176,7 @@ function BookingsEditor({ data, api, reload, rentals=[] }) {
           </div>
           {/* Clear all */}
           {activeAdvFilters > 0 && (
-            <button onClick={()=>{ setFilterVehicleNo(""); setFilterPriceMin(""); setFilterPriceMax(""); setFilterRepeat(false); }}
+            <button onClick={()=>{ setFilterVehicleNos(new Set()); setFilterPriceMin(""); setFilterPriceMax(""); setFilterRepeat(false); }}
               style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(255,80,80,0.2)",background:"rgba(255,80,80,0.07)",color:"#ff6b6b",cursor:"pointer",fontSize:12,flexShrink:0}}>
               ✕ Clear Filters
             </button>
