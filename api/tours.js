@@ -5,6 +5,17 @@ const mongoose = require("mongoose");
 const TourSchema = new mongoose.Schema({
   title:        { type: String, required: true },
   type:         { type: String, enum: ["day-trip","multi-day","taxi","airport"], default: "day-trip" },
+  // ── Holiday Package fields ─────────────────────────────────────────────────
+  category:        { type: String, default: "" },          // "holiday" for packages; "" for taxi tours
+  region:          { type: String, default: "domestic" },  // "domestic" | "international"
+  holidayCategory: { type: String, default: "" },          // "Family","Honeymoon","Adventure", etc.
+  hotelCategory:   { type: String, default: "" },          // "Budget","Standard","Deluxe","Luxury"
+  hotelStars:      { type: Number, default: 3 },
+  hotels:          [{ name: String, city: String, stars: Number, image: String, notes: String }],
+  priceFrom:       { type: Number, default: 0 },           // starting / lowest price shown on card
+  priceTiers:      [{ label: String, price: Number, description: String }],
+  nights:          { type: Number, default: 0 },
+  // ──────────────────────────────────────────────────────────────────────────
   destinations: [String],
   description:  String,
   highlights:   [String],
@@ -16,7 +27,7 @@ const TourSchema = new mongoose.Schema({
   maxPax:       { type: Number, default: 6 },
   inclusions:   [String],
   exclusions:   [String],
-  itinerary:    [{ day: Number, title: String, description: String, meals: String, accommodation: String }],
+  itinerary:    [{ day: Number, title: String, description: String, meals: String, accommodation: String, activities: String }],
   pickupPoints: [String],
   available:    { type: Boolean, default: true },
   tag:          String,
@@ -26,14 +37,16 @@ const TourSchema = new mongoose.Schema({
 const TourBookingSchema = new mongoose.Schema({
   tourId:        { type: String, required: true },
   tourTitle:     { type: String, required: true },
-  tourType:      String,
+  tourType:      String,   // "taxi" | "holiday"
   customerName:  { type: String, required: true },
   phone:         { type: String, required: true },
   email:         String,
   travelDate:    Date,
-  pax:           { type: Number, default: 1 },
+  pax:           { type: String, default: "1" },  // String to support "10+" from holiday form
   pickupPoint:   String,
   flightNumber:  String,
+  budget:        { type: String, default: "" },    // holiday enquiry: customer's stated budget
+  message:       { type: String, default: "" },    // holiday enquiry: special requests / message
   notes:         String,
   basePrice:     { type: Number, default: 0 },
   finalPrice:    { type: Number, default: 0 },
@@ -142,25 +155,34 @@ module.exports = async (req, res) => {
         return res.json(bookings);
       }
       if (req.method === "POST") {
-        const { tourId, tourTitle, tourType, customerName, phone, email, travelDate, pax, pickupPoint, flightNumber, notes, basePrice } = req.body;
+        const { tourId, tourTitle, tourType, customerName, phone, email, travelDate, pax, pickupPoint, flightNumber, notes, basePrice, budget, message } = req.body;
+        const isHoliday   = tourType === "holiday";
         const finalPrice  = basePrice || 0;
-        const tokenAmount = finalPrice > 0 ? Math.ceil(finalPrice * 0.5) : 0;
+        // Holiday enquiries don't require a 50% advance — they're enquiries, not confirmed bookings
+        const tokenAmount = (!isHoliday && finalPrice > 0) ? Math.ceil(finalPrice * 0.5) : 0;
         const booking = await TourBooking.create({
-          tourId, tourTitle, tourType, customerName, phone, email,
+          tourId, tourTitle, tourType: tourType || "taxi", customerName, phone, email,
           travelDate: travelDate ? new Date(travelDate) : null,
-          pax: Number(pax) || 1, pickupPoint, flightNumber, notes,
+          pax: pax || "1", pickupPoint, flightNumber,
+          budget: budget || "", message: message || "",
+          notes: notes || (message ? `Budget: ${budget || "N/A"} | Message: ${message}` : ""),
           basePrice: finalPrice, finalPrice, tokenAmount,
           status: "pending", paymentStatus: "unpaid",
         });
         const fmt = (d) => d ? new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "-";
+        const isHolidayEnq = tourType === "holiday";
         const msg = [
-          "New Tour Booking Request!", "",
-          "Tour: "+tourTitle, "Customer: "+customerName, "Phone: "+phone,
-          "Travel Date: "+fmt(travelDate), "Pax: "+pax,
+          isHolidayEnq ? "New Holiday Package Enquiry! ✈️" : "New Tour Booking Request!", "",
+          "Package: "+tourTitle, "Customer: "+customerName, "Phone: "+phone,
+          email ? "Email: "+email : null,
+          "Travel Date: "+fmt(travelDate), "Pax: "+(pax||1),
+          isHolidayEnq && budget ? "Budget: "+budget : null,
           pickupPoint ? "Pickup: "+pickupPoint : null,
           flightNumber ? "Flight: "+flightNumber : null,
-          "Package Price: Rs."+finalPrice, "Advance: Rs."+tokenAmount,
-          notes ? "Notes: "+notes : null, "",
+          !isHolidayEnq && finalPrice ? "Package Price: Rs."+finalPrice : null,
+          !isHolidayEnq && tokenAmount ? "Advance: Rs."+tokenAmount : null,
+          message ? "Message: "+message : null,
+          notes && !message ? "Notes: "+notes : null, "",
           "Booking ID: "+booking._id,
         ].filter(Boolean).join("\n");
         const whatsapp = (process.env.WHATSAPP_NUMBER || "919876543210").replace(/[^0-9]/g, "");
@@ -194,7 +216,8 @@ module.exports = async (req, res) => {
     }
     if (req.method === "GET") {
       const filter = {};
-      if (req.query.type) filter.type = req.query.type;
+      if (req.query.type)      filter.type      = req.query.type;
+      if (req.query.category)  filter.category  = req.query.category;
       if (req.query.available === "true") filter.available = true;
       const tours = await Tour.find(filter).sort({ createdAt: -1 });
       return res.json(tours);
