@@ -182,9 +182,9 @@ function MobileNav({ agency, activeNav, setActiveNav, onMyAccount }) {
           }
         </div>
         <div className="nav-desktop" style={{display:"flex",gap:28,alignItems:"center"}}>
-          {["home","rentals","villa","tours","contact"].map(n=>(
+          {["home","rentals","villa","tours","holidays","contact"].map(n=>(
             <span key={n} className="nav-link" style={{color:activeNav===n?"#f0c060":"rgba(255,255,255,0.7)"}}
-              onClick={()=>scrollTo(n)}>{n}</span>
+              onClick={()=>scrollTo(n)}>{n==="holidays"?"Holidays":n}</span>
           ))}
           <button onClick={()=>scrollTo("calculator")} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",borderRadius:8,padding:"8px 16px",fontFamily:"'DM Sans'",fontWeight:700,fontSize:13,textTransform:"uppercase",letterSpacing:1.5,cursor:"pointer",whiteSpace:"nowrap"}}>🧮 Fare Calculator</button>
           <button onClick={onMyAccount} style={{background:"transparent",color:"rgba(255,255,255,0.7)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:8,padding:"8px 16px",fontFamily:"'DM Sans'",fontWeight:600,fontSize:13,textTransform:"uppercase",letterSpacing:1.5,cursor:"pointer",whiteSpace:"nowrap"}}>👤 My Account</button>
@@ -197,10 +197,10 @@ function MobileNav({ agency, activeNav, setActiveNav, onMyAccount }) {
       </nav>
       {menuOpen&&(
         <div style={{position:"fixed",top:70,left:0,right:0,zIndex:99,background:"rgba(10,22,40,0.98)",borderBottom:"1px solid rgba(212,133,10,0.2)",padding:"12px 0",display:"flex",flexDirection:"column"}}>
-          {["home","rentals","villa","tours","contact"].map(n=>(
+          {["home","rentals","villa","tours","holidays","contact"].map(n=>(
             <button key={n} onClick={()=>scrollTo(n)}
               style={{background:"transparent",border:"none",color:activeNav===n?"#f0c060":"rgba(255,255,255,0.7)",padding:"14px 5%",textAlign:"left",fontFamily:"'DM Sans'",fontSize:15,fontWeight:500,textTransform:"uppercase",letterSpacing:2,cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
-              {n}
+              {n==="holidays"?"Holidays":n}
             </button>
           ))}
           <button onClick={()=>{ scrollTo("calculator"); setMenuOpen(false); }}
@@ -512,7 +512,9 @@ export default function App() {
         hasAdminToken ? safeGet("/tours?bookings=1", []) : Promise.resolve([]),
         hasAdminToken ? safeGet("/users", []) : Promise.resolve([]),
       ]);
-      setData({ agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings, users });
+      // derive holidays from the tours array — no extra API call needed
+      const holidays = (Array.isArray(tours) ? tours : []).filter(t => t.category === "holiday");
+      setData({ agency, rentals, villa, testimonials, inventory, accounting, bookings, tours, tourBookings, users, holidays });
     } catch (err) {
       console.error("API failed:", err);
     }
@@ -841,17 +843,17 @@ export default function App() {
         </div>
       </section>
 
-      {/* TOURS & TAXI */}
+      {/* TAXI TOURS */}
       <section id="sec-tours" style={{padding:"100px 5%",background:"#f8f4ed"}}>
         <div style={{textAlign:"center",marginBottom:60}}>
-          <div style={{fontFamily:"'DM Sans'",fontSize:12,letterSpacing:4,color:"#d4850a",textTransform:"uppercase",marginBottom:12}}>Explore More</div>
-          <h2 className="section-title">Tours & Transfers</h2>
-          <p style={{fontFamily:"'Lora'",fontStyle:"italic",color:"#666",marginTop:16,fontSize:18}}>Day trips, multi-day adventures, taxi rides & airport pickups</p>
+          <div style={{fontFamily:"'DM Sans'",fontSize:12,letterSpacing:4,color:"#d4850a",textTransform:"uppercase",marginBottom:12}}>Local Experiences</div>
+          <h2 className="section-title">Taxi Tours & Transfers</h2>
+          <p style={{fontFamily:"'Lora'",fontStyle:"italic",color:"#666",marginTop:16,fontSize:18}}>Day trips, sightseeing rides, taxi transfers & airport pickups</p>
         </div>
-        {(data.tours||[]).filter(t=>t.available).length > 0 && (
-          <TourSection tours={(data.tours||[]).filter(t=>t.available)} agency={agency} api={api} />
+        {(data.tours||[]).filter(t=>t.available && t.category!=="holiday").length > 0 && (
+          <TourSection tours={(data.tours||[]).filter(t=>t.available && t.category!=="holiday")} agency={agency} api={api} />
         )}
-        {(data.tours||[]).filter(t=>t.available).length === 0 && (
+        {(data.tours||[]).filter(t=>t.available && t.category!=="holiday").length === 0 && (
           <div style={{textAlign:"center",color:"#999",fontFamily:"'DM Sans'",padding:60}}>
             <div style={{fontSize:48,marginBottom:16}}>Tours coming soon!</div>
           </div>
@@ -859,6 +861,16 @@ export default function App() {
         <div id="sec-calculator" style={{marginTop: 60}}>
           <TourCalculator rentals={(data.rentals || [])} />
         </div>
+      </section>
+
+      {/* HOLIDAY PACKAGES */}
+      <section id="sec-holidays" style={{padding:"100px 5%",background:"#fff"}}>
+        <div style={{textAlign:"center",marginBottom:60}}>
+          <div style={{fontFamily:"'DM Sans'",fontSize:12,letterSpacing:4,color:"#d4850a",textTransform:"uppercase",marginBottom:12}}>Plan Your Dream Vacation</div>
+          <h2 className="section-title">Holiday Packages</h2>
+          <p style={{fontFamily:"'Lora'",fontStyle:"italic",color:"#666",marginTop:16,fontSize:18}}>Curated domestic & international packages — flights, hotels, sightseeing & more</p>
+        </div>
+        <HolidaySection holidays={(data.holidays||[]).filter(h=>h.available)} agency={agency} api={api} />
       </section>
 
       {/* TESTIMONIALS */}
@@ -1290,6 +1302,723 @@ function TourBookingModal({ tour, agency, api, onClose }) {
   );
 }
 
+// ─── HOLIDAY PACKAGES — PUBLIC SECTION (MakeMyTrip style) ───────────────────
+
+function HolidaySection({ holidays, agency, api }) {
+  const [regionTab, setRegionTab] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [durationFilter, setDurationFilter] = useState("all");
+  const [budgetFilter, setBudgetFilter] = useState("all");
+  const [selected, setSelected] = useState(null);
+  const [enquiring, setEnquiring] = useState(null);
+
+  const CATEGORIES = ["all","Honeymoon","Family","Adventure","Group Tour","Pilgrimage","Weekend Getaway","Cultural","Beach"];
+  const existingCats = ["all",...new Set(holidays.map(h=>h.holidayCategory).filter(Boolean))];
+  const cats = CATEGORIES.filter(c=>existingCats.includes(c));
+
+  let visible = holidays;
+  if (regionTab !== "all") visible = visible.filter(h => h.region === regionTab);
+  if (categoryFilter !== "all") visible = visible.filter(h => h.holidayCategory === categoryFilter);
+  if (durationFilter !== "all") {
+    if (durationFilter === "short")  visible = visible.filter(h => (h.nights||0) <= 3);
+    if (durationFilter === "medium") visible = visible.filter(h => (h.nights||0) >= 4 && (h.nights||0) <= 6);
+    if (durationFilter === "long")   visible = visible.filter(h => (h.nights||0) >= 7);
+  }
+  if (budgetFilter !== "all") {
+    if (budgetFilter === "budget")   visible = visible.filter(h => (h.priceFrom||0) < 15000);
+    if (budgetFilter === "mid")      visible = visible.filter(h => (h.priceFrom||0) >= 15000 && (h.priceFrom||0) < 40000);
+    if (budgetFilter === "premium")  visible = visible.filter(h => (h.priceFrom||0) >= 40000);
+  }
+
+  if (holidays.length === 0) return (
+    <div style={{textAlign:"center",padding:"60px 0",color:"#aaa",fontFamily:"'DM Sans'"}}>
+      <div style={{fontSize:56,marginBottom:16}}>✈️</div>
+      <div style={{fontSize:18,fontWeight:600,marginBottom:8}}>Holiday packages coming soon!</div>
+      <div style={{fontSize:14}}>We're curating amazing deals for you.</div>
+    </div>
+  );
+
+  return (
+    <div>
+      {/* Region Tabs */}
+      <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:24,flexWrap:"wrap"}}>
+        {[["all","🌍 All Packages"],["domestic","🇮🇳 Domestic"],["international","✈️ International"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setRegionTab(v)} style={{padding:"10px 22px",borderRadius:30,border:"2px solid",fontFamily:"'DM Sans'",fontWeight:600,fontSize:13,cursor:"pointer",transition:"all 0.2s",borderColor:regionTab===v?"#d4850a":"#ddd",background:regionTab===v?"#d4850a":"transparent",color:regionTab===v?"white":"#555"}}>{l}</button>
+        ))}
+      </div>
+
+      {/* Filters Row */}
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",justifyContent:"center",marginBottom:36,padding:"16px 20px",background:"#f8f4ed",borderRadius:16}}>
+        {/* Category */}
+        <select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)}
+          style={{padding:"8px 14px",borderRadius:20,border:"1px solid #ddd",fontFamily:"'DM Sans'",fontSize:13,background:"white",cursor:"pointer",outline:"none"}}>
+          {cats.map(c=><option key={c} value={c}>{c==="all"?"All Categories":c}</option>)}
+        </select>
+        {/* Duration */}
+        <select value={durationFilter} onChange={e=>setDurationFilter(e.target.value)}
+          style={{padding:"8px 14px",borderRadius:20,border:"1px solid #ddd",fontFamily:"'DM Sans'",fontSize:13,background:"white",cursor:"pointer",outline:"none"}}>
+          <option value="all">Any Duration</option>
+          <option value="short">Short (1–3 nights)</option>
+          <option value="medium">Medium (4–6 nights)</option>
+          <option value="long">Long (7+ nights)</option>
+        </select>
+        {/* Budget */}
+        <select value={budgetFilter} onChange={e=>setBudgetFilter(e.target.value)}
+          style={{padding:"8px 14px",borderRadius:20,border:"1px solid #ddd",fontFamily:"'DM Sans'",fontSize:13,background:"white",cursor:"pointer",outline:"none"}}>
+          <option value="all">Any Budget</option>
+          <option value="budget">Budget (Under ₹15,000)</option>
+          <option value="mid">Mid (₹15,000–₹40,000)</option>
+          <option value="premium">Premium (₹40,000+)</option>
+        </select>
+        {(categoryFilter!=="all"||durationFilter!=="all"||budgetFilter!=="all")&&(
+          <button onClick={()=>{setCategoryFilter("all");setDurationFilter("all");setBudgetFilter("all");}}
+            style={{padding:"8px 16px",borderRadius:20,border:"1px solid #d4850a",background:"transparent",color:"#d4850a",fontFamily:"'DM Sans'",fontSize:13,cursor:"pointer",fontWeight:600}}>✕ Clear</button>
+        )}
+      </div>
+
+      {/* Results count */}
+      {visible.length === 0 ? (
+        <div style={{textAlign:"center",padding:"40px 0",color:"#aaa",fontFamily:"'DM Sans'"}}>No packages match your filters. Try adjusting.</div>
+      ) : (
+        <>
+          <div style={{fontFamily:"'DM Sans'",fontSize:13,color:"#888",marginBottom:20,textAlign:"center"}}>{visible.length} package{visible.length!==1?"s":""} found</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:28}}>
+            {visible.map(pkg=>(
+              <HolidayCard key={pkg._id} pkg={pkg} onView={()=>setSelected(pkg)} onEnquire={()=>setEnquiring(pkg)} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {selected  && <HolidayDetailModal  pkg={selected}   agency={agency} onEnquire={()=>{setEnquiring(selected);setSelected(null);}} onClose={()=>setSelected(null)} />}
+      {enquiring && <HolidayEnquiryModal pkg={enquiring}  agency={agency} api={api} onClose={()=>setEnquiring(null)} />}
+    </div>
+  );
+}
+
+function HolidayCard({ pkg, onView, onEnquire }) {
+  const TIER_COLORS = {Budget:"#16a34a",Standard:"#2563eb",Deluxe:"#9333ea",Luxury:"#d4850a"};
+  const lowestPrice = pkg.priceFrom || (pkg.priceTiers && pkg.priceTiers.length > 0 ? Math.min(...pkg.priceTiers.map(t=>t.price||0)) : pkg.basePrice || 0);
+  const imgs = pkg.gallery && pkg.gallery.length > 0 ? pkg.gallery : [pkg.image].filter(Boolean);
+  const [imgIdx, setImgIdx] = useState(0);
+  const inclIcons = { "Flight":"✈️","Hotel":"🏨","Meals":"🍳","Transfers":"🚌","Sightseeing":"🎯","Visa":"🛂","Travel Insurance":"🛡️","Guide":"👤" };
+  return (
+    <div style={{background:"white",borderRadius:20,overflow:"hidden",boxShadow:"0 4px 24px rgba(0,0,0,0.09)",transition:"transform 0.2s,box-shadow 0.2s",cursor:"pointer"}}
+      onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-4px)";e.currentTarget.style.boxShadow="0 12px 40px rgba(0,0,0,0.15)";}}
+      onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow="0 4px 24px rgba(0,0,0,0.09)";}}>
+      {/* Image */}
+      <div style={{height:220,position:"relative",overflow:"hidden"}} onClick={onView}>
+        <img src={imgs[imgIdx]||"https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=600&q=80"} alt={pkg.title}
+          style={{width:"100%",height:"100%",objectFit:"cover",transition:"transform 0.3s"}}
+          onMouseEnter={e=>e.target.style.transform="scale(1.05)"} onMouseLeave={e=>e.target.style.transform="scale(1)"}/>
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,0.6),transparent)"}}/>
+        {/* Image dots */}
+        {imgs.length > 1 && (
+          <div style={{position:"absolute",bottom:10,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4}}>
+            {imgs.map((_,i)=>(
+              <div key={i} onClick={e=>{e.stopPropagation();setImgIdx(i);}}
+                style={{width:i===imgIdx?16:6,height:6,borderRadius:3,background:i===imgIdx?"white":"rgba(255,255,255,0.5)",transition:"all 0.2s",cursor:"pointer"}}/>
+            ))}
+          </div>
+        )}
+        {/* Badges */}
+        <div style={{position:"absolute",top:14,left:14,display:"flex",gap:6,flexWrap:"wrap"}}>
+          <span style={{background:pkg.region==="international"?"#1e40af":"#166534",color:"white",fontSize:11,padding:"3px 10px",borderRadius:20,fontFamily:"'DM Sans'",fontWeight:700}}>
+            {pkg.region==="international"?"✈️ International":"🇮🇳 Domestic"}
+          </span>
+          {pkg.tag&&<span style={{background:"#d4850a",color:"white",fontSize:11,padding:"3px 10px",borderRadius:20,fontFamily:"'DM Sans'",fontWeight:700}}>{pkg.tag}</span>}
+        </div>
+        {/* Duration */}
+        {pkg.nights&&<div style={{position:"absolute",top:14,right:14,background:"rgba(0,0,0,0.65)",color:"white",fontSize:12,padding:"4px 10px",borderRadius:12,fontFamily:"'DM Sans'",fontWeight:600}}>{pkg.nights}N {pkg.nights+1}D</div>}
+      </div>
+
+      <div style={{padding:"18px 20px 20px"}} onClick={onView}>
+        {/* Category chip */}
+        {pkg.holidayCategory&&<div style={{fontSize:11,color:"#d4850a",fontFamily:"'DM Sans'",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>{pkg.holidayCategory}</div>}
+        <h3 style={{fontFamily:"'Playfair Display'",fontSize:19,fontWeight:700,marginBottom:6,lineHeight:1.3}}>{pkg.title}</h3>
+        {/* Destinations */}
+        {pkg.destinations&&pkg.destinations.length>0&&(
+          <div style={{fontSize:12,color:"#888",fontFamily:"'DM Sans'",marginBottom:10,display:"flex",alignItems:"center",gap:4}}>
+            📍 {pkg.destinations.join(" → ")}
+          </div>
+        )}
+        {/* Inclusion icons */}
+        {pkg.inclusions&&pkg.inclusions.length>0&&(
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+            {pkg.inclusions.slice(0,5).map((inc,i)=>{
+              const icon = Object.entries(inclIcons).find(([k])=>inc.toLowerCase().includes(k.toLowerCase()));
+              return icon ? <span key={i} title={inc} style={{fontSize:18}}>{icon[1]}</span> : null;
+            })}
+            {pkg.inclusions.some(inc=>!Object.keys(inclIcons).some(k=>inc.toLowerCase().includes(k.toLowerCase())))&&
+              <span style={{fontSize:11,color:"#888",fontFamily:"'DM Sans'",alignSelf:"center"}}>+more</span>}
+          </div>
+        )}
+        {/* Hotel tier */}
+        {pkg.hotelCategory&&(
+          <div style={{fontSize:12,color:TIER_COLORS[pkg.hotelCategory]||"#555",fontFamily:"'DM Sans'",fontWeight:600,marginBottom:10}}>
+            🏨 {pkg.hotelCategory} Hotels · {"⭐".repeat(pkg.hotelStars||3)}
+          </div>
+        )}
+      </div>
+
+      {/* Price + CTA */}
+      <div style={{padding:"14px 20px",borderTop:"1px solid #f0f0f0",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+        <div>
+          <div style={{fontFamily:"'DM Sans'",fontSize:11,color:"#aaa",marginBottom:2}}>Starting from</div>
+          <div style={{fontFamily:"'Playfair Display'",fontSize:22,fontWeight:800,color:"#d4850a"}}>
+            ₹{lowestPrice.toLocaleString("en-IN")}
+          </div>
+          <div style={{fontFamily:"'DM Sans'",fontSize:11,color:"#aaa"}}>{pkg.priceLabel||"per person"}</div>
+        </div>
+        <div style={{display:"flex",gap:8,flexDirection:"column",alignItems:"flex-end"}}>
+          <button onClick={e=>{e.stopPropagation();onView();}} style={{padding:"8px 16px",fontSize:12,fontFamily:"'DM Sans'",fontWeight:600,border:"2px solid #d4850a",borderRadius:20,background:"transparent",color:"#d4850a",cursor:"pointer",whiteSpace:"nowrap"}}>View Details</button>
+          <button onClick={e=>{e.stopPropagation();onEnquire();}} style={{padding:"8px 16px",fontSize:12,fontFamily:"'DM Sans'",fontWeight:700,border:"none",borderRadius:20,background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"white",cursor:"pointer",whiteSpace:"nowrap"}}>Enquire Now</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HolidayDetailModal({ pkg, agency, onEnquire, onClose }) {
+  const [imgIdx, setImgIdx] = useState(0);
+  const [activeSection, setActiveSection] = useState("itinerary");
+  const imgs = pkg.gallery && pkg.gallery.length > 0 ? pkg.gallery : [pkg.image].filter(Boolean);
+  const lowestPrice = pkg.priceFrom || (pkg.priceTiers&&pkg.priceTiers.length>0 ? Math.min(...pkg.priceTiers.map(t=>t.price||0)) : pkg.basePrice||0);
+  const TIER_COLORS = {Budget:"#16a34a",Standard:"#2563eb",Deluxe:"#9333ea",Luxury:"#d4850a"};
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",overflowY:"auto"}} onClick={onClose}>
+      <div style={{background:"white",borderRadius:24,maxWidth:780,width:"100%",maxHeight:"92vh",overflowY:"auto",position:"relative"}} onClick={e=>e.stopPropagation()}>
+        {/* Image Gallery */}
+        <div style={{position:"relative",height:300,background:"#111",borderRadius:"24px 24px 0 0",overflow:"hidden"}}>
+          <img src={imgs[imgIdx]||"https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800&q=80"} alt={pkg.title}
+            style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+          <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,0.65),transparent)"}}/>
+          {/* Gallery nav */}
+          {imgs.length > 1 && <>
+            <button onClick={()=>setImgIdx(i=>(i-1+imgs.length)%imgs.length)}
+              style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,0.25)",border:"none",color:"white",width:36,height:36,borderRadius:"50%",cursor:"pointer",fontSize:18,backdropFilter:"blur(4px)"}}>‹</button>
+            <button onClick={()=>setImgIdx(i=>(i+1)%imgs.length)}
+              style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,0.25)",border:"none",color:"white",width:36,height:36,borderRadius:"50%",cursor:"pointer",fontSize:18,backdropFilter:"blur(4px)"}}>›</button>
+            <div style={{position:"absolute",bottom:16,left:"50%",transform:"translateX(-50%)",display:"flex",gap:5}}>
+              {imgs.map((_,i)=><div key={i} onClick={()=>setImgIdx(i)} style={{width:i===imgIdx?20:7,height:7,borderRadius:4,background:i===imgIdx?"white":"rgba(255,255,255,0.45)",cursor:"pointer",transition:"all 0.2s"}}/>)}
+            </div>
+          </>}
+          {/* Thumbnail strip */}
+          {imgs.length > 1 && (
+            <div style={{position:"absolute",bottom:40,left:16,display:"flex",gap:6}}>
+              {imgs.slice(0,5).map((img,i)=>(
+                <div key={i} onClick={()=>setImgIdx(i)} style={{width:48,height:36,borderRadius:6,overflow:"hidden",border:i===imgIdx?"2px solid #f0c060":"2px solid transparent",cursor:"pointer",flexShrink:0}}>
+                  <img src={img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                </div>
+              ))}
+            </div>
+          )}
+          <button onClick={onClose} style={{position:"absolute",top:14,right:14,background:"rgba(0,0,0,0.5)",border:"none",color:"white",width:36,height:36,borderRadius:"50%",cursor:"pointer",fontSize:20,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}}>×</button>
+          {/* Title overlay */}
+          <div style={{position:"absolute",bottom:imgs.length>1?90:20,left:20,right:20}}>
+            <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>
+              <span style={{background:pkg.region==="international"?"#1e40af":"#166534",color:"white",fontSize:11,padding:"3px 10px",borderRadius:20,fontFamily:"'DM Sans'",fontWeight:700}}>
+                {pkg.region==="international"?"✈️ International":"🇮🇳 Domestic"}
+              </span>
+              {pkg.holidayCategory&&<span style={{background:"rgba(255,255,255,0.2)",color:"white",fontSize:11,padding:"3px 10px",borderRadius:20,fontFamily:"'DM Sans'"}}>{pkg.holidayCategory}</span>}
+              {pkg.tag&&<span style={{background:"#d4850a",color:"white",fontSize:11,padding:"3px 10px",borderRadius:20,fontFamily:"'DM Sans'",fontWeight:700}}>{pkg.tag}</span>}
+            </div>
+            <h2 style={{fontFamily:"'Playfair Display'",fontSize:26,fontWeight:700,color:"white",margin:0,textShadow:"0 2px 8px rgba(0,0,0,0.5)"}}>{pkg.title}</h2>
+          </div>
+        </div>
+
+        {/* Quick stats bar */}
+        <div style={{display:"flex",gap:0,borderBottom:"1px solid #eee",background:"#faf8f3",flexWrap:"wrap"}}>
+          {[
+            pkg.nights&&{icon:"🌙",label:`${pkg.nights} Nights ${pkg.nights+1} Days`},
+            pkg.destinations&&pkg.destinations.length>0&&{icon:"📍",label:pkg.destinations.join(", ")},
+            pkg.hotelCategory&&{icon:"🏨",label:`${pkg.hotelCategory} Hotels`},
+            pkg.maxPax&&{icon:"👥",label:`Max ${pkg.maxPax} Pax`},
+          ].filter(Boolean).map((s,i)=>(
+            <div key={i} style={{padding:"12px 20px",display:"flex",alignItems:"center",gap:6,borderRight:"1px solid #eee",fontFamily:"'DM Sans'",fontSize:13,color:"#444"}}>
+              <span style={{fontSize:16}}>{s.icon}</span><span>{s.label}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{padding:"24px 28px"}}>
+          {/* Section tabs */}
+          <div style={{display:"flex",gap:0,marginBottom:24,borderBottom:"2px solid #f0f0f0",flexWrap:"wrap"}}>
+            {[["itinerary","📅 Itinerary"],["inclusions","✅ Inclusions"],["hotels","🏨 Hotels"],["pricing","💰 Pricing"]].map(([k,l])=>(
+              <button key={k} onClick={()=>setActiveSection(k)}
+                style={{padding:"10px 18px",background:"transparent",border:"none",borderBottom:`3px solid ${activeSection===k?"#d4850a":"transparent"}`,color:activeSection===k?"#d4850a":"#888",fontFamily:"'DM Sans'",fontWeight:activeSection===k?700:400,fontSize:13,cursor:"pointer",marginBottom:-2,transition:"all 0.15s"}}>
+                {l}
+              </button>
+            ))}
+          </div>
+
+          {/* Description */}
+          {pkg.description&&<p style={{fontFamily:"'Lora'",fontStyle:"italic",fontSize:15,color:"#555",lineHeight:1.8,marginBottom:24}}>{pkg.description}</p>}
+
+          {/* ITINERARY TAB */}
+          {activeSection==="itinerary"&&(
+            <div>
+              {pkg.itinerary&&pkg.itinerary.length>0 ? pkg.itinerary.map((day,i)=>(
+                <div key={i} style={{display:"flex",gap:16,marginBottom:20}}>
+                  <div style={{flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center"}}>
+                    <div style={{width:40,height:40,borderRadius:"50%",background:"#d4850a",color:"white",fontFamily:"'DM Sans'",fontWeight:700,fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>D{day.day||i+1}</div>
+                    {i<pkg.itinerary.length-1&&<div style={{width:2,flex:1,background:"#f0e8d8",marginTop:4,minHeight:24}}/>}
+                  </div>
+                  <div style={{flex:1,paddingBottom:16}}>
+                    <div style={{fontFamily:"'DM Sans'",fontWeight:700,fontSize:15,color:"#1a1a2e",marginBottom:4}}>{day.title||`Day ${day.day||i+1}`}</div>
+                    {day.description&&<p style={{fontFamily:"'Lora'",fontSize:14,color:"#666",lineHeight:1.7,margin:"0 0 8px"}}>{day.description}</p>}
+                    <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                      {day.meals&&<span style={{fontSize:12,background:"#f0fdf4",color:"#16a34a",padding:"3px 10px",borderRadius:20,fontFamily:"'DM Sans'"}}>🍳 {day.meals}</span>}
+                      {day.accommodation&&<span style={{fontSize:12,background:"#eff6ff",color:"#2563eb",padding:"3px 10px",borderRadius:20,fontFamily:"'DM Sans'"}}>🏨 {day.accommodation}</span>}
+                      {day.activities&&<span style={{fontSize:12,background:"#fefce8",color:"#ca8a04",padding:"3px 10px",borderRadius:20,fontFamily:"'DM Sans'"}}>🎯 {day.activities}</span>}
+                    </div>
+                  </div>
+                </div>
+              )) : <div style={{textAlign:"center",color:"#aaa",padding:40,fontFamily:"'DM Sans'"}}>Detailed itinerary available on enquiry.</div>}
+            </div>
+          )}
+
+          {/* INCLUSIONS TAB */}
+          {activeSection==="inclusions"&&(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+              {pkg.inclusions&&pkg.inclusions.length>0&&(
+                <div>
+                  <h4 style={{fontFamily:"'DM Sans'",fontWeight:700,fontSize:13,textTransform:"uppercase",letterSpacing:2,marginBottom:12,color:"#1a1a2e"}}>What's Included</h4>
+                  {pkg.inclusions.map((inc,i)=>(
+                    <div key={i} style={{display:"flex",gap:8,marginBottom:8,fontFamily:"'DM Sans'",fontSize:13,color:"#333"}}>
+                      <span style={{color:"#16a34a",fontWeight:700,flexShrink:0}}>✓</span>{inc}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {pkg.exclusions&&pkg.exclusions.length>0&&(
+                <div>
+                  <h4 style={{fontFamily:"'DM Sans'",fontWeight:700,fontSize:13,textTransform:"uppercase",letterSpacing:2,marginBottom:12,color:"#1a1a2e"}}>Not Included</h4>
+                  {pkg.exclusions.map((exc,i)=>(
+                    <div key={i} style={{display:"flex",gap:8,marginBottom:8,fontFamily:"'DM Sans'",fontSize:13,color:"#333"}}>
+                      <span style={{color:"#ef4444",fontWeight:700,flexShrink:0}}>✕</span>{exc}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(!pkg.inclusions||pkg.inclusions.length===0)&&(!pkg.exclusions||pkg.exclusions.length===0)&&(
+                <div style={{gridColumn:"1/-1",textAlign:"center",color:"#aaa",padding:40,fontFamily:"'DM Sans'"}}>Inclusions available on enquiry.</div>
+              )}
+            </div>
+          )}
+
+          {/* HOTELS TAB */}
+          {activeSection==="hotels"&&(
+            <div>
+              {pkg.hotelCategory&&(
+                <div style={{background:"#f8f4ed",borderRadius:12,padding:"14px 18px",marginBottom:16,fontFamily:"'DM Sans'",fontSize:14,color:"#444",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:20}}>🏨</span>
+                  <span><strong>{pkg.hotelCategory}</strong> category hotels · {"⭐".repeat(pkg.hotelStars||3)} ({pkg.hotelStars||3} star)</span>
+                </div>
+              )}
+              {pkg.hotels&&pkg.hotels.length>0 ? pkg.hotels.map((h,i)=>(
+                <div key={i} style={{display:"flex",gap:14,marginBottom:14,background:"#faf8f3",borderRadius:12,padding:"14px",border:"1px solid #f0e8d8"}}>
+                  {h.image&&<img src={h.image} alt={h.name} style={{width:80,height:64,objectFit:"cover",borderRadius:8,flexShrink:0}}/>}
+                  <div>
+                    <div style={{fontFamily:"'DM Sans'",fontWeight:700,fontSize:14,marginBottom:2}}>{h.name}</div>
+                    <div style={{fontSize:12,color:"#888",fontFamily:"'DM Sans'"}}>{h.city} · {"⭐".repeat(h.stars||3)}</div>
+                    {h.notes&&<div style={{fontSize:12,color:"#666",marginTop:4}}>{h.notes}</div>}
+                  </div>
+                </div>
+              )) : <div style={{textAlign:"center",color:"#aaa",padding:40,fontFamily:"'DM Sans'"}}>Hotel details shared after confirmation.</div>}
+            </div>
+          )}
+
+          {/* PRICING TAB */}
+          {activeSection==="pricing"&&(
+            <div>
+              {pkg.priceTiers&&pkg.priceTiers.length>0 ? (
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:14,marginBottom:20}}>
+                  {pkg.priceTiers.map((tier,i)=>(
+                    <div key={i} style={{border:`2px solid ${TIER_COLORS[tier.label]||"#d4850a"}`,borderRadius:14,padding:"16px",textAlign:"center"}}>
+                      <div style={{fontFamily:"'DM Sans'",fontWeight:700,fontSize:13,color:TIER_COLORS[tier.label]||"#d4850a",marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>{tier.label}</div>
+                      <div style={{fontFamily:"'Playfair Display'",fontSize:24,fontWeight:800,color:"#1a1a2e",marginBottom:4}}>₹{(tier.price||0).toLocaleString("en-IN")}</div>
+                      <div style={{fontSize:11,color:"#888",fontFamily:"'DM Sans'"}}>{pkg.priceLabel||"per person"}</div>
+                      {tier.description&&<div style={{fontSize:11,color:"#666",marginTop:8,fontFamily:"'DM Sans'",lineHeight:1.4}}>{tier.description}</div>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{textAlign:"center",background:"#faf8f3",borderRadius:14,padding:"32px",border:"1px solid #f0e8d8",marginBottom:20}}>
+                  <div style={{fontFamily:"'Playfair Display'",fontSize:30,fontWeight:800,color:"#d4850a"}}>₹{lowestPrice.toLocaleString("en-IN")}</div>
+                  <div style={{fontFamily:"'DM Sans'",fontSize:13,color:"#888",marginTop:4}}>{pkg.priceLabel||"per person"} (starting)</div>
+                </div>
+              )}
+              <div style={{background:"#eff6ff",borderRadius:10,padding:"12px 16px",fontFamily:"'DM Sans'",fontSize:13,color:"#1e40af"}}>
+                💡 Prices are indicative. Final price depends on travel dates, group size & availability. Enquire for exact quote.
+              </div>
+            </div>
+          )}
+
+          {/* Bottom CTA */}
+          <div style={{display:"flex",gap:12,marginTop:28,paddingTop:20,borderTop:"1px solid #eee",flexWrap:"wrap"}}>
+            <button onClick={onEnquire} style={{flex:1,minWidth:160,padding:"14px 24px",background:"linear-gradient(135deg,#d4850a,#f0c060)",border:"none",borderRadius:12,color:"white",fontFamily:"'DM Sans'",fontWeight:700,fontSize:15,cursor:"pointer"}}>
+              ✉️ Enquire / Get Quote
+            </button>
+            {agency?.whatsapp&&(
+              <a href={`https://wa.me/${(agency.whatsapp||"").replace(/\D/g,"")}?text=${encodeURIComponent(`Hi! I'm interested in the ${pkg.title} package. Please share details and pricing.`)}`}
+                target="_blank" rel="noreferrer"
+                style={{flex:1,minWidth:160,padding:"14px 24px",background:"#22c55e",border:"none",borderRadius:12,color:"white",fontFamily:"'DM Sans'",fontWeight:700,fontSize:15,cursor:"pointer",textDecoration:"none",textAlign:"center",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                💬 WhatsApp Us
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HolidayEnquiryModal({ pkg, agency, api, onClose }) {
+  const [form, setForm] = useState({name:"",phone:"",email:"",travelDate:"",pax:"2",budget:"",message:""});
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const submit = async () => {
+    if (!form.name||!form.phone) { alert("Name and phone are required"); return; }
+    setSubmitting(true);
+    try {
+      await api.post("/tours?bookings=1", {
+        tourId: pkg._id, tourTitle: pkg.title, tourType: "holiday",
+        customerName: form.name, phone: form.phone, email: form.email,
+        travelDate: form.travelDate, pax: form.pax, budget: form.budget,
+        message: form.message, basePrice: pkg.priceFrom||pkg.basePrice||0,
+        status: "pending",
+      });
+      if (agency?.whatsapp) {
+        const msg = `Hi! I'd like to enquire about *${pkg.title}*.\n\nName: ${form.name}\nPhone: ${form.phone}\nTravel Date: ${form.travelDate||"Flexible"}\nNo. of People: ${form.pax}\nBudget: ${form.budget||"Not specified"}\n\n${form.message||"Please share details and best price."}`;
+        window.open(`https://wa.me/${(agency.whatsapp||"").replace(/\D/g,"")}?text=${encodeURIComponent(msg)}`,"_blank");
+      }
+      setDone(true);
+    } catch(e) { alert("Something went wrong. Please try again."); }
+    setSubmitting(false);
+  };
+  const fi = {background:"#f9f9f9",border:"1px solid #e5e7eb",borderRadius:8,padding:"10px 14px",fontFamily:"'DM Sans'",fontSize:14,outline:"none",width:"100%",boxSizing:"border-box",color:"#1a1a2e"};
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
+      <div style={{background:"white",borderRadius:20,maxWidth:480,width:"100%",overflow:"hidden",boxShadow:"0 24px 60px rgba(0,0,0,0.3)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",padding:"20px 24px"}}>
+          <div style={{fontFamily:"'Playfair Display'",fontSize:20,fontWeight:700,color:"white"}}>Enquire About This Package</div>
+          <div style={{fontFamily:"'DM Sans'",fontSize:13,color:"rgba(255,255,255,0.85)",marginTop:4}}>{pkg.title}</div>
+        </div>
+        {done ? (
+          <div style={{padding:40,textAlign:"center"}}>
+            <div style={{fontSize:56,marginBottom:16}}>🎉</div>
+            <div style={{fontFamily:"'Playfair Display'",fontSize:22,fontWeight:700,marginBottom:8}}>Enquiry Sent!</div>
+            <div style={{fontFamily:"'DM Sans'",fontSize:14,color:"#666",marginBottom:24}}>We'll get back to you within 24 hours with the best price and availability.</div>
+            <button onClick={onClose} style={{padding:"12px 28px",background:"#d4850a",border:"none",borderRadius:10,color:"white",fontFamily:"'DM Sans'",fontWeight:700,fontSize:14,cursor:"pointer"}}>Close</button>
+          </div>
+        ) : (
+          <div style={{padding:"24px"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+              <div><label style={{fontFamily:"'DM Sans'",fontSize:12,fontWeight:600,color:"#555",display:"block",marginBottom:4}}>Your Name *</label><input style={fi} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Full name"/></div>
+              <div><label style={{fontFamily:"'DM Sans'",fontSize:12,fontWeight:600,color:"#555",display:"block",marginBottom:4}}>Phone *</label><input style={fi} value={form.phone} onChange={e=>set("phone",e.target.value)} placeholder="+91 9876543210"/></div>
+              <div><label style={{fontFamily:"'DM Sans'",fontSize:12,fontWeight:600,color:"#555",display:"block",marginBottom:4}}>Email</label><input style={fi} value={form.email} onChange={e=>set("email",e.target.value)} placeholder="your@email.com"/></div>
+              <div><label style={{fontFamily:"'DM Sans'",fontSize:12,fontWeight:600,color:"#555",display:"block",marginBottom:4}}>Travel Date</label><input style={fi} type="date" value={form.travelDate} onChange={e=>set("travelDate",e.target.value)}/></div>
+              <div><label style={{fontFamily:"'DM Sans'",fontSize:12,fontWeight:600,color:"#555",display:"block",marginBottom:4}}>No. of People</label>
+                <select style={fi} value={form.pax} onChange={e=>set("pax",e.target.value)}>
+                  {["1","2","3","4","5","6","7","8","9","10","10+"].map(n=><option key={n}>{n}</option>)}
+                </select>
+              </div>
+              <div><label style={{fontFamily:"'DM Sans'",fontSize:12,fontWeight:600,color:"#555",display:"block",marginBottom:4}}>Budget (approx)</label><input style={fi} value={form.budget} onChange={e=>set("budget",e.target.value)} placeholder="e.g. ₹30,000/person"/></div>
+            </div>
+            <div style={{marginBottom:16}}><label style={{fontFamily:"'DM Sans'",fontSize:12,fontWeight:600,color:"#555",display:"block",marginBottom:4}}>Message / Special Requests</label>
+              <textarea style={{...fi,resize:"vertical"}} rows={3} value={form.message} onChange={e=>set("message",e.target.value)} placeholder="Any specific requirements, preferences or questions..."/>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={submit} disabled={submitting} style={{flex:1,padding:"13px",background:"linear-gradient(135deg,#d4850a,#f0c060)",border:"none",borderRadius:10,color:"white",fontFamily:"'DM Sans'",fontWeight:700,fontSize:14,cursor:submitting?"not-allowed":"pointer",opacity:submitting?0.7:1}}>
+                {submitting?"Sending…":"Send Enquiry ✉️"}
+              </button>
+              <button onClick={onClose} style={{padding:"13px 20px",background:"transparent",border:"1px solid #ddd",borderRadius:10,color:"#888",fontFamily:"'DM Sans'",cursor:"pointer"}}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── HOLIDAY PACKAGES ADMIN EDITOR ───────────────────────────────────────────
+function HolidayPackagesEditor({ data, api, reload, showSaved }) {
+  const allTours = data.tours || [];
+  const holidays = allTours.filter(t => t.category === "holiday");
+  const enquiries = (data.tourBookings||[]).filter(b => b.tourType === "holiday");
+  const [subTab, setSubTab] = useState("packages");
+  const [editId, setEditId] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState(null);
+
+  const blank = {
+    category:"holiday", title:"", region:"domestic", holidayCategory:"Family",
+    destinations:[], nights:3, description:"", tag:"", available:true,
+    image:"", gallery:[],
+    inclusions:[], exclusions:[], highlights:[],
+    hotelCategory:"Standard", hotelStars:3, hotels:[],
+    priceFrom:0, priceLabel:"per person",
+    priceTiers:[],
+    itinerary:[],
+    pickupPoints:[], maxPax:10,
+    notes:"",
+  };
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const startAdd  = () => { setForm({...blank}); setEditId(null); setAdding(true); };
+  const startEdit = (t) => { setForm({...blank,...t}); setEditId(t._id); setAdding(false); };
+  const save = async () => {
+    if (!form.title) { alert("Package title required"); return; }
+    if (adding) await api.post("/tours", form);
+    else await api.put("/tours?id="+editId, form);
+    await reload(); showSaved("✅ Package saved!"); setEditId(null); setForm(null); setAdding(false);
+  };
+  const del = async (id) => {
+    if (!window.confirm("Delete this package?")) return;
+    await api.delete("/tours?id="+id); await reload();
+  };
+
+  const arrField = (key, label, placeholder) => (
+    <div style={{marginBottom:16}}>
+      <label className="adm-label">{label}</label>
+      {(form[key]||[]).map((v,i)=>(
+        <div key={i} style={{display:"flex",gap:8,marginBottom:6}}>
+          <input className="adm-input" value={v} onChange={e=>{const a=[...(form[key]||[])];a[i]=e.target.value;set(key,a);}} placeholder={placeholder}/>
+          <button onClick={()=>set(key,(form[key]||[]).filter((_,j)=>j!==i))} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"8px 12px",borderRadius:8,cursor:"pointer",flexShrink:0}}>✕</button>
+        </div>
+      ))}
+      <button onClick={()=>set(key,[...(form[key]||[]),""])} style={{fontSize:12,color:"rgba(255,255,255,0.4)",background:"transparent",border:"1px dashed rgba(255,255,255,0.15)",padding:"7px 14px",borderRadius:8,cursor:"pointer"}}>+ Add</button>
+    </div>
+  );
+
+  const CATEGORIES = ["Honeymoon","Family","Adventure","Group Tour","Pilgrimage","Weekend Getaway","Cultural","Beach","Luxury","Wildlife"];
+  const HOTEL_TIERS = ["Budget","Standard","Deluxe","Luxury"];
+  const PRICE_TIER_LABELS = ["Budget","Standard","Deluxe","Luxury"];
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+        <div>
+          <h2 style={{fontFamily:"'Playfair Display'",fontSize:28,margin:0}}>Holiday Packages</h2>
+          <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginTop:4}}>Manage domestic & international tour packages</div>
+        </div>
+        {subTab==="packages"&&<button onClick={startAdd} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 22px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Add Package</button>}
+      </div>
+
+      {/* Sub tabs */}
+      <div style={{display:"flex",gap:8,marginBottom:28}}>
+        {[["packages",`Packages (${holidays.length})`],["enquiries",`Enquiries (${enquiries.length})`]].map(([id,label])=>(
+          <button key={id} onClick={()=>{setSubTab(id);setEditId(null);setForm(null);setAdding(false);}}
+            style={{padding:"9px 20px",borderRadius:20,border:"2px solid "+(subTab===id?"#d4850a":"rgba(255,255,255,0.1)"),background:subTab===id?"rgba(212,133,10,0.12)":"transparent",color:subTab===id?"#f0c060":"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>
+            {label}
+            {subTab!==id&&id==="enquiries"&&enquiries.filter(e=>e.status==="pending").length>0&&(
+              <span style={{background:"#ef4444",color:"white",fontSize:10,fontWeight:700,padding:"2px 6px",borderRadius:10}}>{enquiries.filter(e=>e.status==="pending").length}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* PACKAGES TAB */}
+      {subTab==="packages"&&(
+        <div>
+          {/* Add/Edit Form */}
+          {(adding||editId)&&form&&(
+            <div className="adm-card" style={{marginBottom:28,border:"1px solid rgba(212,133,10,0.3)"}}>
+              <h3 style={{marginBottom:20,color:"#f0c060"}}>{adding?"Add New Holiday Package":"Edit Package"}</h3>
+
+              {/* Basic Info */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:16}}>
+                <div style={{gridColumn:"1/-1"}}><label className="adm-label">Package Title *</label><input className="adm-input" value={form.title||""} onChange={e=>set("title",e.target.value)} placeholder="e.g. Dubai 3 Nights 4 Days Package"/></div>
+                <div><label className="adm-label">Region</label>
+                  <select className="adm-input" value={form.region||"domestic"} onChange={e=>set("region",e.target.value)}>
+                    <option value="domestic">🇮🇳 Domestic (India)</option>
+                    <option value="international">✈️ International</option>
+                  </select>
+                </div>
+                <div><label className="adm-label">Category</label>
+                  <select className="adm-input" value={form.holidayCategory||"Family"} onChange={e=>set("holidayCategory",e.target.value)}>
+                    {CATEGORIES.map(c=><option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div><label className="adm-label">No. of Nights</label><input className="adm-input" type="number" min="1" value={form.nights||3} onChange={e=>set("nights",Number(e.target.value))}/></div>
+                <div><label className="adm-label">Max Pax</label><input className="adm-input" type="number" value={form.maxPax||10} onChange={e=>set("maxPax",Number(e.target.value))}/></div>
+                <div><label className="adm-label">Tag (e.g. "Best Seller")</label><input className="adm-input" value={form.tag||""} onChange={e=>set("tag",e.target.value)} placeholder="Best Seller / New / Trending"/></div>
+                <div style={{display:"flex",alignItems:"center",gap:10,paddingTop:22}}>
+                  <label className="adm-label" style={{marginBottom:0}}>Visible on website</label>
+                  <input type="checkbox" checked={!!form.available} onChange={e=>set("available",e.target.checked)} style={{width:18,height:18,accentColor:"#d4850a",cursor:"pointer"}}/>
+                </div>
+                <div style={{gridColumn:"1/-1"}}><label className="adm-label">Description</label><textarea className="adm-input" value={form.description||""} rows={3} onChange={e=>set("description",e.target.value)} placeholder="Short marketing description of this package..."/></div>
+              </div>
+
+              {/* Images */}
+              <div style={{marginBottom:16}}>
+                <label className="adm-label">Cover Image URL</label>
+                <input className="adm-input" value={form.image||""} onChange={e=>set("image",e.target.value)} placeholder="https://..."/>
+                {form.image&&<img src={form.image} alt="" style={{marginTop:8,height:80,borderRadius:8,objectFit:"cover"}}/>}
+              </div>
+              {arrField("gallery","Gallery Images (multiple URLs)","https://...")}
+
+              {/* Destinations */}
+              {arrField("destinations","Destinations / Cities Covered","e.g. Dubai")}
+              {arrField("highlights","Package Highlights","e.g. Burj Khalifa visit included")}
+              {arrField("inclusions","Inclusions","e.g. Return flights, Hotel stay, Breakfast")}
+              {arrField("exclusions","Exclusions","e.g. Visa fees, Personal expenses")}
+
+              {/* Hotels */}
+              <div style={{marginBottom:16}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+                  <div><label className="adm-label">Hotel Category</label>
+                    <select className="adm-input" value={form.hotelCategory||"Standard"} onChange={e=>set("hotelCategory",e.target.value)}>
+                      {HOTEL_TIERS.map(t=><option key={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div><label className="adm-label">Hotel Stars</label>
+                    <select className="adm-input" value={form.hotelStars||3} onChange={e=>set("hotelStars",Number(e.target.value))}>
+                      {[2,3,4,5].map(n=><option key={n} value={n}>{n} Star</option>)}
+                    </select>
+                  </div>
+                </div>
+                <label className="adm-label">Hotels Included (optional detail)</label>
+                {(form.hotels||[]).map((h,i)=>(
+                  <div key={i} className="adm-card" style={{marginBottom:10,padding:"12px"}}>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:6}}>
+                      <input className="adm-input" value={h.name||""} onChange={e=>{const a=[...(form.hotels||[])];a[i]={...a[i],name:e.target.value};set("hotels",a);}} placeholder="Hotel name"/>
+                      <input className="adm-input" value={h.city||""} onChange={e=>{const a=[...(form.hotels||[])];a[i]={...a[i],city:e.target.value};set("hotels",a);}} placeholder="City"/>
+                      <input className="adm-input" type="number" value={h.stars||3} onChange={e=>{const a=[...(form.hotels||[])];a[i]={...a[i],stars:Number(e.target.value)};set("hotels",a);}} placeholder="Stars" min="1" max="5"/>
+                      <input className="adm-input" value={h.image||""} onChange={e=>{const a=[...(form.hotels||[])];a[i]={...a[i],image:e.target.value};set("hotels",a);}} placeholder="Image URL (optional)"/>
+                    </div>
+                    <button onClick={()=>set("hotels",(form.hotels||[]).filter((_,j)=>j!==i))} style={{fontSize:12,color:"#ff6b6b",background:"transparent",border:"1px solid rgba(255,80,80,0.2)",padding:"5px 12px",borderRadius:8,cursor:"pointer"}}>Remove Hotel</button>
+                  </div>
+                ))}
+                <button onClick={()=>set("hotels",[...(form.hotels||[]),{name:"",city:"",stars:3,image:""}])} style={{fontSize:12,color:"rgba(255,255,255,0.4)",background:"transparent",border:"1px dashed rgba(255,255,255,0.15)",padding:"7px 14px",borderRadius:8,cursor:"pointer"}}>+ Add Hotel</button>
+              </div>
+
+              {/* Pricing */}
+              <div style={{marginBottom:16}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+                  <div><label className="adm-label">Starting Price (₹)</label><input className="adm-input" type="number" value={form.priceFrom||0} onChange={e=>set("priceFrom",Number(e.target.value))}/></div>
+                  <div><label className="adm-label">Price Label</label><input className="adm-input" value={form.priceLabel||"per person"} onChange={e=>set("priceLabel",e.target.value)} placeholder="per person / per couple"/></div>
+                </div>
+                <label className="adm-label">Price Tiers (Budget / Standard / Deluxe)</label>
+                {(form.priceTiers||[]).map((tier,i)=>(
+                  <div key={i} style={{display:"grid",gridTemplateColumns:"130px 120px 1fr auto",gap:8,marginBottom:8,alignItems:"center"}}>
+                    <select className="adm-input" value={tier.label||"Standard"} onChange={e=>{const a=[...(form.priceTiers||[])];a[i]={...a[i],label:e.target.value};set("priceTiers",a);}}>
+                      {PRICE_TIER_LABELS.map(l=><option key={l}>{l}</option>)}
+                    </select>
+                    <input className="adm-input" type="number" value={tier.price||""} onChange={e=>{const a=[...(form.priceTiers||[])];a[i]={...a[i],price:Number(e.target.value)};set("priceTiers",a);}} placeholder="Price (₹)"/>
+                    <input className="adm-input" value={tier.description||""} onChange={e=>{const a=[...(form.priceTiers||[])];a[i]={...a[i],description:e.target.value};set("priceTiers",a);}} placeholder="e.g. 3-star hotel, no flights"/>
+                    <button onClick={()=>set("priceTiers",(form.priceTiers||[]).filter((_,j)=>j!==i))} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"8px 10px",borderRadius:8,cursor:"pointer",flexShrink:0}}>✕</button>
+                  </div>
+                ))}
+                <button onClick={()=>set("priceTiers",[...(form.priceTiers||[]),{label:"Standard",price:0,description:""}])} style={{fontSize:12,color:"rgba(255,255,255,0.4)",background:"transparent",border:"1px dashed rgba(255,255,255,0.15)",padding:"7px 14px",borderRadius:8,cursor:"pointer"}}>+ Add Tier</button>
+              </div>
+
+              {/* Day-by-day Itinerary */}
+              <div style={{marginBottom:16}}>
+                <label className="adm-label">Day-by-Day Itinerary</label>
+                {(form.itinerary||[]).map((day,i)=>(
+                  <div key={i} className="adm-card" style={{marginBottom:12,borderLeft:"3px solid #d4850a"}}>
+                    <div style={{display:"grid",gridTemplateColumns:"80px 1fr",gap:10,marginBottom:8}}>
+                      <div><label className="adm-label">Day</label><input className="adm-input" type="number" value={day.day||i+1} onChange={e=>{const a=[...(form.itinerary||[])];a[i]={...a[i],day:Number(e.target.value)};set("itinerary",a);}}/></div>
+                      <div><label className="adm-label">Title</label><input className="adm-input" value={day.title||""} onChange={e=>{const a=[...(form.itinerary||[])];a[i]={...a[i],title:e.target.value};set("itinerary",a);}} placeholder="e.g. Arrival in Dubai & City Tour"/></div>
+                    </div>
+                    <div style={{marginBottom:8}}><label className="adm-label">Description</label><textarea className="adm-input" value={day.description||""} rows={2} onChange={e=>{const a=[...(form.itinerary||[])];a[i]={...a[i],description:e.target.value};set("itinerary",a);}}/></div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:8}}>
+                      <div><label className="adm-label">Meals</label><input className="adm-input" value={day.meals||""} onChange={e=>{const a=[...(form.itinerary||[])];a[i]={...a[i],meals:e.target.value};set("itinerary",a);}} placeholder="Breakfast"/></div>
+                      <div><label className="adm-label">Stay / Hotel</label><input className="adm-input" value={day.accommodation||""} onChange={e=>{const a=[...(form.itinerary||[])];a[i]={...a[i],accommodation:e.target.value};set("itinerary",a);}} placeholder="Hotel name"/></div>
+                      <div><label className="adm-label">Activities</label><input className="adm-input" value={day.activities||""} onChange={e=>{const a=[...(form.itinerary||[])];a[i]={...a[i],activities:e.target.value};set("itinerary",a);}} placeholder="Burj Khalifa, Desert Safari"/></div>
+                    </div>
+                    <button onClick={()=>set("itinerary",(form.itinerary||[]).filter((_,j)=>j!==i))} style={{fontSize:12,color:"#ff6b6b",background:"transparent",border:"1px solid rgba(255,80,80,0.2)",padding:"5px 12px",borderRadius:8,cursor:"pointer"}}>Remove Day</button>
+                  </div>
+                ))}
+                <button onClick={()=>set("itinerary",[...(form.itinerary||[]),{day:(form.itinerary||[]).length+1,title:"",description:"",meals:"",accommodation:"",activities:""}])} style={{fontSize:13,color:"rgba(255,255,255,0.4)",background:"transparent",border:"1px dashed rgba(255,255,255,0.15)",padding:"8px 16px",borderRadius:8,cursor:"pointer"}}>+ Add Day</button>
+              </div>
+
+              <div style={{display:"flex",gap:10,marginTop:8}}>
+                <button onClick={save} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"11px 28px",borderRadius:8,fontWeight:700,cursor:"pointer",fontSize:14}}>Save Package</button>
+                <button onClick={()=>{setEditId(null);setForm(null);setAdding(false);}} style={{background:"transparent",border:"1px solid rgba(255,255,255,0.2)",color:"rgba(255,255,255,0.5)",padding:"11px 20px",borderRadius:8,cursor:"pointer"}}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {/* Package list */}
+          {holidays.length===0&&!adding&&(
+            <div style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:60}}>
+              <div style={{fontSize:48,marginBottom:12}}>✈️</div>
+              <div style={{fontSize:16,marginBottom:8}}>No holiday packages yet</div>
+              <div style={{fontSize:13}}>Click "+ Add Package" to create your first one</div>
+            </div>
+          )}
+          <div style={{display:"grid",gap:12}}>
+            {holidays.filter(t=>t._id!==editId).map(pkg=>(
+              <div key={pkg._id} className="adm-card" style={{display:"flex",gap:14,alignItems:"center"}}>
+                {(pkg.image||(pkg.gallery&&pkg.gallery[0]))&&(
+                  <img src={pkg.image||pkg.gallery[0]} alt="" style={{width:80,height:64,objectFit:"cover",borderRadius:10,flexShrink:0}}/>
+                )}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:4,flexWrap:"wrap"}}>
+                    <span style={{fontWeight:700,fontSize:15}}>{pkg.title}</span>
+                    <span style={{fontSize:11,background:pkg.region==="international"?"rgba(30,64,175,0.2)":"rgba(22,101,52,0.2)",color:pkg.region==="international"?"#93c5fd":"#86efac",padding:"2px 8px",borderRadius:10}}>{pkg.region==="international"?"✈️ International":"🇮🇳 Domestic"}</span>
+                    <span style={{fontSize:11,background:"rgba(255,255,255,0.07)",color:"rgba(255,255,255,0.5)",padding:"2px 8px",borderRadius:10}}>{pkg.holidayCategory}</span>
+                    {pkg.nights&&<span style={{fontSize:11,background:"rgba(212,133,10,0.15)",color:"#f0c060",padding:"2px 8px",borderRadius:10}}>{pkg.nights}N {pkg.nights+1}D</span>}
+                    {!pkg.available&&<span style={{fontSize:11,background:"rgba(255,80,80,0.15)",color:"#ff6b6b",padding:"2px 8px",borderRadius:10}}>Hidden</span>}
+                  </div>
+                  <div style={{fontSize:13,color:"rgba(255,255,255,0.4)"}}>
+                    {pkg.destinations&&pkg.destinations.length>0&&<span>📍 {pkg.destinations.join(", ")} · </span>}
+                    <span style={{color:"#f0c060",fontWeight:600}}>₹{(pkg.priceFrom||0).toLocaleString("en-IN")} {pkg.priceLabel||"per person"}</span>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:8,flexShrink:0}}>
+                  <button onClick={()=>startEdit(pkg)} style={{background:"rgba(212,133,10,0.15)",border:"1px solid rgba(212,133,10,0.3)",color:"#f0c060",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}}>Edit</button>
+                  <button onClick={()=>del(pkg._id)} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",color:"#ff6b6b",padding:"7px 10px",borderRadius:8,cursor:"pointer",fontSize:13}}>🗑</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ENQUIRIES TAB */}
+      {subTab==="enquiries"&&(
+        <div>
+          {enquiries.length===0&&<div style={{textAlign:"center",color:"rgba(255,255,255,0.3)",padding:60}}>No enquiries yet. They'll appear here when customers enquire from your website.</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {enquiries.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).map(enq=>(
+              <div key={enq._id} className="adm-card" style={{display:"flex",gap:16,alignItems:"flex-start",borderLeft:`3px solid ${enq.status==="pending"?"#f0c060":enq.status==="confirmed"?"#4ade80":"#60a5fa"}`}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:4,flexWrap:"wrap"}}>
+                    <span style={{fontWeight:700,fontSize:15}}>{enq.customerName}</span>
+                    <span style={{fontSize:11,background:enq.status==="pending"?"rgba(240,192,96,0.15)":enq.status==="confirmed"?"rgba(74,222,128,0.15)":"rgba(96,165,250,0.15)",color:enq.status==="pending"?"#f0c060":enq.status==="confirmed"?"#4ade80":"#60a5fa",padding:"2px 8px",borderRadius:10,fontWeight:600,textTransform:"capitalize"}}>{enq.status}</span>
+                  </div>
+                  <div style={{fontSize:13,color:"rgba(255,255,255,0.5)",marginBottom:4}}>
+                    📦 {enq.tourTitle} · 📞 {enq.phone} {enq.email&&`· ✉️ ${enq.email}`}
+                  </div>
+                  <div style={{fontSize:12,color:"rgba(255,255,255,0.35)"}}>
+                    {enq.travelDate&&`📅 ${enq.travelDate} · `}👥 {enq.pax||1} pax {enq.budget&&`· 💰 ${enq.budget}`}
+                  </div>
+                  {enq.message&&<div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginTop:6,fontStyle:"italic"}}>"{enq.message}"</div>}
+                </div>
+                <div style={{display:"flex",gap:6,flexDirection:"column",flexShrink:0}}>
+                  <select value={enq.status} onChange={async e=>{await api.put("/tours?bookings=1&id="+enq._id,{...enq,status:e.target.value});await reload();showSaved("✅ Updated!");}}
+                    style={{padding:"6px 10px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,color:"#f0c060",fontSize:12,cursor:"pointer",outline:"none"}}>
+                    <option value="pending">Pending</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                  {enq.phone&&<a href={`https://wa.me/${enq.phone.replace(/\D/g,"")}?text=${encodeURIComponent(`Hi ${enq.customerName}! Regarding your enquiry for ${enq.tourTitle}...`)}`} target="_blank" rel="noreferrer"
+                    style={{padding:"6px 10px",background:"rgba(34,197,94,0.15)",border:"1px solid rgba(34,197,94,0.3)",color:"#4ade80",borderRadius:8,fontSize:12,textDecoration:"none",textAlign:"center"}}>💬 WA</a>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ToursEditor({ data, api, reload, showSaved }) {
   const [subTab, setSubTab]     = useState("packages");
   const [editId, setEditId]     = useState(null);
@@ -1297,8 +2026,8 @@ function ToursEditor({ data, api, reload, showSaved }) {
   const [adding, setAdding]     = useState(false);
   const [adjModal, setAdjModal] = useState(null);
   const [recordModal, setRecordModal] = useState(null);
-  const tours        = data.tours        || [];
-  const tourBookings = data.tourBookings || [];
+  const tours        = (data.tours || []).filter(t => t.category !== "holiday");
+  const tourBookings = (data.tourBookings || []).filter(b => b.tourType !== "holiday");
   const pending      = tourBookings.filter(b=>b.status==="pending");
   const TYPE_LABELS  = {"day-trip":"Day Trip","multi-day":"Multi-Day","taxi":"Taxi","airport":"Airport Pickup"};
   const blank = { title:"", type:"day-trip", destinations:[], description:"", highlights:[], image:"", duration:"", basePrice:0, priceLabel:"per package", maxPax:6, inclusions:[], exclusions:[], itinerary:[], pickupPoints:[], available:true, tag:"" };
@@ -1337,7 +2066,7 @@ function ToursEditor({ data, api, reload, showSaved }) {
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
-        <h2 style={{fontFamily:"'Playfair Display'",fontSize:28}}>Tours & Taxi</h2>
+        <h2 style={{fontFamily:"'Playfair Display'",fontSize:28}}>Taxi Tours</h2>
         {subTab==="packages"&&<button onClick={startAdd} style={{background:"linear-gradient(135deg,#d4850a,#f0c060)",color:"#1a1a2e",border:"none",padding:"10px 22px",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer"}}>+ Add Tour / Taxi</button>}
       </div>
       <div style={{display:"flex",gap:8,marginBottom:28}}>
@@ -1707,7 +2436,8 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
     {id:"villa",       label:"Villa",        icon:"🏡"},
     {id:"testimonials",label:"Reviews",      icon:"⭐"},
     {id:"inventory",   label:"Inventory",    icon:"📦"},
-    {id:"tours",       label:"Tours & Taxi", icon:"🗺", badge: (data.tourBookings||[]).filter(b=>b.status==="pending").length},
+    {id:"tours",       label:"Taxi Tours",        icon:"🚕", badge: (data.tourBookings||[]).filter(b=>b.status==="pending").length},
+    {id:"holidays",    label:"Holiday Packages",  icon:"✈️"},
     {id:"accounting",  label:"Accounting",   icon:"💰"},
     {id:"bookings",    label:"Bookings",     icon:"📋", badge: (data.bookings||[]).filter(b=>b.status==="pending").length},
     {id:"newsletter",  label:"Newsletter",   icon:"📧"},
@@ -1796,6 +2526,7 @@ function AdminPanel({ data, api, reload, saved, showSaved, onExit, adminTab, set
               {adminTab==="bookings"     &&<BookingsEditor     data={data} api={api} reload={reload} showSaved={showSavedLocal} rentals={data.rentals||[]}/>}
               {adminTab==="customers"    &&<CustomersEditor    api={api} showSaved={showSavedLocal}/>}
               {adminTab==="tours"        &&<ToursEditor        data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
+              {adminTab==="holidays"     &&<HolidayPackagesEditor data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
               {adminTab==="newsletter"   &&<NewsletterEditor   api={api} showSaved={showSavedLocal}/>}
               {adminTab==="users"        &&<UsersEditor        data={data} api={api} reload={reload} showSaved={showSavedLocal}/>}
             </div>
